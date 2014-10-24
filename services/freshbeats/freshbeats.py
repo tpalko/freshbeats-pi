@@ -133,15 +133,6 @@ class FreshBeats:
 			logging.error(sys.exc_info())
 			traceback.print_tb(sys.exc_info()[2])
 
-	def _get_albums_never_checked_out(self):
-		return Album.objects.filter(albumcheckout__isnull=True, action__isnull=True)
-
-	def _get_albums_currently_checked_out(self, rating):
-		return Album.objects.filter(albumcheckout__isnull=False, albumcheckout__return_at__isnull=True, rating=rating, action=Album.REMOVE)
-
-	def _get_storage_path(self, album):
-		return join(ARTIST_PATH, album.artist, album.name)
-
 	def mark_actions(self):
 
 		device_free_space = self._get_space()
@@ -227,18 +218,6 @@ class FreshBeats:
 				removed = random.choice(removeds)
 				self._mark_album_for_add(removed, only_update=True)
 
-	def _mark_album_for_add(self, album, only_update=False):
-
-		if album.size < self.bytes_free:
-			album.action = Album.ADD
-			if only_update:
-				album.action = Album.UPDATE if album.is_updatable() else Album.DONOTHING			
-			album.save()
-			self.bytes_free = self.bytes_free - album.size
-			logger.debug("bytes free: %s" %(self.bytes_free))
-		else:
-			self.fail = self.fail + 1
-
 	def perform_actions(self):
 
 		action_albums = Album.objects.filter(action__isnull=False)
@@ -258,6 +237,27 @@ class FreshBeats:
 
 				self._add_album(a)
 
+	def _get_albums_never_checked_out(self):
+		return Album.objects.filter(albumcheckout__isnull=True, action__isnull=True)
+
+	def _get_albums_currently_checked_out(self, rating):
+		return Album.objects.filter(albumcheckout__isnull=False, albumcheckout__return_at__isnull=True, rating=rating, action=Album.REMOVE)
+
+	def _get_storage_path(self, album):
+		return join(ARTIST_PATH, album.artist, album.name)
+
+	def _mark_album_for_add(self, album, only_update=False):
+
+		if album.size < self.bytes_free:
+			album.action = Album.ADD
+			if only_update:
+				album.action = Album.UPDATE if album.is_updatable() else Album.DONOTHING			
+			album.save()
+			self.bytes_free = self.bytes_free - album.size
+			logger.debug("bytes free: %s" %(self.bytes_free))
+		else:
+			self.fail = self.fail + 1
+
 	def _remove_album(self, a):
 
 		logger.debug("removing: %s %s" %(a.artist, a.name))
@@ -266,7 +266,7 @@ class FreshBeats:
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
 
-		if err is None:
+		if ps.returncode == 0:
 			current_checkout = a.current_albumcheckout()
 			current_checkout.return_at = datetime.datetime.now()
 			current_checkout.save()
@@ -281,17 +281,11 @@ class FreshBeats:
 		ps = subprocess.Popen(cp_statement)
 		(out,err,) = ps.communicate(None)
 
-		if err is None:
+		if ps.returncode == 0:
 			ac = AlbumCheckout(album=a, checkout_at=datetime.datetime.now())
 			ac.save()
 			a.action = None
 			a.save()
-		else:
-			logger.debug("There was an error:")
-			logger.debug(err)
-
-		logger.debug("Out:")
-		logger.debug(out)
 
 	def _get_space(self):
 
