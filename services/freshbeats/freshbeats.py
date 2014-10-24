@@ -278,6 +278,27 @@ class FreshBeats:
 		else:
 			self.fail = self.fail + 1
 
+	def _get_albums_never_checked_out(self):
+		return Album.objects.filter(albumcheckout__isnull=True, action__isnull=True)
+
+	def _get_albums_currently_checked_out(self, rating):
+		return Album.objects.filter(albumcheckout__isnull=False, albumcheckout__return_at__isnull=True, rating=rating, action=Album.REMOVE)
+
+	def _get_storage_path(self, album):
+		return join(ARTIST_PATH, album.artist, album.name)
+
+	def _mark_album_for_add(self, album, only_update=False):
+
+		if album.size < self.bytes_free:
+			album.action = Album.ADD
+			if only_update:
+				album.action = Album.UPDATE if album.is_updatable() else Album.DONOTHING			
+			album.save()
+			self.bytes_free = self.bytes_free - album.size
+			logger.debug("bytes free: %s" %(self.bytes_free))
+		else:
+			self.fail = self.fail + 1
+
 	def _remove_album(self, a):
 
 		logger.debug("removing: %s %s" %(a.artist, a.name))
