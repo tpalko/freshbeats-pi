@@ -1,4 +1,4 @@
 freshbeats-pi
 =============
 
-Know what you own. Keep it fresh.
+Own what you own. Keep it fresh.

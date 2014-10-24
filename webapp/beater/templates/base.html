@@ -1,0 +1,242 @@
+{% load staticfiles %}
+
+<html>
+
+	<head>
+		<title>FreshBeats</title>		
+		
+		<script type="text/javascript" src="{% static "jquery/jquery-1.11.1.min.js" %}"></script>
+		
+		<link rel="stylesheet" type="text/css" href="{% static "bootstrap/css/bootstrap.min.css" %}" />
+		<link rel="stylesheet" type="text/css" href="{% static "jquery/jquery-ui-1.11.1.custom/jquery-ui.min.css" %}" />
+		<link rel="stylesheet" type="text/css" href="{% static "beater.css" %}" />
+
+	</head>
+
+	<body>
+
+		<div class="container">
+
+			<div class="row">
+
+				<div class="col-md-5">
+					<H1>Hy!asdf</h1>
+					<a class="btn btn-success" href="{% url "beater.views.home" %}">home</a>
+					<a class="btn btn-success" href="{% url "beater.views.survey" %}">survey</a>
+					<a class="player_command btn btn-primary" command="shuffle" href="#">shuffle, bitch</a> <a class="player_command btn btn-warning" command="next" href="#">next, please</a>
+					<br />
+					<a class="btn player_command" href="#" command="pause">pause</a>
+					<a class="btn player_command" href="#" command="stop">stop</a>
+					<a class="btn player_command" href="#" command="mute">mute</a>
+				</div>
+
+				<div class="col-md-7">
+					<div class="row" style="height:30px;"></div>
+					<div id="player_info"></div>
+				</div>
+
+			</div>
+
+			<div class="row" style="height:1em; margin-bottom: 1em;">
+				<div class="col-md-12" id="errors"></div>
+			</div>
+
+			{% block content %}{% endblock %}
+
+		</div>
+
+		<script type="text/javascript" src="{% static "jquery/jquery-ui-1.11.1.custom/jquery-ui.min.js" %}"></script>
+		<script type="text/javascript">
+
+			var tabs;
+
+			function getCookie(name) {
+			    var cookieValue = null;
+			    if (document.cookie && document.cookie != '') {
+			        var cookies = document.cookie.split(';');
+			        for (var i = 0; i < cookies.length; i++) {
+			            var cookie = jQuery.trim(cookies[i]);
+			            // Does this cookie string begin with the name we want?
+			            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+			                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+			                break;
+			            }
+			        }
+			    }
+			    return cookieValue;
+			}
+
+			var csrftoken = getCookie('csrftoken');
+
+			function csrfSafeMethod(method) {
+			    // these HTTP methods do not require CSRF protection
+			    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+			}
+
+			function sameOrigin(url) {
+			    // test that a given url is a same-origin URL
+			    // url could be relative or scheme relative or absolute
+			    var host = document.location.host; // host + port
+			    var protocol = document.location.protocol;
+			    var sr_origin = '//' + host;
+			    var origin = protocol + sr_origin;
+			    // Allow absolute or scheme relative URLs to same origin
+			    return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
+			        (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
+			        // or any other URL that isn't scheme relative or absolute i.e relative.
+			        !(/^(\/\/|http:|https:).*/.test(url));
+			}
+
+			$.ajaxSetup({
+			    beforeSend: function(xhr, settings) {
+			        if (!csrfSafeMethod(settings.type) && sameOrigin(settings.url)) {
+			            // Send the token to same-origin, relative URLs only.
+			            // Send the token only if the method warrants CSRF protection
+			            // Using the CSRFToken value acquired earlier
+			            xhr.setRequestHeader("X-CSRFToken", csrftoken);
+			        }
+			    },
+			    error: function(jqXHR, textStatus, errorThrown){
+			    	
+			    	var a = jqXHR.responseText.split('\n');
+			    	
+			    	showError(a[0] + "<br />" + a[1]);
+			    }
+			});
+
+			function showError(message){
+
+				$("#errors").append($("<div></div>").html(message));
+			}
+
+			function keepalbum_callback(response){
+				
+				album_id = response.albumid;
+				$("tr[albumid='" + album_id + "']").find(".album_action").html("");
+			}
+
+			$(document).on('change', "input[name='rating']", function(e){
+
+				var is_unrated = $(this).val() == "unrated";
+				$("input[name='keep']").prop("checked", is_unrated ? "checked" : "");
+			});
+
+			$(document).on('change', "input[name='status']", function(e){
+
+				var is_not_ok = $(this).val() != "ok";
+				$("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
+			});
+
+			$(document).on('click', ".player_command", function(e){
+
+				var clickable = $(this);
+				var command = $(this).attr("command");
+				var albumid = $(this).attr("albumid");
+				var songid = $(this).attr("songid");
+
+				$.ajax({
+
+					url: '{% url "beater.views.player_command" %}',
+					data: { command: command, albumid: albumid, songid: songid }, 
+					type: "POST",
+					datatype: "json",
+					success: function(response){
+						var callback = $(clickable).attr('callback');
+
+						if(callback != undefined){
+							fn = window[callback];
+							fn(JSON.parse(response));
+						}
+					},
+					error: function(response){
+						console.log(response);
+					}
+				});
+
+				return false;
+			});	
+
+			$(document).on('submit', 'form[id^="surveyalbum_"]', function(e){
+
+				e.preventDefault();
+
+				$.ajax({
+
+					url: '{% url "beater.views.survey_post" %}',
+					data: $(this).serialize(),
+					type: "POST",
+					datatype: "json",
+					success: function(response){
+						location = location;
+					},
+					error: function(response){
+
+					}
+				});
+
+				return false;
+			});
+
+			$(document).on('submit', 'form[id="search_form"]', function(e){
+
+				e.preventDefault();
+
+				$.ajax({
+
+					url: '{% url "beater.views.album_filter" filter="all" %}',
+					data: $(this).serialize(),
+					type: "GET",
+					datatype: "json",
+					success: function(response){
+						console.log(tabs);
+					},
+					error: function(response){
+
+					}
+				});
+
+				return false;
+			});
+
+			$(document).ready(function(){
+
+				tabs = $("#tabs").tabs({
+					load: function(event, ui){
+						//console.log("here");
+					},
+					beforeLoad: function(event, ui){
+						//console.log("there");
+					},
+					beforeActivate: function(event, ui){
+						console.log('beforeactivate');
+						console.log(ui.newTab);
+					},
+					activate: function(event, ui){
+						console.log(ui);
+					},
+					active: 0
+				});
+
+				setInterval(function(){
+
+					$.ajax({
+
+						url: '{% url "beater.views.player_status" %}',
+						type: "GET",
+						success: function(response){
+
+							$("#player_info").html(response);
+						},
+						error: function(response){
+
+							console.log(response);
+						}
+					});
+
+				}, 3000);
+				
+			});
+
+		</script>
+	</body>
+</html>

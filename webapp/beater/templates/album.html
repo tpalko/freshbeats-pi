@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+			<div class="row">
+
+				<div class="col-md-12">
+
+					<h2>{{album.name}}</h2>
+					<h3>{{album.artist}}</h3>
+
+					<table class="table table-striped">
+
+						{% for song in songs %}
+							
+						<tr>
+							<td class="col-md-5">{{song.name}}</td>						
+							<td><a href="#" class="btn btn-primary player_command" command="song" songid="{{song.id}}">play</a></td>
+						</tr>
+
+						{% endfor %}
+
+					</table>
+				</div>
+			</div>
+
+{% endblock %}

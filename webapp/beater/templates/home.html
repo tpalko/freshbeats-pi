@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+			<div class="row">
+
+				<div class="col-md-12">
+
+					<form id="search_form" method="get">
+						<input type="text" name="search" value="" /> <button class="btn btn-primary" type="submit">search</button>
+					</form>
+
+					
+					<div id="tabs">
+						
+							<ul>
+								<li><a href="/album_filter/all">All</a></li>
+								<li><a href="/album_filter/checkedout">Checked-Out</a></li>
+								<li><a href="/album_filter/incomplete">Incomplete</a></li>
+								<li><a href="/album_filter/mislabeled">Mislabeled</a></li>
+							</ul>					
+						
+					</div>
+				</div>
+			</div>
+
+{% endblock %}
