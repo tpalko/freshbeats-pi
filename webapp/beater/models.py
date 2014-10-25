@@ -35,8 +35,9 @@ class Album(models.Model):
 	artist = models.CharField(max_length=255)
 	name = models.CharField(max_length=255)
 	tracks = models.IntegerField()
-	size = models.BigIntegerField()
-	old_size = models.BigIntegerField()
+	audio_size = models.BigIntegerField(default=0)
+	total_size = models.BigIntegerField(default=0)
+	old_total_size = models.BigIntegerField(null=True)
 	rating = models.CharField(max_length=20, choices=ALBUM_RATING_CHOICES, null=False, default=UNRATED)
 	action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)	
 	created_at = models.DateTimeField(auto_now_add = True)
@@ -62,6 +63,16 @@ class Album(models.Model):
 		for s in new_statuses:
 			a = AlbumStatus(album=self, status=s)
 			a.save()
+
+	def has_status(self, status):
+
+		statuses = map(lambda s: s.status, self.albumstatus_set.all())
+		return status in statuses
+
+	def remove_status(self, status):
+
+		albumstatus = self.albumstatus_set.filter(status=status)
+		albumstatus.delete()
 
 class AlbumStatus(models.Model):
 
