@@ -25,7 +25,7 @@ DEBUG = True
 TEMPLATE_DEBUG = True
 
 TEMPLATE_DIRS = (
-    '/home/tpalko/sf_biereetvin_development/code/beater/webapp/beater/templates'
+    '/home/tpalko/sf_biereetvin_development/code/beater/webapp/beater/templates',
 )
 
 ALLOWED_HOSTS = []
@@ -96,3 +96,7 @@ USE_TZ = False
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'beater/static')
 
+MUSIC_MOUNT = "/mnt/music/"
+BEATPLAYER_SERVER = 'http://alarmpi:9000'
+PLAYLIST_WORKING_FOLDER = "/media/sf_beater_working"
+PLAYLIST_FILENAME = "playlist.txt"

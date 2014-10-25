@@ -1,18 +1,16 @@
 #!/usr/bin/python2
 
 import os
+import socket
 import sys
 import traceback
 import subprocess
 import time
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 import logging
+import ConfigParser
 
 logging.basicConfig(level=logging.DEBUG)
-
-WORKING_FOLDER = "/mnt/beater_working"
-PLAYLIST_FILE = "playlist.txt"
-DEFAULT_VOLUME = 100
 
 class MPPlayer():
 
@@ -22,14 +20,30 @@ class MPPlayer():
 	f_outr = None
 	f_errr = None
 	volume = None
+	default_volume = 100
+	playlist_filepath = None
 
-	def __init__(self, *args, **kwargs):
+	def __init__(self, env, *args, **kwargs):
 
 		self.f_outw = file("mplayer.out", "wb")
 		self.f_errw = file("mplayer.err", "wb")		
 
 		self.f_outr = file("mplayer.out", "rb")
 		self.f_errr = file("mplayer.err", "rb")		
+
+		self.config = ConfigParser.ConfigParser()
+		config_file = "./config/settings_%s.cfg" %(env)
+
+		if not os.path.exists(config_file):
+			raise Exception("Config file '%s' not found" %(config_file))
+
+		self.config.read(config_file)
+
+		working_folder = self.config.get('paths', 'PLAYLIST_WORKING_FOLDER')
+		filename = self.config.get('paths', 'PLAYLIST_FILENAME')
+		self.playlist_filepath = os.path.join(working_folder, filename)
+		
+		self.default_volume = self.config.get('player', 'DEFAULT_VOLUME')
 
 	def get_player_info(self):
 
@@ -57,7 +71,7 @@ class MPPlayer():
 
 		try:
 
-			if not os.path.exists(os.path.join(WORKING_FOLDER, PLAYLIST_FILE)):
+			if not os.path.exists(self.playlist_filepath):
 				logging.error("The playlist file is not accessible.")
 				return
 
@@ -65,7 +79,7 @@ class MPPlayer():
 			
 			do_shell=True
 			shuffle = "-shuffle" if options['shuffle'] else ""
-			command = "mplayer -ao alsa %s -slave -quiet -playlist %s" %(shuffle, os.path.join(WORKING_FOLDER, PLAYLIST_FILE))
+			command = "mplayer -ao alsa %s -slave -quiet -playlist %s" %(shuffle, self.playlist_filepath)
 
 			logging.debug(command)
 
@@ -75,7 +89,7 @@ class MPPlayer():
 			self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
 
 			if self.volume is None:
-				self.volume = DEFAULT_VOLUME
+				self.volume = self.default_volume
 
 			self._issue_command("volume %s 1" %(self.volume))
 
@@ -132,9 +146,19 @@ class MPPlayer():
 
 if __name__ == "__main__":
 
-	m = MPPlayer()
+	if len(sys.argv) > 1 and sys.argv[1] not in ['dev', 'prod']:
+		print "Usage: "
+		print "%s %s" %(sys.argv[0], ['dev', 'prod'])
+		sys.exit(1)
 
-	s = SimpleXMLRPCServer(('alarmpi',9000), allow_none=True)
+	env = 'dev'
+
+	if len(sys.argv) > 1:
+		env = sys.argv[1]
+
+	m = MPPlayer(env=env)
+
+	s = SimpleXMLRPCServer(('localhost',9000), allow_none=True)
 	s.register_instance(m)
 	logging.info("Serving forever on 9000..")
 	s.serve_forever() # not!

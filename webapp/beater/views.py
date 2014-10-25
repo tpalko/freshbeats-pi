@@ -3,6 +3,7 @@ from django.shortcuts import render_to_response
 from django.shortcuts import redirect
 from django.template import RequestContext
 from django.http import HttpResponse
+from django.conf import settings
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 import os
@@ -14,9 +15,6 @@ import traceback
 import json
 import random
 
-working_folder = "/media/sf_beater_working"
-playlist_file = "playlist.txt"
-
 #logging.basicConfig(level=logging.DEBUG)
 
 logger = logging.getLogger('beater')
@@ -25,7 +23,7 @@ fresh_logger = logging.StreamHandler()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(fresh_logger)
 
-p = xmlrpclib.ServerProxy('http://alarmpi:9000')
+p = xmlrpclib.ServerProxy(settings.BEATPLAYER_SERVER)
 playlist = None
 
 def survey(request):
@@ -55,9 +53,9 @@ def album_filter(request, filter):
 		albums = Album.objects.order_by('artist', 'name').all()
 	elif filter == 'checkedout':
 		albums = Album.objects.order_by('artist', 'name').filter(albumcheckout__isnull=False, albumcheckout__return_at=None)
-	elif filter == 'incomplete':
+	elif filter == AlbumStatus.INCOMPLETE:
 		albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.INCOMPLETE)
-	elif filter == 'mislabeled':
+	elif filter == AlbumStatus.MISLABELED:
 		albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.MISLABELED)
 
 	return render_to_response('_albums.html', { 'albums':albums }, context_instance=RequestContext(request))
@@ -107,18 +105,12 @@ def player_command(request):
 	
 	try:
 
-		logging.debug(request.POST)
-			
-		logging.debug("Issuing command %s" %(request.POST['command']))
-
 		problem = None
 		player_info = None
 
 		command = request.POST['command']
 
 		shuffle = True if 'shuffle' in request.POST else False
-
-		logging.debug(p)
 
 		if command == "keep":
 
@@ -192,10 +184,10 @@ def player_command(request):
 	return HttpResponse(json.dumps(response))
 
 def _init_playlist():
-	return open(os.path.join(working_folder, playlist_file), "wb")
+	return open(os.path.join(settings.PLAYLIST_WORKING_FOLDER, settings.PLAYLIST_FILENAME), "wb")
 
 def _write_song_to_playlist(song, playlist):
-	full_path = "%s/%s/%s/%s\r\n" %("/mnt/music/", song.album.artist, song.album.name, song.name)
+	full_path = "%s/%s/%s/%s\r\n" %(settings.MUSIC_MOUNT, song.album.artist, song.album.name, song.name)
 	playlist.write(full_path.encode('utf8'))
 	
 @csrf_exempt
