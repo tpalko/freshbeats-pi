@@ -1,3 +1,4 @@
 design/**
 *.pyc
 mplayer.err
+mplayer.out
