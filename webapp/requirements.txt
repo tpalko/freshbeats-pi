@@ -1,2 +1,5 @@
-django==1.7
+django==1.6.2
 south
+mysql-python
+uwsgi
+supervisor
