@@ -4,6 +4,7 @@ from django.shortcuts import redirect
 from django.template import RequestContext
 from django.http import HttpResponse
 from django.conf import settings
+from django.db.models import Q
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 import os
@@ -50,7 +51,7 @@ def album_filter(request, filter):
 	albums = []
 
 	if filter == 'all':
-		albums = Album.objects.order_by('artist', 'name').all()
+		albums = Album.objects.order_by('artist', 'name').filter(~Q(albumstatus__status=AlbumStatus.INCOMPLETE))
 	elif filter == 'checkedout':
 		albums = Album.objects.order_by('artist', 'name').filter(albumcheckout__isnull=False, albumcheckout__return_at=None)
 	elif filter == AlbumStatus.INCOMPLETE:
@@ -194,5 +195,5 @@ def _write_song_to_playlist(song, playlist):
 def player_status(request):
 
 	player_status = p.get_player_info()
-
+	
 	return render_to_response('_player_status.html', {'status': player_status}, context_instance=RequestContext(request))
