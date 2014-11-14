@@ -11,10 +11,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.network "forwarded_port", guest: 80, host: 8000
 
   # config.vm.network "private_network", ip: "192.168.33.10"
-
   # config.vm.network "public_network"
 
-  # config.vm.synced_folder "../data", "/vagrant_data"
+  config.vm.synced_folder "/Volumes/music", "/vagrant/mounts/music"
 
   # config.vm.provider "virtualbox" do |vb|
   #   # Don't boot with headless mode

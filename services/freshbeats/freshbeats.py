@@ -8,6 +8,8 @@ import random
 import logging
 import traceback
 import datetime
+from optparse import OptionParser
+from ConfigParser import ConfigParser
 
 # - let's use the database configuration the webapp already has defined..
 sys.path.append('../../webapp')
@@ -16,51 +18,65 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 import config.settings
 from beater.models import Album, Song, AlbumCheckout, AlbumStatus
 
-logger = logging.getLogger('FreshBeats')
+logging.basicConfig(
+	level = logging.DEBUG
+)
 fresh_logger = logging.StreamHandler()
+logger = logging.getLogger('FreshBeats')
 
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fresh_logger)
+django_logger = logging.getLogger('django')
+django_logger.setLevel(logging.INFO)
 
 # mount -t vfat /dev/sdb /mnt/phone -o uid=1000,gid=1000,utf8,dmask=027,fmask=137
 
-MUSIC_FOLDER = 'music'
-ARTIST_PATH = '/media/storage/%s' %(MUSIC_FOLDER)
-BEATS_TARGET = 'freshbeats'
-FREE_SPACE_MARGIN = 100*1024*1024 # - in bytes
-MAX_FAIL = 10
-
-skip_files = ['desktop.ini', '.DS_Store']
-
 class FreshBeats:
 
-	args = None
 	device_mount = None
 
-	def __init__(self, args, device_mount):
+	def __init__(self, options, args):
+
+		self.run_update_db = options.update_db
+		self.run_mark_albums = options.mark_albums
+		self.run_copy_files = options.copy_files
+
+		if len(args) > 0:
+			self.device_mount = args[0]
 
 		self.bytes_free = 0
 		self.fail = 0
 
-		self.args = args
-		self.device_mount = device_mount
+		config = ConfigParser()
+		config.read('./config/settings_dev.cfg')
+
+		for s in config.sections():
+			self.__dict__ = dict(self.__dict__.items() + {i[0]: i[1] for i in config.items(s)}.items())
+
+		self.music_path = os.path.join(self.music_base_path, self.music_folder)
+
+		if not os.path.exists(self.music_path):
+			logger.error("Music path %s does not exist." %(self.music_path))
+			exit(1)
 
 	def update_db(self):
 
 		try:
 
-			for root, dirs, files in os.walk(ARTIST_PATH):
+			for root, dirs, files in os.walk(self.music_path):
 
-				if all(f in skip_files for f in files):
+				if all(f in self.skip_files for f in files):
 					continue
 
 				parts = root.split('/')
-				
+
 				album = parts[-1].strip()
 				artist = parts[-2].strip()	
 
+				if '/'.join(parts[0:-2]) != self.music_path and artist != self.music_folder and '/'.join(parts) != self.music_path:
+					logger.warn("Path too deep: %s" %('/'.join(parts)))
+					continue
+
 				all_files = files
-				music_files = filter(lambda x: x[x.rfind("."):] in ['.mp3', '.m4a', '.MP3', '.WMA', '.wav', '.WAV'] and x.find("._") < 0, files)
+				music_files = filter(lambda x: x[x.rfind("."):] in self.music_file_extensions and x.find("._") < 0, files)
 
 				tracks = len(music_files)
 
@@ -71,7 +87,7 @@ class FreshBeats:
 				audio_size = sum(getsize(join(root, name)) for name in music_files)
 
 				# -- files in the root of the artist folder, i.e. not in an album folder
-				if artist == MUSIC_FOLDER:
+				if artist == self.music_folder:
 					artist = album
 					album = 'no album'	
 
@@ -88,7 +104,7 @@ class FreshBeats:
 
 				if possible_match is None:
 
-					a = Album(artist=artist, name=album, tracks=0, total_size=0, audio_size=0, old_total_size=0, rating=Album.UNRATED)
+					a = Album(artist=artist, name=album, tracks=0, total_size=total_size, audio_size=0, old_total_size=0, rating=Album.UNRATED)
 					a.save()
 
 				else:
@@ -96,6 +112,13 @@ class FreshBeats:
 					a = possible_match
 
 					if int(a.tracks) != len(music_files) or int(a.total_size) != int(total_size) or int(a.audio_size) != int(audio_size):
+
+						if int(a.tracks) != len(music_files):
+							logger.debug("Track count: %s/%s" %(int(a.tracks), len(music_files)))
+						if int(a.total_size) != int(total_size):
+							logger.debug("Total size: %s/%s" %(int(a.total_size), int(total_size)))
+						if int(a.audio_size) != int(audio_size):
+							logger.debug("Audio size: %s/%s" %(int(a.audio_size), int(audio_size)))
 
 						updated_existing = True
 
@@ -163,9 +186,9 @@ class FreshBeats:
 		if len(albums_to_add) > 0:
 			add_size = reduce(lambda a, b: a + b, map(lambda a: a.total_size, albums_to_add))	
 
-		self.bytes_free = device_free_space - FREE_SPACE_MARGIN + remove_size - update_size - add_size
+		self.bytes_free = device_free_space - self.free_space_margin + remove_size - update_size - add_size
 
-		logger.debug("bytes free: %s (free %s margin %s remove %s update %s add %s)" %(self.bytes_free, device_free_space, FREE_SPACE_MARGIN, remove_size, update_size, add_size))
+		logger.debug("bytes free: %s (free %s margin %s remove %s update %s add %s)" %(self.bytes_free, device_free_space, self.free_space_margin, remove_size, update_size, add_size))
 
 		albums_previously_checked_out_query = "select a.* " + \
 			"from beater_album a " + \
@@ -180,7 +203,7 @@ class FreshBeats:
 			"and a.rating in %s"
 
 		checked_out_mixitups = Album.objects.filter(rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True)
-		kept_mixins = map(lambda c: c.action in [Album.DONOTHING, Album.UPDATE], checked_out_mixitups)
+		kept_mixins = [c.action in [Album.DONOTHING, Album.UPDATE] for c in checked_out_mixitups]
 
 		if not any(kept_mixins):
 
@@ -192,7 +215,7 @@ class FreshBeats:
 				new_mixin = random.choice(new_mixin_list)
 				self._mark_album_for_add(new_mixin)
 
-		while self.bytes_free > 0 and self.fail < MAX_FAIL:			
+		while self.bytes_free > 0 and self.fail < self.max_fail:			
 
 			new_add = None
 
@@ -222,11 +245,11 @@ class FreshBeats:
 
 			removeds = self._get_albums_currently_checked_out(r)
 
-			while self.bytes_free > 0 and self.fail < MAX_FAIL:
+			while self.bytes_free > 0 and self.fail < self.max_fail:
 				removed = random.choice(removeds)
 				self._mark_album_for_add(removed, only_update=True)	
 
-	def update_device(self):
+	def copy_files(self):
 
 		while True:
 		
@@ -262,9 +285,9 @@ class FreshBeats:
 	def _get_storage_path(self, album):
 
 		if album.name == 'no album':
-			return join(ARTIST_PATH, album.artist)
+			return join(self.music_base_path, self.music_folder, album.artist)
 
-		return join(ARTIST_PATH, album.artist, album.name)
+		return join(self.music_base_path, self.music_folder, album.artist, album.name)
 
 	def _mark_album_for_add(self, album, only_update=False):
 
@@ -278,32 +301,11 @@ class FreshBeats:
 		else:
 			self.fail = self.fail + 1
 
-	def _get_albums_never_checked_out(self):
-		return Album.objects.filter(albumcheckout__isnull=True, action__isnull=True)
-
-	def _get_albums_currently_checked_out(self, rating):
-		return Album.objects.filter(albumcheckout__isnull=False, albumcheckout__return_at__isnull=True, rating=rating, action=Album.REMOVE)
-
-	def _get_storage_path(self, album):
-		return join(ARTIST_PATH, album.artist, album.name)
-
-	def _mark_album_for_add(self, album, only_update=False):
-
-		if album.size < self.bytes_free:
-			album.action = Album.ADD
-			if only_update:
-				album.action = Album.UPDATE if album.is_updatable() else Album.DONOTHING			
-			album.save()
-			self.bytes_free = self.bytes_free - album.size
-			logger.debug("bytes free: %s" %(self.bytes_free))
-		else:
-			self.fail = self.fail + 1
-
 	def _remove_album(self, a):
 
 		logger.debug("removing: %s %s" %(a.artist, a.name))
 
-		rm_statement = ['rm', '-rf', join(self.device_mount, BEATS_TARGET, a.artist, a.name)]
+		rm_statement = ['rm', '-rf', join(self.device_mount, self.beats_target_folder, a.artist, a.name)]
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -318,7 +320,7 @@ class FreshBeats:
 
 		logger.debug("adding: %s %s" %(a.artist, a.name))
 
-		cp_statement = ['cp', '-R', self._get_storage_path(a), join(self.device_mount, BEATS_TARGET, a.artist)]								
+		cp_statement = ['cp', '-R', self._get_storage_path(a), join(self.device_mount, self.beats_target_folder, a.artist)]								
 		ps = subprocess.Popen(cp_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -337,28 +339,45 @@ class FreshBeats:
 
 		parts = filter(lambda p: p != '', out.split(' '))
 
-		print parts
-		
 		# result listed in KB, we want bytes
 		return int(parts[3]) * 1024
 
-	def freshen(self):
+	def run(self):
 
-		for a in self.args:
-			method = getattr(self, a)
-			if method is not None:
-				method()
+		if not any([self.run_update_db, self.run_mark_albums, self.run_copy_files]):
+			logger.warn("Nothing to do!")
+			exit(0)
+
+		if self.run_update_db:
+			self.update_db()
+		
+		if self.run_mark_albums:
+			self.mark_albums()
+		
+		if self.run_copy_files:
+			self.copy_files()
 
 if __name__ == "__main__":
 
-	args = {}
-	device_mount = None
+	parser = OptionParser(usage='usage: %prog [options] DEVICE_PATH')
 
-	for i,a in enumerate(sys.argv[1:]):		
-		if a == "--devicemount":
-			device_mount = sys.argv[i+2]
-		elif a[0:2] == "--":
-			args[a[2:]] = True
+	#parser.add_option("-d", "--device", dest="device_mount", help="mount location of mobile device", metavar="DEVICE_PATH", required=True)
+	parser.add_option("-u", "--updatedb", dest="update_db", action="store_true", default=False, help="execute database update")
+	parser.add_option("-m", "--markalbums", dest="mark_albums", action="store_true", default=False, help="mark albums for migration")
+	parser.add_option("-c", "--copyfiles", dest="copy_files", action="store_true", default=False, help="copy files to device (DEVICE_PATH is then required)")
 
-	f = FreshBeats(args, device_mount)
-	f.freshen()
+	(options, args) = parser.parse_args()
+
+	device_path_required = options.mark_albums or options.copy_files
+	
+	if len(args) < 1 and device_path_required:
+		logger.error("A DEVICE_PATH is required in order to mark albums or copy files.")
+		parser.print_help()
+		exit(1)
+
+	if (len(args) > 0 and not os.path.exists(args[0])) and device_path_required:
+		logger.error("The device path %s does not exist" % args[0])
+		exit(1)
+
+	f = FreshBeats(options, args)
+	f.run()
