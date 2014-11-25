@@ -18,7 +18,7 @@ import config.settings
 from beater.models import Album, Song, AlbumCheckout, AlbumStatus
 
 logging.basicConfig(
-	level = logging.DEBUG
+	level = logging.INFO
 )
 fresh_logger = logging.StreamHandler()
 logger = logging.getLogger('FreshBeats')
@@ -26,7 +26,22 @@ logger = logging.getLogger('FreshBeats')
 django_logger = logging.getLogger('django')
 django_logger.setLevel(logging.INFO)
 
+'''
 # mount -t vfat /dev/sdb /mnt/phone -o uid=1000,gid=1000,utf8,dmask=027,fmask=137
+
+productid 
+	708B - windows phone portal
+	7089 - windows media sync
+	7087 - usb mass storage
+	7090 - charge only
+
+Attaching the device to the computer will list it with the chosen function's productid under 'VBoxManage list usbhost' as 'busy'
+The device will also show in virtualbox's settings/usb filter menu
+Selecting it in the filter menu does nothing, until the VM is powered on, at which point it will be listed as 'captured'
+Even after VM power off or removal of the filter, the device will remain 'captured' until virtualbox is closed and restarted
+
+
+'''
 
 class FreshBeats:
 
@@ -121,11 +136,11 @@ class FreshBeats:
 					if int(a.tracks) != len(music_files) or int(a.total_size) != int(total_size) or int(a.audio_size) != int(audio_size):
 
 						if int(a.tracks) != len(music_files):
-							logger.debug("Track count: %s/%s" %(int(a.tracks), len(music_files)))
+							logger.info("Track count: %s/%s" %(int(a.tracks), len(music_files)))
 						if int(a.total_size) != int(total_size):
-							logger.debug("Total size: %s/%s" %(int(a.total_size), int(total_size)))
+							logger.info("Total size: %s/%s" %(int(a.total_size), int(total_size)))
 						if int(a.audio_size) != int(audio_size):
-							logger.debug("Audio size: %s/%s" %(int(a.audio_size), int(audio_size)))
+							logger.info("Audio size: %s/%s" %(int(a.audio_size), int(audio_size)))
 
 						updated_existing = True
 
@@ -154,9 +169,9 @@ class FreshBeats:
 						a.save()
 
 					if possible_match is None :
-						logger.debug("Inserted %s %s" %(artist, album))
+						logger.info("Inserted %s %s" %(artist, album))
 					elif updated_existing:
-						logger.debug("Updated %s %s" %(artist, album))
+						logger.info("Updated %s %s" %(artist, album))
 
 			albums = Album.objects.filter(albumcheckout__isnull=True)
 
@@ -164,7 +179,7 @@ class FreshBeats:
 
 				if not os.path.exists(self._get_storage_path(a)):
 					a.delete()
-					logger.debug("Deleted %s %s" %(a.artist, a.name))
+					logger.info("Deleted %s %s" %(a.artist, a.name))
 
 		except:
 
@@ -193,9 +208,9 @@ class FreshBeats:
 		if len(albums_to_add) > 0:
 			add_size = reduce(lambda a, b: a + b, map(lambda a: a.total_size, albums_to_add))	
 
-		self.bytes_free = device_free_space - self.free_space_margin + remove_size - update_size - add_size
+		self.bytes_free = device_free_space - int(eval(self.free_space_margin)) + remove_size - update_size - add_size
 
-		logger.debug("bytes free: %s (free %s margin %s remove %s update %s add %s)" %(self.bytes_free, device_free_space, self.free_space_margin, remove_size, update_size, add_size))
+		logger.info("bytes free: %s (free %s margin %s remove %s update %s add %s)" %(self.bytes_free, device_free_space, self.free_space_margin, remove_size, update_size, add_size))
 
 		albums_previously_checked_out_query = "select a.* " + \
 			"from beater_album a " + \
@@ -207,7 +222,7 @@ class FreshBeats:
 				"having sum(isnull(ac.return_at)) = 0 " + \
 				"and count(*) > 0) checkouts on checkouts.id = a.id " +  \
 			"where a.action is null " +  \
-			"and a.rating in %s"
+			"and a.rating in (%s)"
 
 		checked_out_mixitups = Album.objects.filter(rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True)
 		kept_mixins = [c.action in [Album.DONOTHING, Album.UPDATE] for c in checked_out_mixitups]
@@ -222,11 +237,12 @@ class FreshBeats:
 				new_mixin = random.choice(new_mixin_list)
 				self._mark_album_for_add(new_mixin)
 
-		while self.bytes_free > 0 and self.fail < self.max_fail:			
+		while self.bytes_free > 0 and self.fail < int(self.max_fail):			
 
+			logger.info("fail: %s" % self.fail)
 			new_add = None
 
-			if random.choice(range(0,30)) == 14:
+			if random.choice(range(0,100)) == 14:
 				
 				new_loveits = Album.objects.raw(albums_previously_checked_out_query, [Album.LOVEIT, Album.UNDECIDED])
 				new_loveit_list = list(new_loveits)
@@ -252,36 +268,27 @@ class FreshBeats:
 
 			removeds = self._get_albums_currently_checked_out(r)
 
-			while self.bytes_free > 0 and self.fail < self.max_fail:
+			while self.bytes_free > 0 and self.fail < int(self.max_fail):
 				removed = random.choice(removeds)
 				self._mark_album_for_add(removed, only_update=True)	
 
 	def copy_files(self):
 
-		while True:
-		
-			action_albums = Album.objects.filter(action__isnull=False)
+		remove_albums = Album.objects.filter(action=Album.REMOVE)
 
-			if len(action_albums) > 0:
+		for r in remove_albums:
+			self._remove_album(r)
 
-				action_album = random.choice(action_albums)
+		update_albums = Album.objects.filter(action=Album.UPDATE)
 
-				if action_album.action == Album.REMOVE:
+		for u in update_albums:
+			self._remove_album(u)
+			self._copy_album_to_device(u)
 
-					self._remove_album(action_album)
+		add_albums = Album.objects.filter(action=Album.ADD)
 
-				elif action_album.action == Album.UPDATE:
-
-					self._remove_album(action_album)
-					self._copy_album_to_device(action_album)
-
-				elif action_album.action == Album.ADD:
-
-					self._copy_album_to_device(action_album)			
-
-			else:
-
-				break
+		for a in add_albums:
+			self._copy_album_to_device(a)
 
 	def _get_albums_never_checked_out(self):
 		return Album.objects.filter(albumcheckout__isnull=True, action__isnull=True)
@@ -304,17 +311,19 @@ class FreshBeats:
 				album.action = Album.UPDATE if album.is_updatable() else Album.DONOTHING			
 			album.save()
 			self.bytes_free = self.bytes_free - album.total_size
-			logger.debug("bytes free: %s" %(self.bytes_free))
+			logger.info("bytes free: %s" %(self.bytes_free))
 		else:
 			self.fail = self.fail + 1
 
 	def _remove_album(self, a):
 
-		logger.debug("removing: %s %s" %(a.artist, a.name))
+		logger.info("removing: %s %s" %(a.artist, a.name))
 
 		rm_statement = ['rm', '-rf', join(self.device_mount, self.beats_target_folder, a.artist, a.name)]
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
+
+		logger.info("Remove code: %s" % ps.returncode)
 
 		if ps.returncode == 0:
 			current_checkout = a.current_albumcheckout()
@@ -325,13 +334,15 @@ class FreshBeats:
 
 	def _copy_album_to_device(self, a):
 
-		logger.debug("adding: %s %s" %(a.artist, a.name))
+		logger.info("adding: %s %s" %(a.artist, a.name))
 
 		target_folder = join(self.device_mount, self.beats_target_folder, a.artist)
 
 		cp_statement = ['cp', '-R', self._get_storage_path(a), target_folder]								
 		ps = subprocess.Popen(cp_statement)
 		(out,err,) = ps.communicate(None)
+
+		logger.info("Add code: %s" % ps.returncode)
 
 		if ps.returncode == 0:
 			ac = AlbumCheckout(album=a, checkout_at=datetime.datetime.now())
