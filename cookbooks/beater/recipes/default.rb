@@ -1,4 +1,4 @@
-%w{ python-dev python-pip mysql-client-5.6 libmysqlclient-dev nginx }.each do |p|
+%w{ python-dev python-pip libmysqlclient-dev }.each do |p|
 	package p
 end
 
@@ -20,6 +20,8 @@ bash "configure-supervisor" do
 		mkdir -p /var/log/supervisor
 		mkdir -p /etc/supervisor/conf.d
 		echo_supervisord_conf > /etc/supervisor/supervisord.conf
+		echo "[include]" >> /etc/supervisor/supervisord.conf
+		echo "files = relative/directory/*.ini" >> /etc/supervisor/supervisord.conf
 		cp /vagrant/webapp/deploy/supervisor/* /etc/supervisor/conf.d/
 	EOH
 
@@ -30,8 +32,9 @@ end
 bash "install-nginx-config" do
 
 	code <<-EOH
-		cp /vagrant/webapp/deploy/beater.conf /etc/nginx/sites-available
+		cp /vagrant/webapp/deploy/nginx/beater.conf /etc/nginx/sites-available/		
 		ln -fs /etc/nginx/sites-available/beater.conf /etc/nginx/sites-enabled/beater.conf
+		cp /etc/nginx/uwsgi_params /etc/nginx/sites-enabled/
 		rm -f /etc/nginx/sites-enabled/default
 		service nginx restart
 	EOH
