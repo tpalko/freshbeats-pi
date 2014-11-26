@@ -22,3 +22,12 @@
 [submodule "cookbooks/yum-epel"]
 	path = cookbooks/yum-epel
 	url = https://github.com/opscode-cookbooks/yum-epel.git
+[submodule "cookbooks/mysql"]
+	path = cookbooks/mysql
+	url = https://github.com/opscode-cookbooks/mysql.git
+[submodule "cookbooks/nginx"]
+	path = cookbooks/nginx
+	url = https://github.com/miketheman/nginx.git
+[submodule "cookbooks/apt"]
+	path = cookbooks/apt
+	url = https://github.com/opscode-cookbooks/apt.git

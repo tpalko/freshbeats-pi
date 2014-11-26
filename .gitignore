@@ -4,3 +4,4 @@ design/**
 *.pyc
 mplayer.err
 mplayer.out
+playlist.txt

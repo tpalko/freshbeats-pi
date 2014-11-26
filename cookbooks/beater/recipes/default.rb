@@ -21,7 +21,7 @@ bash "configure-supervisor" do
 		mkdir -p /etc/supervisor/conf.d
 		echo_supervisord_conf > /etc/supervisor/supervisord.conf
 		echo "[include]" >> /etc/supervisor/supervisord.conf
-		echo "files = relative/directory/*.ini" >> /etc/supervisor/supervisord.conf
+		echo "files = ./conf.d/*.conf" >> /etc/supervisor/supervisord.conf
 		cp /vagrant/webapp/deploy/supervisor/* /etc/supervisor/conf.d/
 	EOH
 
@@ -42,4 +42,30 @@ bash "install-nginx-config" do
 	user "root"
 	action :run
 	
+end
+
+bash "create-mysql-resources" do
+
+	code <<-EOH
+		mysql -u root -pdev -e "create user 'dev'@'localhost' identified by 'dev';"
+		mysql -u root -pdev -e "create user 'dev'@'%' identified by 'dev';"
+		mysql -u root -pdev -e "create database beater character set utf8;"
+		mysql -u root -pdev -e "grant all privileges on beater.* to 'dev'@'localhost';"
+		mysql -u root -pdev -e "grant all privileges on beater.* to 'dev'@'%';"
+	EOH
+
+	user "root"
+	action :run
+end
+
+bash "create-mysql-user" do
+
+	cwd "/vagrant/webapp"
+
+	code <<-EOH
+		python manage.py syncdb --noinput
+		python manage.py migrate beater
+	EOH
+
+	action :run
 end

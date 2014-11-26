@@ -1,3 +1,115 @@
+=begin
+	
+	for chef provisioning:
+
+		pacman -S rubygems
+
+		wget https://aur.archlinux.org/packages/om/omnibus-chef/omnibus-chef.tar.gz
+		tar -xvf omnibus-chef.tar.gz
+		cd omnibus-chef
+
+		wget https://aur.archlinux.org/packages/ru/ruby-bundler/ruby-bundler.tar.gz
+		tar -xvf ruby-bundler.tar.gz
+		cd ruby-bundler
+	
+=end
+
+bash "install-mplayer" do
+
+	code <<-EOH
+		pacman -S mplayer
+	EOH
+
+	user "root"
+	action :run
+
+end
+
+template "/etc/systemd/system/network-wireless@.service" do
+  source "network-wireless@.service.erb"
+  owner 'root'
+  group 'root'
+end
+
+template "/etc/systemd/system/beatplayer.service" do
+  source "beatplayer.service.erb"
+  owner 'root'
+  group 'root'
+  variables({
+     :environment => node[:beatplayer][:environment]
+  })
+end
+
+template "/etc/smb-credentials" do
+  source "smb-credentials.erb"
+  owner 'root'
+  group 'root'
+  variables({
+     :username => node[:beatplayer][:mount_username],
+     :password => node[:beatplayer][:mount_password]
+  })
+end
+
+bash "create-wpa_supplicant-conf" do
+
+	code <<-EOH
+		wpa_passphrase #{node[:beatplayer][:ssid]} #{node[:beatplayer][:ssid_passphrase]} > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+	EOH
+
+	user "root"
+	action :run
+end
+
+bash "enable-wireless" do
+
+	code <<-EOH
+		systemctl enable wpa_supplicant@wlan0
+		systemctl start wpa_supplicant@wlan0
+
+		systemctl enable dhcpcd@wlan0
+		systemctl start dhcpcd@wlan0
+		
+		systemctl enable network-wireless@wlan0.service
+		systemctl start network-wireless@wlan0.service
+	EOH
+
+	user "root"
+	action :run
+
+end
+
+bash "enable-beatplayer" do
+
+	code <<-EOH
+		systemctl enable beatplayer.service
+		systemctl start beatplayer.service
+	EOH
+
+	user "root"
+	action :run
+end
+
+# - NOTE: omit "sec=ntlm" when mount point is on a Linux server
+mount "/mnt/music" do
+
+	device "//biereetvin/music"
+	fstype "cifs"
+	options "credentials=/etc/smb-credentials,sec=ntlm"
+	action :enable
+
+end
+
+# - NOTE: omit "sec=ntlm" when mount point is on a Linux server
+mount "/mnt/beater_working" do
+
+	device "//biereetvin/development/code/freshbeats-pi/mounts/beater_working"
+	fstype "cifs"
+	options "credentials=/etc/smb-credentials,sec=ntlm"
+	action :enable
+
+end
+
+=begin
 /etc/wpa_supplicant/pbjt.conf
 /etc/systemd/system/network-wireless\@.service
 
@@ -5,7 +117,6 @@
 
 /etc/dhcpcd.conf
 /etc/wpa_supplicant/wpa_supplicant.conf 
-
 
 systemctl status wpa_supplicant@wlan0
 systemctl status dhcpcd@wlan0
@@ -35,9 +146,7 @@ dhcpcd wlan0
 5: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DORMANT group default qlen 1000
     link/ether c4:3d:c7:81:18:0a brd ff:ff:ff:ff:ff:ff
 
-
-wpa_passphrase PeanutButterJellyTime 1dlg3ah1dl751a > /etc/wpa_supplicant/pbjt.conf
-
 cp /etc/samba/smb.conf.default /etc/samba/smb.conf
 
 mplayer -ao alsa -shuffle -playlist playlist.txt
+=end
