@@ -14,6 +14,36 @@
 	
 =end
 
+template "/etc/smb-credentials" do
+  source "smb-credentials.erb"
+  owner 'root'
+  group 'root'
+  variables({
+     :username => node[:beatplayer][:mount_username],
+     :password => node[:beatplayer][:mount_password]
+  })
+end
+
+# - NOTE: omit "sec=ntlm" when mount point is on a Linux server
+mount "/mnt/music" do
+
+	device "//biereetvin/music"
+	fstype "cifs"
+	options "credentials=/etc/smb-credentials,sec=ntlm"
+	action :enable
+
+end
+
+# - NOTE: omit "sec=ntlm" when mount point is on a Linux server
+mount "/mnt/beater_working" do
+
+	device "//biereetvin/development/code/freshbeats-pi/mounts/beater_working"
+	fstype "cifs"
+	options "credentials=/etc/smb-credentials,sec=ntlm"
+	action :enable
+
+end
+
 bash "install-mplayer" do
 
 	code <<-EOH
@@ -25,29 +55,12 @@ bash "install-mplayer" do
 
 end
 
+# - These are the wireless settings..
+
 template "/etc/systemd/system/network-wireless@.service" do
   source "network-wireless@.service.erb"
   owner 'root'
   group 'root'
-end
-
-template "/etc/systemd/system/beatplayer.service" do
-  source "beatplayer.service.erb"
-  owner 'root'
-  group 'root'
-  variables({
-     :environment => node[:beatplayer][:environment]
-  })
-end
-
-template "/etc/smb-credentials" do
-  source "smb-credentials.erb"
-  owner 'root'
-  group 'root'
-  variables({
-     :username => node[:beatplayer][:mount_username],
-     :password => node[:beatplayer][:mount_password]
-  })
 end
 
 bash "create-wpa_supplicant-conf" do
@@ -78,6 +91,17 @@ bash "enable-wireless" do
 
 end
 
+# - End wireless settings.
+
+template "/etc/systemd/system/beatplayer.service" do
+  source "beatplayer.service.erb"
+  owner 'root'
+  group 'root'
+  variables({
+     :environment => node[:beatplayer][:environment]
+  })
+end
+
 bash "enable-beatplayer" do
 
 	code <<-EOH
@@ -87,26 +111,6 @@ bash "enable-beatplayer" do
 
 	user "root"
 	action :run
-end
-
-# - NOTE: omit "sec=ntlm" when mount point is on a Linux server
-mount "/mnt/music" do
-
-	device "//biereetvin/music"
-	fstype "cifs"
-	options "credentials=/etc/smb-credentials,sec=ntlm"
-	action :enable
-
-end
-
-# - NOTE: omit "sec=ntlm" when mount point is on a Linux server
-mount "/mnt/beater_working" do
-
-	device "//biereetvin/development/code/freshbeats-pi/mounts/beater_working"
-	fstype "cifs"
-	options "credentials=/etc/smb-credentials,sec=ntlm"
-	action :enable
-
 end
 
 =begin

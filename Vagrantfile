@@ -62,7 +62,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       chef.json.merge!({
         :beatplayer => {
           :environment => "prod",
-          :mount_username => "tpalko",
+          :mount_username => "myusername",
           :mount_password => "randompassword",
           :ssid => "myssid",
           :ssid_passphrase => "randompassphrase"
