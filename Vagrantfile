@@ -5,26 +5,72 @@
 VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  
+  config.vm.define "web" do |w|
 
-  config.vm.box = "ubuntu/trusty64"
+    w.vm.box = "ubuntu/trusty64"
 
-  config.vm.network "forwarded_port", guest: 80, host: 8000
+    w.vm.network "forwarded_port", guest: 80, host: 8000
+    w.vm.network "private_network", ip: "192.168.33.10"
+    w.vm.synced_folder "/Volumes/music", "/vagrant/mounts/music"
+    w.vm.synced_folder "/Volumes/development/code/freshbeats-pi/mounts/beater_working", "/vagrant/mounts/beater_working"
 
-  # config.vm.network "private_network", ip: "192.168.33.10"
-  # config.vm.network "public_network"
+    w.vm.provider "virtualbox" do |v|
+      v.memory = 1024
+      v.name = 'freshbeats_web'
+    end
 
-  config.vm.synced_folder "/Volumes/music", "/vagrant/mounts/music"
+    w.vm.provision "chef_solo" do |chef|
 
-  # config.vm.provider "virtualbox" do |vb|
-  #   # Don't boot with headless mode
-  #   vb.gui = true
-  #
-  #   # Use VBoxManage to customize the VM. For example to change memory:
-  #   vb.customize ["modifyvm", :id, "--memory", "1024"]
-  # end
+      chef.add_recipe "mysql::client"
+      chef.add_recipe "mysql::server"    
+      chef.add_recipe "nginx"
 
-  config.vm.provision "chef_solo" do |chef|
-     chef.add_recipe "beater"
+      chef.add_recipe "beater"
+
+      chef.json.merge!({
+        :mysql => {
+          :version => "5.6",
+          :platform_family => "debian",
+          :server_root_password => "dev"
+        },
+        :nginx => {
+          :init_style => "init"
+        }
+      })
+    end
+
+  end
+
+  config.vm.define "rpi" do |r|
+
+    r.vm.box = "denis/archlinux32"
+
+    r.vm.network "private_network", ip: "192.168.33.11"
+    r.vm.synced_folder "/Volumes/music", "/vagrant/mounts/music"
+    r.vm.synced_folder "/Volumes/development/code/freshbeats-pi/mounts/beater_working", "/vagrant/mounts/beater_working"
+    
+    w.vm.provider "virtualbox" do |v|
+      v.memory = 1024
+      v.name = 'freshbeats_rpi'
+    end
+
+    r.vm.provision "chef_solo" do |chef|
+
+      chef.add_recipe "beater::beatplayer"
+
+      chef.json.merge!({
+        :beatplayer => {
+          :environment => "prod",
+          :mount_username => "myusername",
+          :mount_password => "randompassword",
+          :ssid => "myssid",
+          :ssid_passphrase => "randompassphrase"
+        }
+      })
+      
+    end
+
   end
 
 end

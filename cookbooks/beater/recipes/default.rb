@@ -1,4 +1,4 @@
-%w{ python-dev python-pip mysql-client-5.6 libmysqlclient-dev nginx }.each do |p|
+%w{ python-dev python-pip libmysqlclient-dev }.each do |p|
 	package p
 end
 
@@ -20,6 +20,8 @@ bash "configure-supervisor" do
 		mkdir -p /var/log/supervisor
 		mkdir -p /etc/supervisor/conf.d
 		echo_supervisord_conf > /etc/supervisor/supervisord.conf
+		echo "[include]" >> /etc/supervisor/supervisord.conf
+		echo "files = ./conf.d/*.conf" >> /etc/supervisor/supervisord.conf
 		cp /vagrant/webapp/deploy/supervisor/* /etc/supervisor/conf.d/
 	EOH
 
@@ -30,8 +32,9 @@ end
 bash "install-nginx-config" do
 
 	code <<-EOH
-		cp /vagrant/webapp/deploy/beater.conf /etc/nginx/sites-available
+		cp /vagrant/webapp/deploy/nginx/beater.conf /etc/nginx/sites-available/		
 		ln -fs /etc/nginx/sites-available/beater.conf /etc/nginx/sites-enabled/beater.conf
+		cp /etc/nginx/uwsgi_params /etc/nginx/sites-enabled/
 		rm -f /etc/nginx/sites-enabled/default
 		service nginx restart
 	EOH
@@ -39,4 +42,30 @@ bash "install-nginx-config" do
 	user "root"
 	action :run
 	
+end
+
+bash "create-mysql-resources" do
+
+	code <<-EOH
+		mysql -u root -pdev -e "create user 'dev'@'localhost' identified by 'dev';"
+		mysql -u root -pdev -e "create user 'dev'@'%' identified by 'dev';"
+		mysql -u root -pdev -e "create database beater character set utf8;"
+		mysql -u root -pdev -e "grant all privileges on beater.* to 'dev'@'localhost';"
+		mysql -u root -pdev -e "grant all privileges on beater.* to 'dev'@'%';"
+	EOH
+
+	user "root"
+	action :run
+end
+
+bash "create-mysql-user" do
+
+	cwd "/vagrant/webapp"
+
+	code <<-EOH
+		python manage.py syncdb --noinput
+		python manage.py migrate beater
+	EOH
+
+	action :run
 end

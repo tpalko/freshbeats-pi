@@ -96,7 +96,3 @@ USE_TZ = False
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'beater/static')
 
-MUSIC_MOUNT = "/vagrant/mounts/music"
-BEATPLAYER_SERVER = 'http://alarmpi:9000'
-PLAYLIST_WORKING_FOLDER = "/media/sf_beater_working"
-PLAYLIST_FILENAME = "playlist.txt"

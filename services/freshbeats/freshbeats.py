@@ -11,8 +11,7 @@ import datetime
 from optparse import OptionParser
 from ConfigParser import ConfigParser
 
-# - let's use the database configuration the webapp already has defined..
-sys.path.append('../../webapp')
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../webapp'))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
 import config.settings
@@ -50,9 +49,17 @@ class FreshBeats:
 
 	def __init__(self, options, args):
 
-		self.run_update_db = options.update_db
-		self.run_mark_albums = options.mark_albums
-		self.run_copy_files = options.copy_files
+		device_path_required = options.mark_albums or options.copy_files
+	
+		if len(args) < 1 and device_path_required:
+			raise Exception("A DEVICE_PATH is required in order to mark albums or copy files.")
+
+		if (len(args) > 0 and not os.path.exists(args[0])):
+			raise Exception("The device path %s does not exist" % args[0])
+
+		self.run_update_db = bool(options.update_db)
+		self.run_mark_albums = bool(options.mark_albums)
+		self.run_copy_files = bool(options.copy_files)
 
 		if len(args) > 0:
 			self.device_mount = args[0]
@@ -61,7 +68,7 @@ class FreshBeats:
 		self.fail = 0
 
 		config = ConfigParser()
-		config.read('./config/settings_dev.cfg')
+		config.read(os.path.join(os.path.dirname(__file__), './config/settings_dev.cfg'))
 
 		for s in config.sections():
 			self.__dict__ = dict(self.__dict__.items() + {i[0]: i[1] for i in config.items(s)}.items())
@@ -152,7 +159,7 @@ class FreshBeats:
 				if possible_match is None or updated_existing:
 
 					for f in music_files:
-			
+						
 						s = Song(album=a, name=f)
 						s.save()
 
@@ -276,12 +283,12 @@ class FreshBeats:
 
 		for u in update_albums:
 			self._remove_album(u)
-			self._add_album(u)
+			self._copy_album_to_device(u)
 
 		add_albums = Album.objects.filter(action=Album.ADD)
 
 		for a in add_albums:
-			self._add_album(a)
+			self._copy_album_to_device(a)
 
 	def _get_albums_never_checked_out(self):
 		return Album.objects.filter(albumcheckout__isnull=True, action__isnull=True)
@@ -325,11 +332,13 @@ class FreshBeats:
 			a.action = None
 			a.save()
 
-	def _add_album(self, a):
+	def _copy_album_to_device(self, a):
 
 		logger.info("adding: %s %s" %(a.artist, a.name))
 
-		cp_statement = ['cp', '-R', self._get_storage_path(a), join(self.device_mount, self.beats_target_folder, a.artist)]								
+		target_folder = join(self.device_mount, self.beats_target_folder, a.artist)
+
+		cp_statement = ['cp', '-R', self._get_storage_path(a), target_folder]								
 		ps = subprocess.Popen(cp_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -372,23 +381,14 @@ if __name__ == "__main__":
 
 	parser = OptionParser(usage='usage: %prog [options] DEVICE_PATH')
 
-	#parser.add_option("-d", "--device", dest="device_mount", help="mount location of mobile device", metavar="DEVICE_PATH", required=True)
 	parser.add_option("-u", "--updatedb", dest="update_db", action="store_true", default=False, help="execute database update")
 	parser.add_option("-m", "--markalbums", dest="mark_albums", action="store_true", default=False, help="mark albums for migration")
 	parser.add_option("-c", "--copyfiles", dest="copy_files", action="store_true", default=False, help="copy files to device (DEVICE_PATH is then required)")
 
 	(options, args) = parser.parse_args()
 
-	device_path_required = options.mark_albums or options.copy_files
-	
-	if len(args) < 1 and device_path_required:
-		logger.error("A DEVICE_PATH is required in order to mark albums or copy files.")
+	try:
+		f = FreshBeats(options, args)
+		f.run()
+	except: 
 		parser.print_help()
-		exit(1)
-
-	if (len(args) > 0 and not os.path.exists(args[0])) and device_path_required:
-		logger.error("The device path %s does not exist" % args[0])
-		exit(1)
-
-	f = FreshBeats(options, args)
-	f.run()

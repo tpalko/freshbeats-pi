@@ -1,0 +1,16 @@
+[Unit]
+Description=FreshBeats - BeatPlayer
+Requires=sys-subsystem-net-devices-wlan0.device
+Requires=remote-fs.target
+After=sys-subsystem-net-devices-wlan0.device
+After=remote-fs.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=30
+ExecStart=/usr/share/freshbeats/services/beatplayer/./mpplayer.py -e <%= environment %> -a %H
+
+[Install]
+WantedBy=multi-user.target
+

@@ -24,8 +24,13 @@ fresh_logger = logging.StreamHandler()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(fresh_logger)
 
+logger.debug("Setting path for RPi: %s" % settings.BEATPLAYER_SERVER)
 p = xmlrpclib.ServerProxy(settings.BEATPLAYER_SERVER)
 playlist = None
+
+logger.debug("Calling to get music folder")
+beatplayer_music_folder = p.get_music_folder()
+logger.debug("Music folder %s found" % beatplayer_music_folder)
 
 def survey(request):
 
@@ -46,8 +51,6 @@ def album_filter(request, filter):
 
 	search = request.GET.get('search')
 
-	logger.debug(search)
-	
 	albums = []
 
 	if filter == 'all':
@@ -185,15 +188,17 @@ def player_command(request):
 	return HttpResponse(json.dumps(response))
 
 def _init_playlist():
-	return open(os.path.join(settings.PLAYLIST_WORKING_FOLDER, settings.PLAYLIST_FILENAME), "wb")
+	playlist_file = os.path.join(settings.PLAYLIST_WORKING_FOLDER, settings.PLAYLIST_FILENAME)
+	logger.debug("opening %s" %playlist_file)
+	return open(playlist_file, "wb")
 
 def _write_song_to_playlist(song, playlist):
-	full_path = "%s/%s/%s/%s\r\n" %(settings.MUSIC_MOUNT, song.album.artist, song.album.name, song.name)
+	full_path = "%s/%s/%s/%s\r\n" %(beatplayer_music_folder, song.album.artist, song.album.name, song.name)
 	playlist.write(full_path.encode('utf8'))
 	
 @csrf_exempt
 def player_status(request):
-
-	player_status = p.get_player_info()
 	
-	return render_to_response('_player_status.html', {'status': player_status}, context_instance=RequestContext(request))
+	status_info = p.get_player_info()
+	
+	return render_to_response('_player_status.html', {'status': status_info}, context_instance=RequestContext(request))
