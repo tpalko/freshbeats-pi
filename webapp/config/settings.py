@@ -25,7 +25,7 @@ DEBUG = True
 TEMPLATE_DEBUG = True
 
 TEMPLATE_DIRS = (
-    '/home/tpalko/sf_biereetvin_development/code/beater/webapp/beater/templates',
+    os.path.join(BASE_DIR, '..', 'beater/templates')
 )
 
 ALLOWED_HOSTS = []
@@ -69,7 +69,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-	    'HOST': 'localhost',
+	'HOST': 'localhost',
         'NAME': 'beater',
         'USER': 'dev',
         'PASSWORD': 'dev'
