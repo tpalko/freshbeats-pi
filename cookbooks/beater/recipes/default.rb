@@ -1,4 +1,4 @@
-%w{ python-dev python-pip libmysqlclient-dev }.each do |p|
+%w{ python-dev python-pip libmysqlclient-dev npm nodejs }.each do |p|
 	package p
 end
 
@@ -47,11 +47,11 @@ end
 bash "create-mysql-resources" do
 
 	code <<-EOH
-		mysql -u root -pdev -e "create user 'dev'@'localhost' identified by 'dev';"
-		mysql -u root -pdev -e "create user 'dev'@'%' identified by 'dev';"
-		mysql -u root -pdev -e "create database beater character set utf8;"
-		mysql -u root -pdev -e "grant all privileges on beater.* to 'dev'@'localhost';"
-		mysql -u root -pdev -e "grant all privileges on beater.* to 'dev'@'%';"
+		mysql -u root -p -e "create user 'dev'@'localhost' identified by 'dev';"
+		mysql -u root -p -e "create user 'dev'@'%' identified by 'dev';"
+		mysql -u root -p -e "create database beater character set utf8;"
+		mysql -u root -p -e "grant all privileges on beater.* to 'dev'@'localhost';"
+		mysql -u root -p -e "grant all privileges on beater.* to 'dev'@'%';"
 	EOH
 
 	user "root"

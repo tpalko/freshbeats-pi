@@ -1,0 +1,24 @@
+{
+  "name": "switchboard",
+  "preferGlobal": false,
+  "version": "0.1.0",
+  "author": "C. A. Cois <cacois@sei.cmu.edu>",
+  "description": "a generic socket.io service that provides a platform-agnostic interface for real-time communication between a web app and clients",
+  "contributors": [ 
+    {
+      "name": "C. A. Cois",
+      "email": "cacois@sei.cmu.edu"
+    } 
+  ],
+  "scripts": {
+    "start": "nodejs switchboard.js"
+  },
+  "dependencies" : {
+    "cookie"   :  "*", 
+    "socket.io" :  "*",
+    "restify" : "*" 
+  },
+  "engines": {
+    "node": "*" 
+  }
+}

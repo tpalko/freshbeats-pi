@@ -93,6 +93,22 @@ end
 
 # - End wireless settings.
 
+%w{ python-pip }.each do |p|
+	package p
+end
+
+bash "install-requirements" do
+
+	cwd "/vagrant/services/beatplayer"
+
+	code <<-EOH
+		pip install -r requirements.txt
+	EOH
+
+	user "root"
+	action :run
+end
+
 template "/etc/systemd/system/beatplayer.service" do
   source "beatplayer.service.erb"
   owner 'root'
@@ -112,6 +128,13 @@ bash "enable-beatplayer" do
 	user "root"
 	action :run
 end
+
+#https://wiki.archlinux.org/index.php/locale
+
+#vi /etc/locale.gen
+#uncomment en_US.UTF-8
+#locale-gen
+#localectl set-locale LANG=en_US.UTF-8
 
 =begin
 /etc/wpa_supplicant/pbjt.conf

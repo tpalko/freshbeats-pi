@@ -98,3 +98,9 @@ class AlbumCheckout(models.Model):
 	checkout_at = models.DateTimeField()
 	return_at = models.DateTimeField(null=True)
 	
+class PlaylistSong(models.Model):
+	song = models.ForeignKey(Song)
+	is_current = models.BooleanField(null=False, default=False)
+	played = models.BooleanField(null=False, default=False)
+	created_at = models.DateTimeField(auto_now_add=True)
+

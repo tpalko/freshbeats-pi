@@ -9,7 +9,7 @@ After=remote-fs.target
 Type=simple
 Restart=always
 RestartSec=30
-ExecStart=/usr/share/freshbeats/services/beatplayer/./mpplayer.py -e <%= environment %> -a %H
+ExecStart=/usr/share/freshbeats/services/beatplayer/./mpplayer.py -e <%= environment %> -a %H 2>&1 >> /var/log/freshbeats/beatplayer.log
 
 [Install]
 WantedBy=multi-user.target

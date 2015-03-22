@@ -5,3 +5,4 @@ design/**
 mplayer.err
 mplayer.out
 playlist.txt
+node_modules

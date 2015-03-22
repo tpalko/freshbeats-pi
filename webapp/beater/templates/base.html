@@ -18,23 +18,43 @@
 		<div class="container">
 
 			<div class="row">
+				<div class="col-md-12">
+					<h1>Hy!asdf</h1>
+				</div>
+			</div>
 
-				<div class="col-md-5">
-					<H1>Hy!asdf</h1>
-					<a class="btn btn-success" href="{% url "beater.views.home" %}">home</a>
-					<a class="btn btn-success" href="{% url "beater.views.survey" %}">survey</a>
-					<a class="player_command btn btn-primary" command="shuffle" href="#">shuffle, bitch</a> <a class="player_command btn btn-warning" command="next" href="#">next, please</a>
-					<br />
-					<a class="btn player_command" href="#" command="pause">pause</a>
-					<a class="btn player_command" href="#" command="stop">stop</a>
-					<a class="btn player_command" href="#" command="mute">mute</a>
+			<div class="row">
+
+				<div class="col-md-6">					
+					<a class="btn btn-primary" href="{% url "beater.views.home" %}">home</a>
+					<a class="btn btn-info" href="{% url "beater.views.survey" %}">survey</a>
+					<a class="command btn btn-primary" endpoint="player" command="surprise" href="#">surprise me</a> 
+					<a class="command btn btn-primary" endpoint="player" command="playlist" href="#">playlist</a> 					
+					<a class="command btn btn-default" endpoint="player" command="shuffle" href="#">shuffle is off</a> 
 				</div>
 
-				<div class="col-md-7">
+				<div class="col-md-6">
+					<form id="search_form" method="get">
+						<input type="text" name="search" value="" /> <button class="btn btn-primary" type="submit">search</button>
+					</form>
+				</div>
+			</div>
+
+			<div class="row">
+				<div class="col-md-6">
+					<a class="btn btn-warning command" endpoint="player" href="#" command="pause">pause</a>
+					<a class="btn btn-danger command" endpoint="player" href="#" command="stop">stop</a>
+					<a class="btn btn-success command" endpoint="player" href="#" command="play">play</a>
+					<a class="btn btn-warning command" endpoint="player" href="#" command="next">next</a>
+					<a class="btn btn-default command" endpoint="player" href="#" command="mute">mute is off</a>
+				</div>
+			</div>
+
+			<div class="row" style='height: 60px;'>
+				<div class="col-md-12">
 					<div class="row" style="height:30px;"></div>
 					<div id="player_info"></div>
 				</div>
-
 			</div>
 
 			<div class="row" style="height:1em; margin-bottom: 1em;">
@@ -46,9 +66,12 @@
 		</div>
 
 		<script type="text/javascript" src="{% static "jquery/jquery-ui-1.11.1.custom/jquery-ui.min.js" %}"></script>
+		<script type="text/javascript" src="{% static "socket.io.js" %}"></script>
+		
 		<script type="text/javascript">
 
 			var tabs;
+			var socket;
 
 			function getCookie(name) {
 			    var cookieValue = null;
@@ -127,16 +150,21 @@
 				$("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
 			});
 
-			$(document).on('click', ".player_command", function(e){
+			var command_url = '{% url "beater.views.command" "null" %}';
+
+			$(document).on('click', "a.command", function(e){
 
 				var clickable = $(this);
+				var endpoint = $(this).attr("endpoint");
 				var command = $(this).attr("command");
 				var albumid = $(this).attr("albumid");
 				var songid = $(this).attr("songid");
 
+				var url = command_url.replace(/null/, endpoint);
+
 				$.ajax({
 
-					url: '{% url "beater.views.player_command" %}',
+					url: url,
 					data: { command: command, albumid: albumid, songid: songid }, 
 					type: "POST",
 					datatype: "json",
@@ -216,25 +244,31 @@
 					},
 					active: 0
 				});
-				
-				setInterval(function(){
 
-					$.ajax({
+				socket = io.connect('http://{{socketio_host}}:{{socketio_port}}');
 
-						url: '{% url "beater.views.player_status" %}',
-						type: "GET",
-						success: function(response){
+				socket.on('player_status', function(data){
+					console.log(data);
+					$("#player_info").html(data);
+				});
 
-							$("#player_info").html(response);
-						},
-						error: function(response){
+				socket.on('player_state', function(data){
+					console.log(data);
+					$("a[command='shuffle']").text("shuffle is " + data.shuffle);
+					$("a[command='mute']").text("mute is " + data.mute);
+				});
 
-							console.log(response);
-						}
-					});
-
-				}, 3000);
-				
+				socket.on('alert', function(data){
+					console.log(data);
+					alert(data.message);
+				});
+					
+				$.ajax({
+					url: '{% url "beater.views.player_status_and_state" %}',
+					type: 'GET',
+					success: function(response){},
+					error: function(response){}
+				});
 			});
 
 		</script>

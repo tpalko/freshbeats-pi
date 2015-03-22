@@ -15,7 +15,8 @@
 							
 						<tr>
 							<td class="col-md-5">{{song.name}}</td>						
-							<td><a href="#" class="btn btn-primary player_command" command="song" songid="{{song.id}}">play</a></td>
+							<td><a href="#" class="btn btn-primary command" endpoint="player" command="play_song" songid="{{song.id}}">play now</a></td>
+							<td><a href="#" class="btn btn-primary command" endpoint="player" command="enqueue_song" songid="{{song.id}}">enqueue</a></td>
 						</tr>
 
 						{% endfor %}
