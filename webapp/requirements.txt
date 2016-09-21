@@ -1,4 +1,4 @@
-django==1.6.2
+django
 south
 mysql-python
 uwsgi
