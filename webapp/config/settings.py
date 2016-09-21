@@ -25,7 +25,7 @@ DEBUG = True
 TEMPLATE_DEBUG = True
 
 TEMPLATE_DIRS = (
-    os.path.join(BASE_DIR, '..', 'beater/templates')
+    os.path.join(BASE_DIR, '..', 'beater/templates'),
 )
 
 ALLOWED_HOSTS = []
@@ -40,8 +40,7 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'beater',
-    'south'
+    'beater'
 )
 
 MIDDLEWARE_CLASSES = (
@@ -69,7 +68,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-	'HOST': 'localhost',
+	    'HOST': 'localhost',
         'NAME': 'beater',
         'USER': 'dev',
         'PASSWORD': 'dev'
@@ -98,6 +97,6 @@ USE_TZ = False
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.6/howto/static-files/
 
-STATIC_URL = '/static/'
+STATIC_URL = '/beater/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'beater/static')
 
