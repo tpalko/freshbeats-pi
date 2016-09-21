@@ -23,8 +23,8 @@ class MPPlayer():
 
 	def __init__(self, env, *args, **kwargs):
 
-		self.f_outw = file("mplayer.out", "wb")
-		self.f_errw = file("mplayer.err", "wb")		
+		#self.f_outw = file("mplayer.out", "wb")
+		#self.f_errw = file("mplayer.err", "wb")		
 
 		self.f_outr = file("mplayer.out", "rb")
 		self.f_errr = file("mplayer.err", "rb")		
@@ -39,13 +39,17 @@ class MPPlayer():
 
 		for s in config.sections():
 			self.__dict__ = dict(self.__dict__.items() + {i[0]: i[1] for i in config.items(s)}.items())
+
+		self.is_muted = False
 	
+	'''
 	def set_callback(self, uri):
 		logger.debug("Callback set: %s" % uri)
 		self.callback = uri
+	'''
 
 	def call_callback(self):
-		logger.debug("Calling callback")
+		logger.debug("POST to %s" % self.callback)
 		requests.post(self.callback)
 
 	def get_music_folder(self):
@@ -75,6 +79,8 @@ class MPPlayer():
 
 	def play(self, filepath, uri, force=False):#, match=None):
 
+		logger.debug("Playing %s (%sforcing)" %(filepath, "" if force else "not "))
+
 		played = False
 		self.callback = uri
 
@@ -83,6 +89,7 @@ class MPPlayer():
 			if not os.path.exists(filepath):
 				logger.error("The file %s is not accessible." % filepath)
 				self.call_callback()
+				return played
 
 			#do_shell=True
 			#shuffle = "-shuffle" if 'shuffle' in options and options['shuffle'] else ""
@@ -94,21 +101,23 @@ class MPPlayer():
 			if self.ps:
 
 				# - '0' means dead
-				logger.debug("Polling process..")
 				dead = self.ps.poll() == 0
-				logger.debug("Process polled and: %s" % dead)
 
-				if force and not dead:
-					logger.debug("Killing existing ps..")
-					self.ps.kill()
-					del self.ps
-				elif not dead:
-					logger.debug("Not forcing anything and not dead, so returning..")
-					return
-			
-			logger.debug("Playing %s" % filepath)
-
-			self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
+				if dead:
+					logger.debug("No running process")
+				else:
+					if force:
+						logger.debug("Forcing play, so killing existing process..")
+						try:
+							self.ps.kill()
+							del self.ps
+						except:
+							pass
+					else:
+						logger.debug("Running process.. returning")
+						return
+				
+			self.ps = subprocess.Popen(command, stdin=subprocess.PIPE)#, stdout=self.f_outw, stderr=self.f_errw)
 			played = True
 
 			if self.volume is None:
@@ -116,7 +125,6 @@ class MPPlayer():
 
 			self._issue_command("volume %s 1" %(self.volume))
 
-			logger.debug("Threading..")
 			self.popenAndCall(self.call_callback)#, command, force)
 			#self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
 
@@ -150,16 +158,13 @@ class MPPlayer():
 		"""
 		def runInThread(onExit):#, command, force):
 	        
-			logger.debug("Waiting..")
-			self.ps.wait()
-			logger.debug("Complete.")
-
+			self.ps.wait()			
 			onExit()
 			return
 
 		thread = threading.Thread(target=runInThread, args=(onExit,))#, command, force))
 		thread.start()
-		# returns immediately after the thread starts
+		
 		return thread
 
 	def pause(self):
@@ -200,17 +205,27 @@ class MPPlayer():
 
 if __name__ == "__main__":
 
+	logger.debug("Creating option parser..")
 	parser = OptionParser(usage='usage: %prog [options]')
 
+	logger.debug("Adding options..")
 	parser.add_option("-e", "--environment", dest="environment", default='dev', help="environment (dev/prod)")
 	parser.add_option("-a", "--address", dest="address", default='127.0.0.1', help="IP address on which to listen")
 	parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
 
+	logger.debug("Parsing args..")
 	(options, args) = parser.parse_args()
 
+	logger.debug("Creating MPPlayer..")
 	m = MPPlayer(env=options.environment)
 
+	logger.debug("Creating XML RPC server..")
 	s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
+
+	logger.debug("Registering MPPlayer with XML RPC server..")
 	s.register_instance(m)
+
 	logger.info("Serving forever on %s:%s.." %(options.address, options.port))
 	s.serve_forever() # not
+
+	logger.debug("Served.")
