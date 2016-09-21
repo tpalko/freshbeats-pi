@@ -1,0 +1,25 @@
+
+in-house playback
+	web interface
+		artist / album / song search/nav
+		playlist creation
+		issue 'play' command to network device
+	music share
+	wireless unit
+		installed utilities / codecs
+		network share mount
+mobile device sync
+	web interface w/ database
+		view synced albums
+		"favorite" / "double favorite" album
+		configure preferences
+			register device
+			set reserve space per device
+			set sync time per device
+	scheduled task
+		randomly pool albums per favorites and reserve space
+		remove and copy albums as necessary
+		
+common 
+	auto search for albums, cache in memory store
+	DAL
