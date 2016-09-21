@@ -7,3 +7,6 @@ mplayer.err
 mplayer.out
 playlist.txt
 node_modules
+._*
+switchboard.log
+.idea
