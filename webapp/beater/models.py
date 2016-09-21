@@ -92,6 +92,10 @@ class AlbumStatus(models.Model):
 class Song(models.Model):
 	album = models.ForeignKey(Album)
 	name = models.CharField(max_length=255)
+	sha1sum = models.CharField(max_length=40, null=True)
+
+	class Meta:
+		ordering = ('name',)
 
 class AlbumCheckout(models.Model):
 	album = models.ForeignKey(Album)
