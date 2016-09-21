@@ -3,14 +3,14 @@ from django.shortcuts import render_to_response
 from django.shortcuts import redirect
 from django.template import RequestContext
 from django.template.loader import render_to_string
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.conf import settings
 from django.db.models import Q
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 import os
 import sys
-from models import Album, AlbumCheckout, Song, AlbumStatus, PlaylistSong
+from models import Album, Artist, AlbumCheckout, Song, AlbumStatus, PlaylistSong
 import xmlrpclib
 import logging
 import traceback
@@ -34,13 +34,6 @@ p = xmlrpclib.ServerProxy(settings.BEATPLAYER_SERVER)
 #logger.debug("Setting callback for RPi")
 #p.set_callback("http://%s:%s/player_complete" %(settings.BEATER_HOSTNAME, settings.BEATER_PORT))
 
-try:
-	logger.debug("Calling to get music folder")
-	beatplayer_music_folder = p.get_music_folder()
-	logger.debug("Music folder found: %s" % beatplayer_music_folder)
-except:
-	logger.error("Music folder NOT found")
-
 PLAYER_STATE_STOPPED = 'stopped'
 PLAYER_STATE_PLAYING = 'playing'
 PLAYER_STATE_PAUSED = 'paused'
@@ -63,12 +56,41 @@ player_state = PLAYER_STATE_STOPPED
 
 def home(request):
 
-	albums = Album.objects.all()
+	#albums = Album.objects.all()
 
-	alphabet = set([name[0] for name in [re.sub('[\(\)\.]', '', album.artist).lower() for album in albums]])
-	alphabet = sorted(alphabet, cmp=lambda x,y: cmp(x.lower(), y.lower()))
+	#alphabet = set([name[0] for name in [re.sub('[\(\)\.]', '', album.artist).lower() for album in albums]])
+	#alphabet = sorted(alphabet, cmp=lambda x,y: cmp(x.lower(), y.lower()))
 
-	return render_to_response('home.html', { 'alphabet': alphabet }, context_instance=RequestContext(request))
+	return render_to_response('home.html', { }, context_instance=RequestContext(request))
+
+def search(request):
+
+	return render_to_response('search.html', {}, context_instance=RequestContext(request))
+
+def get_search_results(request):
+
+	search_string = request.GET.get('search')
+	highlight_replace = re.compile(re.escape(search_string), re.IGNORECASE)
+
+	albums = Album.objects.filter(name__icontains=search_string)
+	albums = [ render_to_string('_album.html', {'album': a, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)}) for a in albums ]
+
+	artists = Artist.objects.filter(name__icontains=search_string)
+	artists = [ render_to_string('_artist.html', {'artist': a, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)}) for a in artists ]
+
+	songs = Song.objects.filter(name__icontains=search_string)
+	songs = [ render_to_string('_song.html', {'song': s, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, s.name)}) for s in songs ]
+
+	return JsonResponse({'artists': artists, 'albums': albums, 'songs': songs})
+
+def playlist(request):
+	pass
+
+def mobile(request):
+	pass
+
+def config(request):
+	pass
 
 def survey(request):
 
@@ -80,16 +102,31 @@ def survey(request):
 	return render_to_response('survey.html', 
 		{ 
 			'album': random.choice(albums), 
+			'album_count': len(albums),
 			'rating_choices': Album.ALBUM_RATING_CHOICES, 
 			'status_choices': AlbumStatus.ALBUM_STATUS_CHOICES 
 		}, 
 		context_instance=RequestContext(request))
 
+def albums(request):
+
+	if request.method == "POST":
+
+		action = request.POST.get('action')
+
+		if action == 'clear_rated_albums':
+
+			albums = Album.objects.filter(~Q(rating=Album.UNRATED), action=None, albumcheckout__isnull=False, albumcheckout__return_at=None)
+
+			logger.info("unrated album: %s" % ",".join([ "%s: %s" % (a.name, a.rating) for a in albums ]))
+
+	return JsonResponse({"success": True})
+
 def album(request, albumid):
 
 	album = Album.objects.get(pk=albumid)
-
-	return render_to_response('album.html', { 'album': album, 'songs': album.song_set.all() }, context_instance=RequestContext(request))
+	
+	return render_to_response('album.html', { 'album': album, 'songs': album.song_set.all().order_by('name') }, context_instance=RequestContext(request))
 
 # - PARTIALS
 
@@ -99,12 +136,8 @@ def album_filter(request, filter):
 
 	albums = []
 
-	if filter == 'all':
-		albums = Album.objects.order_by('artist', 'name').filter(~Q(albumstatus__status=AlbumStatus.INCOMPLETE))
-	elif filter == 'checkedout':
+	if filter == 'checkedout':
 		albums = Album.objects.order_by('artist', 'name').filter(albumcheckout__isnull=False, albumcheckout__return_at=None)
-	elif filter == 'playlist':
-		albums = Album.objects.order_by('artist', 'name').filter(playlistsong__id__isnull=False)
 	elif filter == AlbumStatus.INCOMPLETE:
 		albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.INCOMPLETE)
 	elif filter == AlbumStatus.MISLABELED:
@@ -112,93 +145,66 @@ def album_filter(request, filter):
 
 	return render_to_response('_albums.html', { 'albums':albums }, context_instance=RequestContext(request))
 
-def album_letter(request, letter):
-
-	albums = Album.objects.all()
-	albums = filter(lambda a: a.artist[0].lower() == letter, albums)
-
-	return render_to_response('_albums.html', { 'albums':albums }, context_instance=RequestContext(request))
-
-# - ENDPOINTS
+# - AJAX ENDPOINTS
 
 @csrf_exempt
 def command(request, type):
-	if type == "album":
-		return album_command(request)
-	elif type == "player":
-		return player_command(request)
 
-@csrf_exempt
-def album_command(request):
+	response = { 'result': {}, 'success': False, 'message': "" }
 
-	response = {}
+	try:
 
-	album = Album.objects.get(pk=request.POST.get('albumid'))
-	command = request.POST.get('command')
+		if type == "album":
+			return _album_command(request)
+		elif type == "player":
+			return _player_command(request)
 
-	if command == "keep":
+		response['success'] = True
 
-		album.action = Album.DONOTHING
-		album.save()
-		response['albumid'] = album.id
+	except:
+		response['message'] = str(sys.exc_info()[1])
+		logger.error(response['message'])
+		traceback.print_tb(sys.exc_info()[2])
+		_publish_event('alert', json.dumps(response))
 
-	return HttpResponse(json.dumps(response))
+	return HttpResponse(json.dumps({'success': True}))
 
 @csrf_exempt
 def survey_post(request):
 
-	album = Album.objects.get(pk=request.POST.get('albumid'))
-	#albumcheckout = album.current_albumcheckout()
+	response = { 'result': {}, 'success': False, 'message': "" }
 
-	album.rating = request.POST.get('rating')
-
-	if request.POST.get('keep', 0) == 0:
-		album.action = Album.REMOVE
-	elif album.is_updatable():
-		album.action = Album.UPDATE
-	else:
-		album.action = Album.DONOTHING
-
-	new_statuses = request.POST.get('statuses', None)
-
-	if new_statuses is not None:
-		print new_statuses
-		new_statuses = new_statuses.split(',')
-		album.replace_statuses(new_statuses)
-
-	album.save()
-
-	return HttpResponse()
-
-#@require_http_methods(["POST"])
-
-@csrf_exempt
-def player_command(request):
-	
-	response = {}
-	
 	try:
 
-		problem = None
-		player_info = None
+		album = Album.objects.get(pk=request.POST.get('albumid'))
+		
+		album.rating = request.POST.get('rating')
+		album.sticky = request.POST.get('sticky', 0)
 
-		command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
-		albumid = request.POST.get('albumid', None)
-		songid = request.POST.get('songid', None)
+		if request.POST.get('keep', 0) == 0 and not album.sticky:
+			album.action = Album.REMOVE
+		elif album.is_refreshable():
+			album.action = Album.REFRESH
+		else:
+			album.action = Album.DONOTHING
 
-		enqueue = command.split('_')[0] == "enqueue"
-		play = command.split('_')[0] == "play"
+		new_statuses = request.POST.get('statuses', None)
 
-		logger.debug("Got command: %s" % command)
-	
-		response = _handle_command(command, albumid, songid, enqueue, play, force_play=True)		
+		if new_statuses is not None:
+			new_statuses = new_statuses.split(',')
+			album.replace_statuses(new_statuses)
 
-	except:		
-		logger.error(sys.exc_info()[1])
+		album.save()
+
+		response['success'] = True
+
+	except:
+		response['message'] = str(sys.exc_info()[1])
+		logger.error(response['message'])
 		traceback.print_tb(sys.exc_info()[2])
-		_publish_event('alert', json.dumps({'message': str(sys.exc_info()[1])}))
+		_publish_event('alert', json.dumps(response))
 
-	return HttpResponse(json.dumps(response))
+	return HttpResponse(json.dumps({'success': True}))
 
 @csrf_exempt
 def player_complete(request):
@@ -211,36 +217,79 @@ def player_complete(request):
 	The natural return at the end of a song also worked, because at that point the process was dead, so it didn't need to be forced.
 	'''
 
+	response = { 'result': {}, 'success': False, 'message': "" }
+
 	try:
 
-		logger.debug("Player complete")
+		logger.debug("Player state: %s" % player_state)
 
-		#if player_state == PLAYER_STATE_PLAYING:
-		response = _handle_command("surprise")
+		if player_state == PLAYER_STATE_PLAYING:
+			_handle_command("next")
+
+		response['success'] = True
 
 	except:
-		logger.error(sys.exc_info()[1])
+		response['message'] = str(sys.exc_info()[1])
+		logger.error(response['message'])
 		traceback.print_tb(sys.exc_info()[2])
-		_publish_event('alert', json.dumps({'message': str(sys.exc_info()[1])}))
+		_publish_event('alert', json.dumps(response))
 
-	return HttpResponse()#json.dumps({success: True}))
+	return HttpResponse(json.dumps({'success': True}))
 
 @csrf_exempt
 def player_status_and_state(request):	
 	
-	current_song = PlaylistSong.objects.order_by('id').filter(is_current=True).last()
+	response = { 'result': {}, 'success': False, 'message': "" }
 
-	if current_song:
-		_show_player_status(current_song.song)	
+	try:
+
+		current_song = PlaylistSong.objects.order_by('id').filter(is_current=True).last()
+
+		if current_song:
+			_show_player_status(current_song.song)	
+		
+		logger.debug("player status and state")
+		_show_player_state()
+
+		response['success'] = True
+
+	except:
+		response['message'] = str(sys.exc_info()[1])
+		logger.error(response['message'])
+		traceback.print_tb(sys.exc_info()[2])
+		_publish_event('alert', json.dumps(response))
+
+	return HttpResponse(json.dumps({'success': True}))
+
+# - PRIVATE HELPERS
+
+def _album_command(request):
+
+	album = Album.objects.get(pk=request.POST.get('albumid'))
+	command = request.POST.get('command')
+
+	if command == "keep":
+
+		album.action = Album.DONOTHING
+		album.save()
+		response['albumid'] = album.id
+		
+def player(request, command, albumid=None, songid=None):
 	
-	_show_player_state()
+	problem = None
+	player_info = None
 
-	return HttpResponse()
+	#command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
+	#albumid = request.POST.get('albumid', None)
+	#songid = request.POST.get('songid', None)
 
-# - HELPERS
+	logger.debug("Got command: %s" % command)
 
-def _handle_command(command, albumid=None, songid=None, enqueue=False, play=False, force_play=False):
+	_handle_command(command, albumid, songid, force_play=True)
 
+def _handle_command(command, albumid=None, songid=None, force_play=False):
+
+	global player_state
 	global playlist
 	global shuffle
 	global mute
@@ -249,8 +298,6 @@ def _handle_command(command, albumid=None, songid=None, enqueue=False, play=Fals
 
 	next_song = None
 	next_playlistsong = None
-
-	response = {}
 
 	if command == "surprise":
 
@@ -275,7 +322,7 @@ def _handle_command(command, albumid=None, songid=None, enqueue=False, play=Fals
 
 		shuffle = not shuffle
 
-	elif play:
+	elif command == "play":
 		
 		if songid is not None:
 			logger.debug("Fetching song %s" % songid)
@@ -285,13 +332,13 @@ def _handle_command(command, albumid=None, songid=None, enqueue=False, play=Fals
 		elif shuffle:
 			next_song = _get_next_song()
 
-	elif enqueue:
+	elif command == "enqueue":
 
 		if albumid is not None:
 			
 			album = Album.objects.get(pk=albumid)
 
-			for song in album.song_set.all():
+			for song in album.song_set.all().order_by('name'):
 				playlistsong = PlaylistSong(song=song)
 				playlistsong.save()
 				if next_playlistsong is None:
@@ -310,11 +357,18 @@ def _handle_command(command, albumid=None, songid=None, enqueue=False, play=Fals
 		force_play = False
 
 	elif command == "pause":
-		player_state = PLAYER_STATE_PAUSED
+		if player_state == PLAYER_STATE_PAUSED:
+			player_state = PLAYER_STATE_PLAYING
+		else:
+			player_state = PLAYER_STATE_PAUSED
 		p.pause()
 
 	elif command == "stop":
-		player_state = PLAYER_STATE_STOPPED
+		if player_state == PLAYER_STATE_STOPPED:
+			player_state = PLAYER_STATE_PLAYING
+		else:
+			player_state = PLAYER_STATE_STOPPED
+
 		p.stop()
 
 	elif command == "mute":
@@ -334,13 +388,14 @@ def _handle_command(command, albumid=None, songid=None, enqueue=False, play=Fals
 			if next_playlistsong is not None:
 				_set_current_song(next_playlistsong)	
 
+	logger.debug("handled command %s" % command)
 	_show_player_state()
-
-	return response	
 
 def _play(song, force_play=False):
 
-	played = p.play(_get_song_filepath(song), "http://%s:%s/player_complete" %(settings.BEATER_HOSTNAME, settings.BEATER_PORT), force_play)
+	global player_state
+
+	played = p.play(_get_song_filepath(song), "http://%s:%s/player_complete/" %(settings.BEATER_HOSTNAME, settings.BEATER_PORT), force_play)
 	player_state = PLAYER_STATE_PLAYING
 	return played
 
@@ -413,8 +468,18 @@ def _set_current_song(playlistsong):
 		
 def _get_song_filepath(song):
 
+	beatplayer_music_folder = None
+	
+	if not beatplayer_music_folder:
+		try:
+			logger.debug("Calling to get music folder..")
+			beatplayer_music_folder = p.get_music_folder()
+			logger.debug("Music folder found: %s" % beatplayer_music_folder)
+		except:
+			logger.error("Music folder NOT found")
+
 	if beatplayer_music_folder is None:
-		raise Exception("The beatplayer-POV music folder is not known")
+		raise Exception("beatplayer is not responding")
 
 	return "%s/%s/%s/%s" %(beatplayer_music_folder, song.album.artist, song.album.name, song.name)
 

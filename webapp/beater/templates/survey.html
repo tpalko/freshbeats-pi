@@ -3,62 +3,73 @@
 
 {% block content %}
 
-			<div class="row">
+	<div class="row">
+		<div class="col-md-12">
+			<a href="{% url "beater.views.albums" %}" class="btn btn-default ajax" data-action="clear_rated_albums">clear rated albums</a>
+		</div>
+	</div>
 
-				<div class="col-md-12">
+	<div class="row">
 
-					<table class="table table-striped">
+		<div class="col-md-12">
+
+			<table class="table table-striped">
+				
+				<tr>
+					<td class="col-md-2">
+						<h3>{{album_count}} left</h3>
+						<h3>{{album.artist.name}}</h3>
+						<b>{{album.name}}</b>
+						<br />
+						<em>{{album.current_albumcheckout.checkout_at}}</em>
+					</td>
+					<td class="col-md-6">	
 						
-						<tr>
-							<td class="col-md-2">
-								<h3>{{album.artist}}</h3>
-								<b>{{album.name}}</b>
-								<br />
-								<em>{{album.current_albumcheckout.checkout_at}}</em>
-							</td>
-							<td class="col-md-6">	
-								
-								<table class="table table-striped">
-								{% for song in album.song_set.all %}								
-									<tr>
-										<td width="90%">
-											{{song.name}}
-										</td>
-										<td>
-											<a href="#" class="btn btn-primary command" endpoint="player" command="play_song" songid="{{song.id}}">play now</a>
-										</td>
-									</tr>
-									
-								{% endfor %}
-							</table>
-
-							</td>							
-							<td class="col-md-4">
-								<form id="surveyalbum_{{album.id}}" method="post" action="{% url "beater.views.survey_post" %}">
-									<input type="hidden" name="albumid" value="{{album.id}}" />
-									<input type="checkbox" name="keep" value="1" {% if album.rating == 'unrated' %}checked{% endif %} /> Keep it - haven't heard enough
-									<br /><br />
-
-									{% for rating_choice in rating_choices %}
-										<input type="radio" name="rating" value="{{rating_choice.0}}" {% if album.rating == rating_choice.0 %}checked{% endif %}/> {{rating_choice.1}}
-										<br />
-									{% endfor %}
-									<br />
-									{% for status_choice in status_choices %}
-										<input type="checkbox" name="statuses" value="{{status_choice.0}}" {% if album|has_status:status_choice.0 %}checked{% endif %}/> {{status_choice.1}}
-										<br />
-									{% endfor %}
-									<br />
-									<input type="submit" class="btn btn-primary" value="Submit" />
-									<a href="{% url "beater.views.survey" %}" class="btn btn-warning">Skip</a>
-								</form>
-							</td>
-						</tr>
-
-					
-
+						<table class="table table-striped">
+						{% for song in album.song_set.all %}								
+							<tr>
+								<td width="90%">
+									{{song.name}}
+								</td>
+								<td>
+									<a href="#" class="btn btn-primary command" endpoint="player" command="play_song" songid="{{song.id}}">play now</a>
+								</td>
+							</tr>
+							
+						{% endfor %}
 					</table>
-				</div>
-			</div>
+
+					</td>							
+					<td class="col-md-4">
+						<form id="surveyalbum_{{album.id}}" method="post" action="{% url "beater.views.survey_post" %}">
+							<input type="hidden" name="albumid" value="{{album.id}}" />
+							<input type="checkbox" name="keep" value="1" {% if album.rating == 'unrated' %}checked{% endif %} /> Keep it - haven't heard enough
+							<br /><br />
+
+							<input type="checkbox" name="sticky" value="1" {% if album.sticky %}checked{% endif %} />
+							Make it Sticky
+							<br /><br />
+
+							{% for rating_choice in rating_choices %}
+								<input type="radio" name="rating" value="{{rating_choice.0}}" {% if album.rating == rating_choice.0 %}checked{% endif %}/> {{rating_choice.1}}
+								<br />
+							{% endfor %}
+							<br />
+							{% for status_choice in status_choices %}
+								<input type="checkbox" name="statuses" value="{{status_choice.0}}" {% if album|has_status:status_choice.0 %}checked{% endif %}/> {{status_choice.1}}
+								<br />
+							{% endfor %}
+							<br />
+							<input type="submit" class="btn btn-primary" value="Submit" />
+							<a href="{% url "beater.views.survey" %}" class="btn btn-warning">Skip</a>
+						</form>
+					</td>
+				</tr>
+
+			
+
+			</table>
+		</div>
+	</div>
 
 {% endblock %}

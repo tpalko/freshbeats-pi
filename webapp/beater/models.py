@@ -1,17 +1,22 @@
 from django.db import models
 
-# Create your models here.
+class Artist(models.Model):
+
+	name = models.CharField(max_length=255)
+	created_at = models.DateTimeField(auto_now_add = True)
+	updated_at = models.DateTimeField(auto_now = True)
 
 class Album(models.Model):
 
 	REMOVE='remove'
-	UPDATE='update'
+	REFRESH='refresh'
 	ADD='add'
 	DONOTHING='donothing'
+	REQUEST_ADD='requestadd'
 
 	ALBUM_ACTION_CHOICES = (
 		(REMOVE, 'Remove'),
-		(UPDATE, 'Update'),
+		(REFRESH, 'Refresh'),
 		(ADD, 'Add'),
 		(DONOTHING, 'Do Nothing')
 	)
@@ -32,13 +37,14 @@ class Album(models.Model):
 		(UNRATED, 'Unrated')
 	)
 	
-	artist = models.CharField(max_length=255)
+	artist = models.ForeignKey(Artist, null=True)
 	name = models.CharField(max_length=255)
 	tracks = models.IntegerField()
 	audio_size = models.BigIntegerField(default=0)
 	total_size = models.BigIntegerField(default=0)
 	old_total_size = models.BigIntegerField(null=True)
 	rating = models.CharField(max_length=20, choices=ALBUM_RATING_CHOICES, null=False, default=UNRATED)
+	sticky = models.BooleanField(null=False, default=False)
 	action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)	
 	created_at = models.DateTimeField(auto_now_add = True)
 	updated_at = models.DateTimeField(auto_now = True)
@@ -47,8 +53,9 @@ class Album(models.Model):
 		checkouts = self.albumcheckout_set.filter(return_at=None)
 		if len(checkouts) > 0:
 			return checkouts[0]
+		return None
 
-	def is_updatable(self):		
+	def is_refreshable(self):		
 		albumcheckout = self.current_albumcheckout()
 		if self.updated_at > albumcheckout.checkout_at:
 			return True

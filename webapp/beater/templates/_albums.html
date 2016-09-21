@@ -10,7 +10,7 @@
 				{{album.name}}
 			</td>
 			<td class="col-md-2">
-				<a href="#" class="btn btn-primary command" endpoint="player" command="enqueue_album" albumid="{{album.id}}">enqueue album</a>
+				<a href="{% url "beater.views.player" enqueue_album album.id %}" class="btn btn-primary ajax">enqueue album</a>
 				<br />
 				<div class="album_action">
 					{% if album.action and album.action != 'donothing' %}

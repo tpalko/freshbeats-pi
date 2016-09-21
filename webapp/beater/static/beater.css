@@ -5,3 +5,11 @@
 	color: #f00;
 	//padding: 1em;
 }
+
+.row{
+	margin-bottom: 15px;
+}
+
+.highlight {
+	color: #f00;
+}

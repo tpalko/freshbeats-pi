@@ -1,0 +1,10 @@
+<div class="row album">
+	<div class="col-md-9">
+		<strong>ALBUM:</strong> {{name_highlight|safe}} / {{album.artist}}
+	</div>
+	<div class="col-md-3">
+		<a href="{% url "beater.views.player" command="play" albumid=album.id %}" class="btn btn-primary ajax">Play</a>
+		<a href="{% url "beater.views.player" command="splice" albumid=album.id %}" class="btn btn-primary ajax">Splice</a>
+		<a href="{% url "beater.views.player" command="enqueue" albumid=album.id %}" class="btn btn-primary ajax">Enqueue</a>
+	</div>
+</div>

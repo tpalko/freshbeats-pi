@@ -4,12 +4,24 @@
 
 			<div class="row">
 
+				<div class="col-md-4">
+					<h2>{{album.name}}</h2>
+				</div>
+
+				<div class="col-md-3">
+					<h4>{{album.artist}}</h4>
+				</div>
+
+				<div class="col-md-3">
+					<a href="#" class="btn btn-xs btn-primary command" endpoint="player" command="enqueue_album" albumid="{{album.id}}">enqueue album</a>
+				</div>
+			</div>
+			
+			<div class="row">
+
 				<div class="col-md-12">
 
-					<h2>{{album.name}}</h2>
-					<h3>{{album.artist}}</h3>
-
-					<table class="table table-striped">
+					<table class="table table-striped" style='margin-top: 1em;'>
 
 						{% for song in songs %}
 							

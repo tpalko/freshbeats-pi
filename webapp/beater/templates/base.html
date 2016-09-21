@@ -25,18 +25,15 @@
 
 			<div class="row">
 
-				<div class="col-md-6">					
-					<a class="btn btn-primary" href="{% url "beater.views.home" %}">home</a>
+				<div class="col-md-12">					
+					<a class="btn btn-info" href="{% url "beater.views.search" %}">search</a>
+					<a class="btn btn-info" href="{% url "beater.views.playlist" %}">playlist</a>
+					<a class="btn btn-info" href="{% url "beater.views.mobile" %}">mobile</a>
+					<a class="btn btn-info" href="{% url "beater.views.config" %}">config</a>
 					<a class="btn btn-info" href="{% url "beater.views.survey" %}">survey</a>
 					<a class="command btn btn-primary" endpoint="player" command="surprise" href="#">surprise me</a> 
 					<a class="command btn btn-primary" endpoint="player" command="playlist" href="#">playlist</a> 					
 					<a class="command btn btn-default" endpoint="player" command="shuffle" href="#">shuffle is off</a> 
-				</div>
-
-				<div class="col-md-6">
-					<form id="search_form" method="get">
-						<input type="text" name="search" value="" /> <button class="btn btn-primary" type="submit">search</button>
-					</form>
 				</div>
 			</div>
 
@@ -50,7 +47,7 @@
 				</div>
 			</div>
 
-			<div class="row" style='height: 60px;'>
+			<div class="row" style='height: 10px;'>
 				<div class="col-md-12">
 					<div class="row" style="height:30px;"></div>
 					<div id="player_info"></div>
@@ -90,7 +87,7 @@
 			}
 
 			var csrftoken = getCookie('csrftoken');
-
+			
 			function csrfSafeMethod(method) {
 			    // these HTTP methods do not require CSRF protection
 			    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
@@ -112,7 +109,7 @@
 
 			$.ajaxSetup({
 			    beforeSend: function(xhr, settings) {
-			        if (!csrfSafeMethod(settings.type) && sameOrigin(settings.url)) {
+			        if (!csrfSafeMethod(settings.type) && !this.crossDomain) { //sameOrigin(settings.url)) {
 			            // Send the token to same-origin, relative URLs only.
 			            // Send the token only if the method warrants CSRF protection
 			            // Using the CSRFToken value acquired earlier
@@ -120,7 +117,14 @@
 			        }
 			    },
 			    error: function(jqXHR, textStatus, errorThrown){
-			    	
+			    		
+			    	if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
+			    		console.log("jqXHR.responseText does not have a value");
+			    		return;
+			    	}
+
+			    	console.log(errorThrown);
+
 			    	var a = jqXHR.responseText.split('\n');
 			    	
 			    	showError(a[0] + "<br />" + a[1]);
@@ -150,6 +154,27 @@
 				$("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
 			});
 
+			$(document).on("click", "a.ajax", function(e){
+
+				e.preventDefault();
+
+				var href = $(this).attr("href");
+				var action = $(this).data("action");
+
+				$.ajax({
+					url: href,
+					data: { action: action },
+					type: "POST",
+					dataType: "json",
+					success: function(data){
+
+					},
+					error: function(error){
+
+					}
+				});
+			});
+
 			var command_url = '{% url "beater.views.command" "null" %}';
 
 			$(document).on('click', "a.command", function(e){
@@ -168,16 +193,13 @@
 					data: { command: command, albumid: albumid, songid: songid }, 
 					type: "POST",
 					datatype: "json",
-					success: function(response){
+					success: function(data, textStatus, jqXHR){
 						var callback = $(clickable).attr('callback');
 
 						if(callback != undefined){
 							fn = window[callback];
-							fn(JSON.parse(response));
+							fn(JSON.parse(data));
 						}
-					},
-					error: function(response){
-						console.log(response);
 					}
 				});
 
@@ -194,32 +216,8 @@
 					data: $(this).serialize(),
 					type: "POST",
 					datatype: "json",
-					success: function(response){
+					success: function(data, textStatus, jqXHR){
 						location = location;
-					},
-					error: function(response){
-
-					}
-				});
-
-				return false;
-			});
-
-			$(document).on('submit', 'form[id="search_form"]', function(e){
-
-				e.preventDefault();
-
-				$.ajax({
-
-					url: '{% url "beater.views.album_filter" filter="all" %}',
-					data: $(this).serialize(),
-					type: "GET",
-					datatype: "json",
-					success: function(response){
-						console.log(tabs);
-					},
-					error: function(response){
-
 					}
 				});
 
@@ -245,14 +243,16 @@
 					active: 0
 				});
 
-				socket = io.connect('http://{{socketio_host}}:{{socketio_port}}');
+				socket = io.connect(window.location.origin + ":{{socketio_port}}");
 
 				socket.on('player_status', function(data){
+					console.log("player_status");
 					console.log(data);
 					$("#player_info").html(data);
 				});
 
 				socket.on('player_state', function(data){
+					console.log("player_state");
 					console.log(data);
 					$("a[command='shuffle']").text("shuffle is " + data.shuffle);
 					$("a[command='mute']").text("mute is " + data.mute);
@@ -266,8 +266,7 @@
 				$.ajax({
 					url: '{% url "beater.views.player_status_and_state" %}',
 					type: 'GET',
-					success: function(response){},
-					error: function(response){}
+					success: function(data, textStatus, jqXHR){}
 				});
 			});
 			
@@ -276,5 +275,6 @@
 			{% endif %}
 
 		</script>
+
 	</body>
 </html>

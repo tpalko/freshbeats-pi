@@ -1,26 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-
-			<div class="row">
-
-				<div class="col-md-12">
-					
-					<div id="tabs">
-						
-						<ul>
-							<li><a href="{% url "beater.views.album_filter" filter="all" %}">All</a></li>
-							<li><a href="{% url "beater.views.album_filter" filter="playlist" %}">Playlist</a></li>
-							<li><a href="{% url "beater.views.album_filter" filter="checkedout" %}">Checked-Out</a></li>
-							<li><a href="{% url "beater.views.album_filter" filter="incomplete" %}">Incomplete</a></li>
-							<li><a href="{% url "beater.views.album_filter" filter="mislabeled" %}">Mislabeled</a></li>
-							{% for a in alphabet %}
-								<li><a href="{% url "beater.views.album_letter" letter=a %}">{{a}}</a></li>
-							{% endfor %}
-						</ul>
-
-					</div>
-				</div>
-			</div>
+	
+	<div id="search_results"></div>
 
 {% endblock %}
