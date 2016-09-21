@@ -270,6 +270,10 @@
 					error: function(response){}
 				});
 			});
+			
+			{% if page_script_path %}
+			{% include page_script_path %}
+			{% endif %}
 
 		</script>
 	</body>
