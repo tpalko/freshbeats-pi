@@ -1,0 +1,12 @@
+# Ubuntu upstart file at /etc/init/switchboard.conf
+
+respawn
+respawn limit 15 5
+
+start on runlevel [2345]
+stop on runlevel [06]
+
+script
+cd <%= node[:base_folder] %>/services/switchboard
+/usr/bin/npm start 2>&1 >> <%= node[:base_folder] %>/services/switchboard/switchboard.log
+end script
