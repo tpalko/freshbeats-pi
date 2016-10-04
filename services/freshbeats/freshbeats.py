@@ -111,7 +111,7 @@ class FreshBeats:
 		self.fail = 0
 
 		config = ConfigParser()
-		config.read(os.path.join(os.path.dirname(__file__), './config/settings_dev.cfg'))
+		config.read(os.path.join(os.path.dirname(__file__), './config/settings.cfg'))
 
 		for s in config.sections():
 			self.__dict__ = dict(self.__dict__.items() + {i[0]: i[1] for i in config.items(s)}.items())
