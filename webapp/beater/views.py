@@ -20,7 +20,7 @@ import socket
 import requests
 import re
 
-sys.path.append("../../services")
+sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
 
 from freshbeats.freshbeats import FreshBeats
 
@@ -80,11 +80,11 @@ def home(request):
 	#alphabet = set([name[0] for name in [re.sub('[\(\)\.]', '', album.artist).lower() for album in albums]])
 	#alphabet = sorted(alphabet, cmp=lambda x,y: cmp(x.lower(), y.lower()))
 
-	return render_to_response('home.html', { }, context_instance=RequestContext(request))
+	return render_to_response('home.html', { })
 
 def search(request):
 
-	return render_to_response('search.html', {}, context_instance=RequestContext(request))
+	return render(request, 'search.html', {})
 
 def get_search_results(request):
 
@@ -117,7 +117,7 @@ def report(request):
 		output = out[0]
 		error = out[1]
 
-	return render_to_response("report.html", { 'output': output, 'error': error }, context_instance=RequestContext(request))
+	return render_to_response("report.html", { 'output': output, 'error': error })
 
 def config(request):
 	pass
@@ -156,7 +156,7 @@ def album(request, albumid):
 
 	album = Album.objects.get(pk=albumid)
 	
-	return render_to_response('album.html', { 'album': album, 'songs': album.song_set.all().order_by('name') }, context_instance=RequestContext(request))
+	return render_to_response('album.html', { 'album': album, 'songs': album.song_set.all().order_by('name') })
 
 # - PARTIALS
 
@@ -173,7 +173,7 @@ def album_filter(request, filter):
 	elif filter == AlbumStatus.MISLABELED:
 		albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.MISLABELED)
 
-	return render_to_response('_albums.html', { 'albums':albums }, context_instance=RequestContext(request))
+	return render_to_response('_albums.html', { 'albums':albums })
 
 # - AJAX ENDPOINTS
 

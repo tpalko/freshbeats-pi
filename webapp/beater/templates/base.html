@@ -26,12 +26,12 @@
 			<div class="row">
 
 				<div class="col-md-12">					
-					<a class="btn btn-info" href="{% url "beater.views.search" %}">search</a>
-					<a class="btn btn-info" href="{% url "beater.views.playlist" %}">playlist</a>
-					<a class="btn btn-info" href="{% url "beater.views.mobile" %}">mobile</a>
-					<a class="btn btn-info" href="{% url "beater.views.report" %}">report</a>
-					<a class="btn btn-info" href="{% url "beater.views.config" %}">config</a>
-					<a class="btn btn-info" href="{% url "beater.views.survey" %}">survey</a>
+					<a class="btn btn-info" href="{% url "search" %}">search</a>
+					<a class="btn btn-info" href="{% url "playlist" %}">playlist</a>
+					<a class="btn btn-info" href="{% url "mobile" %}">mobile</a>
+					<a class="btn btn-info" href="{% url "report" %}">report</a>
+					<a class="btn btn-info" href="{% url "config" %}">config</a>
+					<a class="btn btn-info" href="{% url "survey" %}">survey</a>
 					<a class="command btn btn-primary" endpoint="player" command="surprise" href="#">surprise me</a> 
 					<a class="command btn btn-primary" endpoint="player" command="playlist" href="#">playlist</a> 					
 					<a class="command btn btn-default" endpoint="player" command="shuffle" href="#">shuffle is off</a> 
@@ -176,7 +176,7 @@
 				});
 			});
 
-			var command_url = '{% url "beater.views.command" "null" %}';
+			var command_url = '{% url "command" "null" %}';
 
 			$(document).on('click', "a.command", function(e){
 
@@ -213,7 +213,7 @@
 
 				$.ajax({
 
-					url: '{% url "beater.views.survey_post" %}',
+					url: '{% url "survey_post" %}',
 					data: $(this).serialize(),
 					type: "POST",
 					datatype: "json",
@@ -244,7 +244,7 @@
 					active: 0
 				});
 
-				socket = io.connect(window.location.origin + ":{{socketio_port}}");
+				socket = io.connect("http://{{socketio_host}}:{{socketio_port}}");
 
 				socket.on('player_status', function(data){
 					console.log("player_status");
@@ -265,7 +265,7 @@
 				});
 					
 				$.ajax({
-					url: '{% url "beater.views.player_status_and_state" %}',
+					url: '{% url "player_status_and_state" %}',
 					type: 'GET',
 					success: function(data, textStatus, jqXHR){}
 				});

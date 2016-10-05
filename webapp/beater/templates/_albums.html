@@ -10,7 +10,7 @@
 				{{album.name}}
 			</td>
 			<td class="col-md-2">
-				<a href="{% url "beater.views.player" enqueue_album album.id %}" class="btn btn-primary ajax">enqueue album</a>
+				<a href="{% url "player" enqueue_album album.id %}" class="btn btn-primary ajax">enqueue album</a>
 				<br />
 				<div class="album_action">
 					{% if album.action and album.action != 'donothing' %}
@@ -20,7 +20,7 @@
 						 | <a href="#" class="command" endpoint="album" command="keep" callback="keepalbum_callback" albumid="{{album.id}}">keep</a>
 					{% endif %}
 				</div>
-				<a href="{% url "beater.views.album" album.id %}" class="btn">view {{album.tracks}} songs</a>							
+				<a href="{% url "album" album.id %}" class="btn">view {{album.tracks}} songs</a>							
 			</td>							
 		</tr>
 
