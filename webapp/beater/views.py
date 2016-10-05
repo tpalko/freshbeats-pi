@@ -80,7 +80,7 @@ def home(request):
 	#alphabet = set([name[0] for name in [re.sub('[\(\)\.]', '', album.artist).lower() for album in albums]])
 	#alphabet = sorted(alphabet, cmp=lambda x,y: cmp(x.lower(), y.lower()))
 
-	return render_to_response('home.html', { })
+	return render(request, 'home.html', { })
 
 def search(request):
 
@@ -117,7 +117,7 @@ def report(request):
 		output = out[0]
 		error = out[1]
 
-	return render_to_response("report.html", { 'output': output, 'error': error })
+	return render(request, "report.html", { 'output': output, 'error': error })
 
 def config(request):
 	pass
@@ -129,7 +129,7 @@ def survey(request):
 	if len(albums) == 0:
 		return redirect('beater.views.home')
 
-	return render_to_response('survey.html', 
+	return render(request, 'survey.html', 
 		{ 
 			'album': random.choice(albums), 
 			'album_count': len(albums),
@@ -156,7 +156,7 @@ def album(request, albumid):
 
 	album = Album.objects.get(pk=albumid)
 	
-	return render_to_response('album.html', { 'album': album, 'songs': album.song_set.all().order_by('name') })
+	return render(request, 'album.html', { 'album': album, 'songs': album.song_set.all().order_by('name') })
 
 # - PARTIALS
 
@@ -173,7 +173,7 @@ def album_filter(request, filter):
 	elif filter == AlbumStatus.MISLABELED:
 		albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.MISLABELED)
 
-	return render_to_response('_albums.html', { 'albums':albums })
+	return render(request, '_albums.html', { 'albums':albums })
 
 # - AJAX ENDPOINTS
 
