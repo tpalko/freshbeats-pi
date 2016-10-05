@@ -9,3 +9,4 @@ node_modules
 ._*
 switchboard.log
 .idea
+venv/**/*
