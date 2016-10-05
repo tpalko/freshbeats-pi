@@ -1,5 +1,2 @@
 django
-south
 mysql-python
-uwsgi
-supervisor
