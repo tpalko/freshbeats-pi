@@ -176,8 +176,9 @@ class FreshBeats:
 				logger.info("{0:<{1}} {2:<{3}} {4:>32} {5:>10}".format(a.name.encode('utf-8'), max_album, a.artist.name.encode('utf-8'), max_artist, a.action, "checked-out" if checked_out else "-")) 
 
 		action_albums = Album.objects.filter(~Q(action=Album.DONOTHING), action__isnull=False)
-		max_album = max([ len(a.name.encode('utf-8')) for a in action_albums ]) + 1
-		max_artist = max([ len(a.artist.name.encode('utf-8')) for a in action_albums ]) + 1
+		if len(action_albums) > 0:
+			max_album = max([ len(a.name.encode('utf-8')) for a in action_albums ]) + 1
+			max_artist = max([ len(a.artist.name.encode('utf-8')) for a in action_albums ]) + 1
 		add_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.ADD) | Q(action=Album.REFRESH)) ])
 		remove_size = sum([ a.total_size for a in action_albums.filter(action=Album.REMOVE) ])
 		
