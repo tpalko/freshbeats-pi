@@ -25,7 +25,7 @@ DEBUG = True
 TEMPLATE_DEBUG = True
 
 TEMPLATE_DIRS = (
-    os.path.join(BASE_DIR, '..', 'beater/templates'),
+    #os.path.join(BASE_DIR, '..', 'beater/templates'),
 )
 
 ALLOWED_HOSTS = []
