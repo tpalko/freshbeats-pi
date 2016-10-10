@@ -5,7 +5,7 @@
 
 	<div class="row">
 		<div class="col-md-12">
-			<a href="{% url "beater.views.albums" %}" class="btn btn-default ajax" data-action="clear_rated_albums">clear rated albums</a>
+			<a href="{% url "albums" %}" class="btn btn-default ajax" data-action="clear_rated_albums">clear rated albums</a>
 		</div>
 	</div>
 
@@ -41,7 +41,7 @@
 
 					</td>							
 					<td class="col-md-4">
-						<form id="surveyalbum_{{album.id}}" method="post" action="{% url "beater.views.survey_post" %}">
+						<form id="surveyalbum_{{album.id}}" method="post" action="{% url "survey_post" %}">
 							<input type="hidden" name="albumid" value="{{album.id}}" />
 							<input type="checkbox" name="keep" value="1" {% if album.rating == 'unrated' %}checked{% endif %} /> Keep it - haven't heard enough
 							<br /><br />
@@ -61,7 +61,7 @@
 							{% endfor %}
 							<br />
 							<input type="submit" class="btn btn-primary" value="Submit" />
-							<a href="{% url "beater.views.survey" %}" class="btn btn-warning">Skip</a>
+							<a href="{% url "survey" %}" class="btn btn-warning">Skip</a>
 						</form>
 					</td>
 				</tr>

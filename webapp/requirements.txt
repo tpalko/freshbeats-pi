@@ -1,5 +1,4 @@
 django
-south
 mysql-python
-uwsgi
-supervisor
+requests
+click

@@ -8,7 +8,7 @@ $(document).on('keyup', 'form[id="search_form"] input', function(e){
 
 	$.ajax({
 
-		url: '{% url "beater.views.get_search_results" %}',
+		url: '{% url "get_search_results" %}',
 		data: $(this).parent().serialize(),
 		type: "GET",
 		datatype: "json",
