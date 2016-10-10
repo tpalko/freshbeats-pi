@@ -20,10 +20,32 @@ import socket
 import requests
 import re
 
-sys.path.append("../../services")
+sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
 
-from freshbeats.freshbeats import FreshBeats
+def capture(f):
+	"""
+	Decorator to capture standard output
+	"""
+	def captured(*args, **kwargs):
+		import sys
+		from cStringIO import StringIO
 
+		# setup the environment
+		backup = sys.stdout
+
+		try:
+			sys.stdout = StringIO()     # capture output
+			f(*args, **kwargs)
+			out = sys.stdout.getvalue() # release output
+		finally:
+			sys.stdout.close()  # close the stream 
+			sys.stdout = backup # restore original stdout
+
+		return out # captured output wrapped in a string
+
+	return captured
+
+'''
 import contextlib
 @contextlib.contextmanager
 def capture():
@@ -38,6 +60,7 @@ def capture():
 		sys.stdout,sys.stderr = oldout, olderr
 		out[0] = out[0].getvalue()
 		out[1] = out[1].getvalue()
+'''
 
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -108,16 +131,18 @@ def playlist(request):
 def mobile(request):
 	pass
 
+@capture
+def call_report():
+	from freshbeats import freshbeats
+	f = freshbeats.FreshBeats()
+	return f.report()
+
 def report(request):
 
-	f = FreshBeats()
-
-	with capture() as out:
-		f.report()
-		output = out[0]
-		error = out[1]
-
-	return render_to_response("report.html", { 'output': output, 'error': error }, context_instance=RequestContext(request))
+	out = call_report()
+	logger.info(out)
+	
+	return render_to_response("report.html", { 'output': out }, context_instance=RequestContext(request))
 
 def config(request):
 	pass
