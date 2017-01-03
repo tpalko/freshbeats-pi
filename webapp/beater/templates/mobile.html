@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load beater %}
+
+{% block content %}
+
+<a id="select_albums_for_checkout" href="{% url "select_albums_for_checkout" %}" class="btn btn-default">check-out more music</a>
+
+{% for b in bins %}
+	<h2>{{ b }}</h2>
+	<table class='table table-striped'>
+		{% for album in bins|getattribute:b %}
+		<tr>
+			<td>{{ album.name }}</td>
+			<td>{{ album.artist.name }}</td>
+			<td>{% if album.current_albumcheckout %}checked-out{% endif %}</td>
+		</tr>
+		{% endfor %}
+	</table>
+{% endfor %}
+
+{% endblock %}

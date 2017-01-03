@@ -26,7 +26,37 @@ class AlbumManager:
 		self.albums_to_refresh = []
 		self.albums_to_checkout = []
 
-	def status(self):
+		albums_to_check_in = Album.objects.filter(action=Album.CHECKIN)
+		logger.info("Registering %s previously marked albums to check-in.." % len(albums_to_check_in))
+		self.checkin_albums(albums_to_check_in)
+
+		requested_albums_to_check_out = Album.objects.filter(action=Album.REQUESTCHECKOUT, sticky=False)
+		#logger.info("Registering %s previously requested albums to check-out.." % len(requested_albums_to_check_out))
+		for album in requested_albums_to_check_out:
+			if not self.checkout_album(album):
+				logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
+
+		sticky_albums = Album.objects.filter(Q(albumcheckout__return_at__isnull=False) | Q(albumcheckout__isnull=True), sticky=True)
+		#logger.info("Registering %s sticky albums to check-out.." % len(sticky_albums))
+		for album in sticky_albums:
+			if not self.checkout_album(album):
+				logger.warn("Rejected checkout of sticky %s/%s" % (album.artist.name, album.name))
+
+		albums_to_check_out = Album.objects.filter(action=Album.CHECKOUT, sticky=False)
+		#logger.info("Registering %s previously marked albums to check-out.." % len(albums_to_check_out))
+		for album in albums_to_check_out:
+			if not self.checkout_album(album):
+				logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
+
+		albums_to_refresh = Album.objects.filter(action=Album.REFRESH)
+		#logger.info("Registering %s previously marked albums to refresh.." % len(albums_to_refresh))
+		for album in albums_to_refresh:
+			if not self.refresh_album(album):
+				logger.warn("Rejected refresh of %s/%s" %(album.artist.name, album.name))
+
+		am.send_status_to_logger()
+
+	def send_status_to_logger(self):
 
 		logger.info("Device Free: %s" % self.device_free_bytes)
 		logger.info("Margin: %s" % self.free_bytes_margin)
@@ -49,7 +79,7 @@ class AlbumManager:
 
 		for album in albums:
 			
-			album.action = Album.REMOVE
+			album.action = Album.CHECKIN
 			album.save()
 
 			self.albums_to_checkin.append(album)
@@ -79,7 +109,7 @@ class AlbumManager:
 			album.save()
 			return False
 		
-		album.action = Album.ADD
+		album.action = Album.CHECKOUT
 		album.save()
 
 		self.albums_to_checkout.append(album)

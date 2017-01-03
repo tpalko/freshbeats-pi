@@ -19,48 +19,9 @@ import random
 import socket
 import requests
 import re
+from util import capture
 
 sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
-
-def capture(f):
-	"""
-	Decorator to capture standard output
-	"""
-	def captured(*args, **kwargs):
-		import sys
-		from cStringIO import StringIO
-
-		# setup the environment
-		backup = sys.stdout
-
-		try:
-			sys.stdout = StringIO()     # capture output
-			f(*args, **kwargs)
-			out = sys.stdout.getvalue() # release output
-		finally:
-			sys.stdout.close()  # close the stream 
-			sys.stdout = backup # restore original stdout
-
-		return out # captured output wrapped in a string
-
-	return captured
-
-'''
-import contextlib
-@contextlib.contextmanager
-def capture():
-	import sys
-	from cStringIO import StringIO
-	oldout,olderr = sys.stdout, sys.stderr
-	try:
-		out=[StringIO(), StringIO()]
-		sys.stdout,sys.stderr = out
-		yield out
-	finally:
-		sys.stdout,sys.stderr = oldout, olderr
-		out[0] = out[0].getvalue()
-		out[1] = out[1].getvalue()
-'''
 
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -129,13 +90,34 @@ def playlist(request):
 	pass
 
 def mobile(request):
-	pass
+	
+	albums = Album.objects.raw("select distinct beater_album.* from beater_album left join beater_albumcheckout on beater_albumcheckout.album_id = beater_album.id where ((beater_albumcheckout.id is not null and beater_albumcheckout.return_at is null) or (beater_album.action is not null))")
+	#albums = Album.objects.filter((Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) | ~Q(action=None))
+	bins = { action: [ a for a in albums if a.action == action ] for action in set([ a.action for a in albums ]) }
 
+	logger.debug(bins)
+
+	return render(request, 'mobile.html', {'bins': bins})
+
+@capture
+def select_albums_for_checkout(request):
+
+	try:
+		from freshbeats import freshbeats
+		f = freshbeats.FreshBeats()
+		f.mark_albums()
+	except:
+		logger.error(sys.exc_info()[1])
+		traceback.print_tb(sys.exc_info()[2])
+
+	return JsonResponse({})
+	
 @capture
 def call_report():
 	from freshbeats import freshbeats
 	f = freshbeats.FreshBeats()
-	return f.report()
+	report_out = f.report() # - logs stuff
+	return report_out
 
 def report(request):
 
@@ -237,7 +219,7 @@ def survey_post(request):
 		album.sticky = request.POST.get('sticky', 0)
 
 		if request.POST.get('keep', 0) == 0 and not album.sticky:
-			album.action = Album.REMOVE
+			album.action = Album.CHECKIN
 		elif album.is_refreshable():
 			album.action = Album.REFRESH
 		else:

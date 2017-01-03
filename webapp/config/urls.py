@@ -39,6 +39,6 @@ urlpatterns = [
     url(r'^get_search_results/$', views.get_search_results, name='get_search_results'),
     url(r'^player_complete/$', views.player_complete, name='player_complete'),
     url(r'^player_status_and_state/$', views.player_status_and_state, name='player_status_and_state'),
-        
+    url(r'^select_albums_for_checkout/$', views.select_albums_for_checkout, name='select_albums_for_checkout'),
     url(r'^admin/', include(admin.site.urls))
 ]

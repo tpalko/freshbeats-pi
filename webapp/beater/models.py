@@ -10,16 +10,16 @@ class Artist(models.Model):
 
 class Album(models.Model):
 
-	REMOVE='remove'
+	CHECKIN='checkin'
 	REFRESH='refresh'
-	ADD='add'
+	CHECKOUT='checkout'
 	DONOTHING='donothing'
-	REQUEST_ADD='requestadd'
+	REQUESTCHECKOUT='requestcheckout'
 
 	ALBUM_ACTION_CHOICES = (
-		(REMOVE, 'Remove'),
+		(CHECKIN, 'Check-In'),
 		(REFRESH, 'Refresh'),
-		(ADD, 'Add'),
+		(CHECKOUT, 'Check-Out'),
 		(DONOTHING, 'Do Nothing')
 	)
 

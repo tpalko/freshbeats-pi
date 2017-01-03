@@ -17,7 +17,7 @@ import click
 import hashlib
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../webapp'))
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings_env")
 
 import config.settings
 from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
@@ -30,7 +30,7 @@ from django.db.models import Q
 django.setup()
 
 logging.basicConfig(
-	level = logging.INFO
+	level = logging.DEBUG
 )
 #fresh_logger = logging.StreamHandler()
 
@@ -179,8 +179,8 @@ class FreshBeats:
 		if len(action_albums) > 0:
 			max_album = max([ len(a.name.encode('utf-8')) for a in action_albums ]) + 1
 			max_artist = max([ len(a.artist.name.encode('utf-8')) for a in action_albums ]) + 1
-		add_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.ADD) | Q(action=Album.REFRESH)) ])
-		remove_size = sum([ a.total_size for a in action_albums.filter(action=Album.REMOVE) ])
+		add_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT) | Q(action=Album.REFRESH)) ])
+		remove_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
 		
 		logger.info("Albums in Plan")		
 		for a in action_albums:
@@ -211,7 +211,7 @@ class FreshBeats:
 					continue
 
 				all_files = files
-				music_files = [ f for f in files if f[f.rfind("."):] in self.music_file_extensions and f.find("._") < 0 ]
+				music_files = [ f for f in files if f[f.rfind("."):].lower() in self.music_file_extensions and f.find("._") < 0 ]
 				#music_files = filter(lambda x: x[x.rfind("."):] in self.music_file_extensions and x.find("._") < 0, files)
 
 				tracks = len(music_files)
@@ -349,53 +349,16 @@ class FreshBeats:
 	def mark_albums(self):
 
 		device_free_bytes = self.device.get_free_bytes()
-		am = AlbumManager(free_bytes_margin=int(self.free_space_mb)*1024*1024, device_free_bytes=device_free_bytes)
-
-		albums_to_remove = Album.objects.filter(action=Album.REMOVE)
-		logger.info("Registering %s previously marked albums to check-in.." % len(albums_to_remove))
-		am.checkin_albums(albums_to_remove)
-
-		am.status()
-
-		requested_albums_to_add = Album.objects.filter(action=Album.REQUEST_ADD, sticky=False)
-		logger.info("Registering %s previously requested albums to check-out.." % len(requested_albums_to_add))
-		for album in requested_albums_to_add:
-			if not am.checkout_album(album):
-				logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
-
-		am.status()
-
-		sticky_albums = Album.objects.filter(Q(albumcheckout__return_at__isnull=False) | Q(albumcheckout__isnull=True), sticky=True)
-		logger.info("Registering %s sticky albums to check-out.." % len(sticky_albums))
-		for album in sticky_albums:
-			if not am.checkout_album(album):
-				logger.warn("Rejected checkout of sticky %s/%s" % (album.artist.name, album.name))
-
-		am.status()
-
-		albums_to_add = Album.objects.filter(action=Album.ADD, sticky=False)
-		logger.info("Registering %s previously marked albums to check-out.." % len(albums_to_add))
-		for album in albums_to_add:
-			if not am.checkout_album(album):
-				logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
-
-		am.status()
-
-		albums_to_refresh = Album.objects.filter(action=Album.REFRESH)
-		logger.info("Registering %s previously marked albums to refresh.." % len(albums_to_refresh))
-		for album in albums_to_refresh:
-			if not am.refresh_album(album):
-				logger.warn("Rejected refresh of %s/%s" %(album.artist.name, album.name))
-
-		am.status()
+		margin = int(self.free_space_mb)*1024*1024
+		am = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
 
 		# - we want to keep at least one mix-it-up-rated album
 		# - if we aren't renewing one, pick one to check out
-		any_kept_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__return_at__isnull=True).exists()
+		any_kept_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True).exists()
 		
 		if not any_kept_mixins:
 
-			new_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__return_at__isnull=False)
+			new_mixins = Album.objects.filter((Q(albumcheckout__isnull=True) | (Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=False))), rating=Album.MIXITUP)
 			new_mixin_list = list(new_mixins)				
 
 			if len(new_mixin_list) > 0:
@@ -407,6 +370,7 @@ class FreshBeats:
 		loveit_albums = Album.objects.filter(rating=Album.LOVEIT, action=None)
 		never_checked_out_albums = Album.objects.filter(albumcheckout__isnull=True, action=None)
 		unrated_albums = Album.objects.filter(rating=Album.UNRATED, action=None, albumstatus__isnull=True)
+		
 		album_lists = [loveit_albums, never_checked_out_albums, unrated_albums]
 
 		fails = 10
@@ -426,7 +390,7 @@ class FreshBeats:
 
 	def copy_files(self):
 
-		remove_albums = Album.objects.filter(action=Album.REMOVE)
+		remove_albums = Album.objects.filter(action=Album.CHECKIN)
 
 		for r in remove_albums:
 			self.remove_album(r)
@@ -437,7 +401,7 @@ class FreshBeats:
 			self.remove_album(u)
 			self.copy_album_to_device(u)
 
-		add_albums = Album.objects.filter(action=Album.ADD)
+		add_albums = Album.objects.filter(action=Album.CHECKOUT)
 
 		for a in add_albums:
 			self.copy_album_to_device(a)
