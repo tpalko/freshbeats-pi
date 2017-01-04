@@ -2,3 +2,4 @@ django
 mysql-python
 click
 subprocess32
+pytz

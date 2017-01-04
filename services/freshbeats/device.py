@@ -1,4 +1,5 @@
 from os.path import join, getsize
+import shlex
 import subprocess
 import subprocess32
 import logging
@@ -79,10 +80,10 @@ class DeviceManager:
 
 	def get_music_folders_on_device(self, target_folder):
 
-		find_folders_command = "ssh %s@%s 'find %s -type d'" % (self.username, self.hostname, target_folder)
+		find_folders_command = shlex.split("ssh %s@%s 'find %s -type d'" %(self.username, self.hostname, target_folder))
 		logger.info(find_folders_command)
 
-		ps = subprocess32.Popen(find_folders_command.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, shell=True, executable='/bin/bash')
+		ps = subprocess.Popen(find_folders_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, shell=True, executable='/bin/bash')
 
 		(out, err,) = ps.communicate(None)
 

@@ -17,9 +17,9 @@ import click
 import hashlib
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../webapp'))
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings_env")
+os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 
-import config.settings
+#import config.settings_env
 from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
 # BUF_SIZE is totally arbitrary, change for your app!
@@ -27,6 +27,8 @@ BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
 
 import django
 from django.db.models import Q
+from django.utils import timezone
+from django.conf import settings
 django.setup()
 
 logging.basicConfig(
@@ -134,7 +136,7 @@ class FreshBeats:
 
 		for folder_path in folders_on_device:
 			
-			logger.debug("Folder found: %s" % folder_path)
+			#logger.debug("Folder found: %s" % folder_path)
 
 			tup = folder_path.split('/')
 			
@@ -179,15 +181,18 @@ class FreshBeats:
 		if len(action_albums) > 0:
 			max_album = max([ len(a.name.encode('utf-8')) for a in action_albums ]) + 1
 			max_artist = max([ len(a.artist.name.encode('utf-8')) for a in action_albums ]) + 1
-		add_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT) | Q(action=Album.REFRESH)) ])
-		remove_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
+		checkout_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT)) ])
+		refresh_size = sum([ a.total_size - a.old_total_size for a in action_albums.filter(Q(action=Album.REFRESH)) ])
+		checkin_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
 		
 		logger.info("Albums in Plan")		
 		for a in action_albums:
 			logger.info("{0:<{1}} / {2:<{3}}: {4:>32}".format(a.name.encode('utf-8'), max_album, a.artist.name.encode('utf-8'), max_artist, a.action))
 
-		logger.info("ADDING {0} MB".format(add_size/(1024*1024)))
-		logger.info("REMOVING {0} MB".format(remove_size/(1024*1024)))
+		logger.info("Checking out {0} MB".format(checkout_size/(1024*1024)))
+		logger.info("Refreshing {0} MB".format(refresh_size/(1024*1024)))
+		logger.info("Checking in {0} MB".format(checkin_size/(1024*1024)))
+		logger.info("Net: {0} MB".format((checkout_size + refresh_size - checkin_size)/(1024*1024)))
 
 	def update_db(self):
 
@@ -365,7 +370,7 @@ class FreshBeats:
 				new_mixin = random.choice(new_mixin_list)
 				logger.info("Registering a mix-it-up album...")
 				if not am.checkout_album(new_mixin):
-					logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
+					logger.warn("Rejected checkout of %s/%s" % (new_mixin.artist.name, new_mixin.name))
 
 		loveit_albums = Album.objects.filter(rating=Album.LOVEIT, action=None)
 		never_checked_out_albums = Album.objects.filter(albumcheckout__isnull=True, action=None)
@@ -387,6 +392,8 @@ class FreshBeats:
 				logger.warn("Rejected checkout of %s/%s - attempts left: %s" % (album.artist.name, album.name, fails))				
 			if fails <= 0:
 				break
+
+		am.send_status_to_logger()
 
 	def copy_files(self):
 
@@ -419,7 +426,7 @@ class FreshBeats:
 		if ps.returncode == 0:
 			current_checkout = a.current_albumcheckout()
 			if current_checkout:
-				current_checkout.return_at = datetime.datetime.now()
+				current_checkout.return_at = timezone.now()
 				current_checkout.save()
 			else:
 				logger.warn("removing, but not checked out????")
@@ -473,7 +480,7 @@ class FreshBeats:
 		logger.info("Add code: %s" % ps.returncode)
 
 		if ps.returncode == 0:
-			ac = AlbumCheckout(album=a, checkout_at=datetime.datetime.now())
+			ac = AlbumCheckout(album=a, checkout_at=timezone.now())
 			ac.save()
 			a.action = None
 			a.save()

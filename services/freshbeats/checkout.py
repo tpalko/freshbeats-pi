@@ -3,16 +3,17 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../webapp'))
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings_env")
 
 import config.settings
-from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
-
 import django
 from django.db.models import Q
 django.setup()
+
+from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
 class AlbumManager:
 
@@ -54,17 +55,19 @@ class AlbumManager:
 			if not self.refresh_album(album):
 				logger.warn("Rejected refresh of %s/%s" %(album.artist.name, album.name))
 
-		am.send_status_to_logger()
+		self.send_status_to_logger()
 
 	def send_status_to_logger(self):
 
-		logger.info("Device Free: %s" % self.device_free_bytes)
-		logger.info("Margin: %s" % self.free_bytes_margin)
-		logger.info("Start: %s" % (self.device_free_bytes - self.free_bytes_margin))
-		logger.info("	Removing: %s" % sum([ a.total_size for a in self.albums_to_checkin ]))
-		logger.info("	Refreshing: %s" % sum([ a.total_size - a.old_total_size for a in self.albums_to_refresh ]))
-		logger.info("	Adding: %s" % sum([ a.total_size for a in self.albums_to_checkout ]))
-		logger.info("Current Delta: %s" % self.available_bytes())
+		logger.info("-- Device Status -- ")
+		logger.info(" Device Free: {0:>10}".format(self.device_free_bytes))
+		logger.info(" Free Margin: {0:>10}".format(self.free_bytes_margin))
+		logger.info("   Available: {0:>10}".format(self.device_free_bytes - self.free_bytes_margin))
+		logger.info("-- Update Plan -- ")
+		logger.info(" Checking-in: {0:>10}".format(sum([ a.total_size for a in self.albums_to_checkin ])))
+		logger.info("  Refreshing: {0:>10}".format(sum([ a.total_size - a.old_total_size for a in self.albums_to_refresh ])))
+		logger.info("Checking-out: {0:>10}".format(sum([ a.total_size for a in self.albums_to_checkout ])))
+		logger.info(" Plan Result: {0:>10}".format(self.available_bytes()))
 
 	def available_bytes(self):		
 
@@ -88,9 +91,11 @@ class AlbumManager:
 	def refresh_album(self, album):
 
 		delta = album.total_size - album.old_total_size
-		
+	
+		logger.debug("Delta is %s, available = %s" % (delta, self.available_bytes()))
+
 		if self.available_bytes() < delta:		
-			logger.warn("Would-be free space: %s, Action is %s" %(self.available_bytes() - delta, Album.DONOTHING))	
+			logger.debug("Would-be free space: %s, Action is %s" %(self.available_bytes() - delta, Album.DONOTHING))	
 			album.action = Album.DONOTHING
 			album.save()
 			return False
@@ -100,6 +105,8 @@ class AlbumManager:
 
 		self.albums_to_refresh.append(album)
 		self.checkout_delta += delta
+
+		return True
 
 	def checkout_album(self, album):
 
