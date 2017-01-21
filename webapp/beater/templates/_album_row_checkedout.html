@@ -1,0 +1,12 @@
+<tr data-id="{{ album.id }}">
+	<td>{{ album.name }}</td>
+	<td>{{ album.artist.name }}</td>
+	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>
+	<td>
+		{% if album.sticky %}
+			<span class="label label-info">STICKY</span>
+		{% else %}
+			<a href="{% url "album_checkin" album.id %}" class="btn btn-default album_checkin">check-in</a>
+		{% endif %}						
+	</td>
+</tr>

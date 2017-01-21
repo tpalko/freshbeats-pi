@@ -12,6 +12,9 @@ def capture(f):
 		backup_out = sys.stdout
 		backup_err = sys.stderr
 
+		out = ""
+		err = ""
+		
 		try:
 			sys.stdout = StringIO()     # capture output
 			sys.stderr = StringIO()

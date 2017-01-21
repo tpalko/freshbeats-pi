@@ -10,6 +10,9 @@ class Artist(models.Model):
 
 class Album(models.Model):
 
+	STATE_CHECKEDIN='checkedin'
+	STATE_CHECKEDOUT='checkedout'
+
 	CHECKIN='checkin'
 	REFRESH='refresh'
 	CHECKOUT='checkout'
@@ -48,8 +51,12 @@ class Album(models.Model):
 	rating = models.CharField(max_length=20, choices=ALBUM_RATING_CHOICES, null=False, default=UNRATED)
 	sticky = models.BooleanField(null=False, default=False)
 	action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)	
+	request_priority = models.IntegerField(null=False, default=1)
 	created_at = models.DateTimeField(auto_now_add = True)
 	updated_at = models.DateTimeField(auto_now = True)
+
+	def total_size_in_mb(self):
+		return 1.0*(self.total_size)/(1024*1024)
 
 	def current_albumcheckout(self):
 		checkouts = self.albumcheckout_set.filter(return_at=None)

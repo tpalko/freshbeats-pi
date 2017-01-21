@@ -1,0 +1,10 @@
+{% load beater %}
+
+<tr data-id="{{ album.id }}">
+	<td>{{ album.name }}</td>
+	<td>{{ album.artist.name }}</td>
+	<td>{{ album.tracks }}</td>
+	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>
+	<td>{{ album.albumstatus_set.all|map:"status"|join:"," }}</td>
+	<td><a href="{% url "album_checkout" album.id %}" class="btn btn-default album_checkout">check-out</a></td>
+</tr>

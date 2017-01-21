@@ -4,6 +4,7 @@ import os
 import sys
 from os.path import join, getsize
 import subprocess
+import shlex
 import random
 import logging
 import traceback
@@ -40,6 +41,8 @@ logger = logging.getLogger('FreshBeats')
 
 django_logger = logging.getLogger('django')
 django_logger.setLevel(logging.INFO)
+requests_logger = logging.getLogger('requests')
+requests_logger.setLevel(logging.INFO)
 
 #name_logger = logging.getLogger(__name__)
 
@@ -118,18 +121,19 @@ class FreshBeats:
 		for s in config.sections():
 			self.__dict__ = dict(self.__dict__.items() + {i[0]: i[1] for i in config.items(s)}.items())
 
-		self.device = DeviceManager(hostname=self.device_hostname, username=self.ssh_username)
+		#self.device = DeviceManager(hostname=self.device_hostname, username=self.ssh_username, target_folder=self.beats_target_folder)
+		self.am = None
 		self.music_path = os.path.join(self.music_base_path, self.music_folder)
 
 		if not os.path.exists(self.music_path):
-			logger.error("Music path %s does not exist." %(self.music_path))
+			logger.error("Music path %s does not exist. Exiting." %(self.music_path))
 			exit(1)
 
 	def report(self):
 
 		logger.info("Report on device folder '%s'" % self.beats_target_folder)
 
-		folders_on_device = self.device.get_music_folders_on_device(self.beats_target_folder)
+		folders_on_device = self.get_music_folders_on_device(self.beats_target_folder)
 
 		found_on_device = []
 		#found_on_device_no_subfolder = []
@@ -181,7 +185,7 @@ class FreshBeats:
 		if len(action_albums) > 0:
 			max_album = max([ len(a.name.encode('utf-8')) for a in action_albums ]) + 1
 			max_artist = max([ len(a.artist.name.encode('utf-8')) for a in action_albums ]) + 1
-		checkout_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT)) ])
+		checkout_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT) | Q(action=Album.REQUESTCHECKOUT)) ])
 		refresh_size = sum([ a.total_size - a.old_total_size for a in action_albums.filter(Q(action=Album.REFRESH)) ])
 		checkin_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
 		
@@ -192,7 +196,9 @@ class FreshBeats:
 		logger.info("Checking out {0} MB".format(checkout_size/(1024*1024)))
 		logger.info("Refreshing {0} MB".format(refresh_size/(1024*1024)))
 		logger.info("Checking in {0} MB".format(checkin_size/(1024*1024)))
-		logger.info("Net: {0} MB".format((checkout_size + refresh_size - checkin_size)/(1024*1024)))
+		net = checkout_size + refresh_size - checkin_size
+		direction = "out" if net >= 0 else "in"
+		logger.info("Net: {0} MB {1}".format(abs(net)/(1024*1024), direction))
 
 	def update_db(self):
 
@@ -336,88 +342,13 @@ class FreshBeats:
 			logging.error(message)
 			traceback.print_tb(sys.exc_info()[2])
 
-	def _get_sha1sum(self, root, filename):
+	# - DEVICE
 
-		sha1 = hashlib.sha1()
-
-		with open(join(root, filename), 'rb') as f:
-		    while True:
-		        data = f.read(BUF_SIZE)
-		        if not data:
-		            break
-		        sha1.update(data)
-
-		song_sha1sum = sha1.hexdigest()
-		
-		return song_sha1sum
-
-	def mark_albums(self):
-
-		device_free_bytes = self.device.get_free_bytes()
-		margin = int(self.free_space_mb)*1024*1024
-		am = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
-
-		# - we want to keep at least one mix-it-up-rated album
-		# - if we aren't renewing one, pick one to check out
-		any_kept_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True).exists()
-		
-		if not any_kept_mixins:
-
-			new_mixins = Album.objects.filter((Q(albumcheckout__isnull=True) | (Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=False))), rating=Album.MIXITUP)
-			new_mixin_list = list(new_mixins)				
-
-			if len(new_mixin_list) > 0:
-				new_mixin = random.choice(new_mixin_list)
-				logger.info("Registering a mix-it-up album...")
-				if not am.checkout_album(new_mixin):
-					logger.warn("Rejected checkout of %s/%s" % (new_mixin.artist.name, new_mixin.name))
-
-		loveit_albums = Album.objects.filter(rating=Album.LOVEIT, action=None)
-		never_checked_out_albums = Album.objects.filter(albumcheckout__isnull=True, action=None)
-		unrated_albums = Album.objects.filter(rating=Album.UNRATED, action=None, albumstatus__isnull=True)
-		
-		album_lists = [loveit_albums, never_checked_out_albums, unrated_albums]
-
-		fails = 10
-
-		while True:
-			random_list = random.choice(album_lists)
-			if len(random_list) == 0:
-				album_lists.remove(random_list)
-				continue
-			album = random.choice(random_list)
-			logger.info("Registering a random album...")
-			if not am.checkout_album(album):
-				fails = fails - 1
-				logger.warn("Rejected checkout of %s/%s - attempts left: %s" % (album.artist.name, album.name, fails))				
-			if fails <= 0:
-				break
-
-		am.send_status_to_logger()
-
-	def copy_files(self):
-
-		remove_albums = Album.objects.filter(action=Album.CHECKIN)
-
-		for r in remove_albums:
-			self.remove_album(r)
-
-		refresh_albums = Album.objects.filter(action=Album.REFRESH)
-
-		for u in refresh_albums:
-			self.remove_album(u)
-			self.copy_album_to_device(u)
-
-		add_albums = Album.objects.filter(action=Album.CHECKOUT)
-
-		for a in add_albums:
-			self.copy_album_to_device(a)
-
-	def remove_album(self, a):
+	def remove_album_from_device(self, a):
 
 		logger.info("removing: %s %s" %(a.artist.name, a.name))
 
-		rm_statement = ['ssh', '%s@%s' % (self.ssh_username, self.device_hostname), 'rm -rf "%s"' %(join(self.device_mount, self.beats_target_folder, a.artist.name, a.name))]
+		rm_statement = ['ssh', '%s@%s' % (self.ssh_username, self.device_hostname), 'rm -rf "%s"' %(os.path.join(self.beats_target_folder, a.artist.name, a.name))]
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -426,10 +357,14 @@ class FreshBeats:
 		if ps.returncode == 0:
 			current_checkout = a.current_albumcheckout()
 			if current_checkout:
-				current_checkout.return_at = timezone.now()
-				current_checkout.save()
+				while current_checkout is not None:
+					current_checkout.return_at = timezone.now()
+					current_checkout.save()
+					current_checkout = a.current_albumcheckout()
+					if current_checkout:
+						logger.warn("%s/%s checked out multiple times!" % (a.artist.name, a.name))
 			else:
-				logger.warn("removing, but not checked out????")
+				logger.warn("removing from device, but not checked out!")
 			a.action = None
 			a.save()
 
@@ -459,7 +394,7 @@ class FreshBeats:
 		
 		logger.info("adding folder: %s" %(artist_folder))
 
-		mkdir_statement = ['ssh', '%s@%s' %(self.ssh_username, self.device_hostname), 'mkdir -p "%s"' % artist_folder]
+		mkdir_statement = ['ssh', '%s@%s' %(self.ssh_username, self.device_hostname), '\'mkdir -p "%s"\'' % artist_folder]
 		logger.info(mkdir_statement)
 		
 		ps = subprocess.Popen(mkdir_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -485,6 +420,76 @@ class FreshBeats:
 			a.action = None
 			a.save()
 
+	def get_music_folders_on_device(self, target_folder):
+
+		find_folders_command = shlex.split("ssh %s@%s 'find %s -type d'" %(self.ssh_username, self.device_hostname, target_folder))
+		logger.info(find_folders_command)
+
+		ps = subprocess.Popen(find_folders_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, shell=True, executable='/bin/bash')
+
+		(out, err,) = ps.communicate(None)
+
+		if err:
+			logger.error(err)
+
+		folders = [ f.replace("%s/" % target_folder, '') for f in out.split('\n') if f and f != target_folder ]
+
+		return folders
+
+	def get_free_bytes(self):
+
+		#ps = subprocess.Popen('df -k'.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		#ps = subprocess.Popen(('grep ' + self.device_mount).split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		df_cmd = 'ssh %s@%s \'df\'' %(self.ssh_username, self.device_hostname)
+		grep_emulated = 'grep emulated'
+		
+		ps = subprocess.Popen(df_cmd.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		ps = subprocess.Popen(grep_emulated.split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		
+		(out, err,) = ps.communicate(None)
+
+		if out:
+			logger.error(out)
+
+		if err:
+			logger.error(err)
+
+		# - Filesystem               Size     Used     Free   Blksize
+		# - /mnt/shell/emulated     12G     8.5G     3.5G   4096
+		parts = [ p for p in out.split(' ') if p != '' ]
+		free = parts[3]
+
+		match = re.search('([0-9\.]+)([A-Z])', free)
+
+		size = match.group(1)
+		unit = match.group(2)
+
+		unit_multiplier = { 'G': math.pow(1024, 3), 'M': math.pow(1024, 2), 'K': math.pow(1024, 1) }
+
+		size_in_bytes = int(math.floor(float(size)*unit_multiplier[unit]))
+
+		logger.debug("free space: %s (%s bytes)" % (free, size_in_bytes))
+		
+		return size_in_bytes
+
+	# - END DEVICE
+
+	def _get_sha1sum(self, root, filename):
+
+		sha1 = hashlib.sha1()
+
+		with open(join(root, filename), 'rb') as f:
+		    while True:
+		        data = f.read(BUF_SIZE)
+		        if not data:
+		            break
+		        sha1.update(data)
+
+		song_sha1sum = sha1.hexdigest()
+		
+		return song_sha1sum
+
 	def _get_storage_path(self, album):
 
 		if album.name == 'no album':
@@ -492,30 +497,108 @@ class FreshBeats:
 
 		return join(self.music_base_path, self.music_folder, album.artist.name, album.name)
 
+	def _pick_random_fill_albums(self):
+
+		# - we want to keep at least one mix-it-up-rated album
+		# - if we aren't renewing one, pick one to check out
+		any_kept_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True).exists()
+		
+		if not any_kept_mixins:
+
+			new_mixins = Album.objects.filter((Q(albumcheckout__isnull=True) | (Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=False))), rating=Album.MIXITUP)
+			new_mixin_list = list(new_mixins)				
+
+			if len(new_mixin_list) > 0:
+				new_mixin = random.choice(new_mixin_list)
+				logger.info("Registering a mix-it-up album...")
+				if not self.am.checkout_album(new_mixin):
+					logger.warn("Rejected checkout of %s/%s" % (new_mixin.artist.name, new_mixin.name))
+
+		loveit_albums = Album.objects.filter(rating=Album.LOVEIT, action=None)
+		never_checked_out_albums = Album.objects.filter(albumcheckout__isnull=True, action=None)
+		unrated_albums = Album.objects.filter(rating=Album.UNRATED, action=None, albumstatus__isnull=True)
+		
+		album_lists = [loveit_albums, never_checked_out_albums, unrated_albums]
+
+		fails = 10
+
+		while True:
+			random_list = random.choice(album_lists)
+			if len(random_list) == 0:
+				album_lists.remove(random_list)
+				continue
+			album = random.choice(random_list)
+			logger.info("Registering a random album...")
+			if not self.am.checkout_album(album):
+				fails = fails - 1
+				logger.warn("Rejected checkout of %s/%s - attempts left: %s" % (album.artist.name, album.name, fails))				
+			if fails <= 0:
+				break
+
+		self.am.send_status_to_logger()
+
+	def apply_plan(self, add_randoms=True):
+
+		# -- validate the plan
+		device_free_bytes = self.get_free_bytes()
+		margin = int(self.free_space_mb)*1024*1024
+		self.am = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
+		
+		self.am.validate_plan()
+
+		if add_randoms:
+			self._pick_random_fill_albums()
+
+		remove_albums = Album.objects.filter(action=Album.CHECKIN)
+
+		for r in remove_albums:
+			self.remove_album_from_device(r)
+
+		refresh_albums = Album.objects.filter(action=Album.REFRESH)
+
+		for u in refresh_albums:
+			self.remove_album_from_device(u)
+			self.copy_album_to_device(u)
+
+		add_albums = Album.objects.filter(action=Album.CHECKOUT)
+
+		for a in add_albums:
+			self.copy_album_to_device(a)
+
+		nothing_albums = Album.objects.filter(action=Album.DONOTHING)
+
+		for a in nothing_albums:
+			a.action = None
+			a.save()
+
 @click.command()
 @click.option('--ingest', '-i', is_flag=True, help='Ingest new music on disk.')
-@click.option('--mark', '-m', is_flag=True, help='Mark albums for copy.')
 @click.option('--report', '-r', is_flag=True, help='Report on device status and copy plan.')
-@click.option('--apply', '-a', is_flag=True, help='Apply copy plan to device.')
+@click.option('--apply_plan', '-a', is_flag=True, help='Apply copy plan to device.')
 @click.option('--pictures', '-p', is_flag=True, help='Pull pictures from device.')
-def main(ingest, mark, report, apply, pictures):
+def main(ingest, mark, report, apply_plan, pictures):
 
-	f = FreshBeats()
+	try:
 
-	if ingest:
-		f.update_db()
-	
-	if mark:
-		f.mark_albums()
-	
-	if apply:
-		f.copy_files()
+		f = FreshBeats()
 
-	if report:
-		f.report()
+		if ingest:
+			f.update_db()
+		
+		if apply_plan:
+			f.apply_plan()
 
-	if pictures:
-		f.pull_photos()
+		if report:
+			logger.info("Reporting!")
+			f.report()
+
+		if pictures:
+			f.pull_photos()
+
+	except:
+		logger.error(sys.exc_info()[0])
+		logger.error(sys.exc_info()[1])
+		traceback.print_tb(sys.exc_info()[2])
 
 if __name__ == "__main__":
 	main()

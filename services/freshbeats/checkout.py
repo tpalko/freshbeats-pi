@@ -22,37 +22,37 @@ class AlbumManager:
 		# - everything in Bytes
 		self.free_bytes_margin = int(kwargs['free_bytes_margin'])
 		self.device_free_bytes = int(kwargs['device_free_bytes'])
+		
+		# -- this is maintained for available space calculation
 		self.checkout_delta = 0
+		
+		# -- these are maintained only for reporting
 		self.albums_to_checkin = []
 		self.albums_to_refresh = []
 		self.albums_to_checkout = []
 
-		albums_to_check_in = Album.objects.filter(action=Album.CHECKIN)
-		logger.info("Registering %s previously marked albums to check-in.." % len(albums_to_check_in))
-		self.checkin_albums(albums_to_check_in)
+	def validate_plan(self):
 
-		requested_albums_to_check_out = Album.objects.filter(action=Album.REQUESTCHECKOUT, sticky=False)
-		#logger.info("Registering %s previously requested albums to check-out.." % len(requested_albums_to_check_out))
-		for album in requested_albums_to_check_out:
-			if not self.checkout_album(album):
+		db_albums_to_check_in = Album.objects.filter(action=Album.CHECKIN)
+		logger.info("Registering %s previously marked albums to check-in.." % len(db_albums_to_check_in))
+		self.checkin_albums(db_albums_to_check_in)
+
+		db_requested_albums_to_check_out = Album.objects.filter(action=Album.REQUESTCHECKOUT, sticky=False)
+		#logger.info("Registering %s previously requested albums to check-out.." % len(db_requested_albums_to_check_out))
+		for album in db_requested_albums_to_check_out:
+			if not self.validate_checkout_album(album):
 				logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
 
-		sticky_albums = Album.objects.filter(Q(albumcheckout__return_at__isnull=False) | Q(albumcheckout__isnull=True), sticky=True)
-		#logger.info("Registering %s sticky albums to check-out.." % len(sticky_albums))
-		for album in sticky_albums:
-			if not self.checkout_album(album):
-				logger.warn("Rejected checkout of sticky %s/%s" % (album.artist.name, album.name))
-
-		albums_to_check_out = Album.objects.filter(action=Album.CHECKOUT, sticky=False)
-		#logger.info("Registering %s previously marked albums to check-out.." % len(albums_to_check_out))
-		for album in albums_to_check_out:
-			if not self.checkout_album(album):
+		db_albums_to_check_out = Album.objects.filter(action=Album.CHECKOUT, sticky=False).order_by('request_priority')
+		#logger.info("Registering %s previously marked albums to check-out.." % len(db_albums_to_check_out))
+		for album in db_albums_to_check_out:
+			if not self.validate_checkout_album(album):
 				logger.warn("Rejected checkout of %s/%s" % (album.artist.name, album.name))
 
-		albums_to_refresh = Album.objects.filter(action=Album.REFRESH)
-		#logger.info("Registering %s previously marked albums to refresh.." % len(albums_to_refresh))
-		for album in albums_to_refresh:
-			if not self.refresh_album(album):
+		db_albums_to_refresh = Album.objects.filter(action=Album.REFRESH)
+		#logger.info("Registering %s previously marked albums to refresh.." % len(db_albums_to_refresh))
+		for album in db_albums_to_refresh:
+			if not self.validate_refresh_album(album):
 				logger.warn("Rejected refresh of %s/%s" %(album.artist.name, album.name))
 
 		self.send_status_to_logger()
@@ -88,7 +88,9 @@ class AlbumManager:
 			self.albums_to_checkin.append(album)
 			self.checkout_delta -= album.total_size
 
-	def refresh_album(self, album):
+	def validate_refresh_album(self, album):
+
+		valid = False
 
 		delta = album.total_size - album.old_total_size
 	
@@ -98,29 +100,38 @@ class AlbumManager:
 			logger.debug("Would-be free space: %s, Action is %s" %(self.available_bytes() - delta, Album.DONOTHING))	
 			album.action = Album.DONOTHING
 			album.save()
-			return False
+		else:
+			self.albums_to_refresh.append(album)
+			self.checkout_delta += delta
+			valid = True
 
-		album.action = Album.REFRESH
-		album.save()
+		return valid
 
-		self.albums_to_refresh.append(album)
-		self.checkout_delta += delta
+	def validate_checkout_album(self, album):
 
-		return True
+		valid = False
+
+		if self.available_bytes() < album.total_size:
+			logger.warn("Would-be free space: %s, leaving alone" %(self.available_bytes() - album.total_size))	
+			#album.action = None
+			#album.save()
+		else:
+			self.albums_to_checkout.append(album)
+			self.checkout_delta += album.total_size
+			if album.action == Album.REQUESTCHECKOUT:
+				album.action = Album.CHECKOUT
+				album.save()
+			valid = True
+
+		return valid
 
 	def checkout_album(self, album):
 
-		if self.available_bytes() < album.total_size:
-			logger.warn("Would-be free space: %s, Action is %s" %(self.available_bytes() - album.total_size, Album.DONOTHING))	
-			album.action = None
+		if self.validate_checkout_album(album):
+
+			if album.action != Album.REQUESTCHECKOUT and not album.sticky:
+				album.request_priority = 2
+
+			album.action = Album.CHECKOUT
 			album.save()
-			return False
-		
-		album.action = Album.CHECKOUT
-		album.save()
-
-		self.albums_to_checkout.append(album)
-		self.checkout_delta += album.total_size
-
-		return True
-		
+			

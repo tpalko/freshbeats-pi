@@ -1,0 +1,6 @@
+<tr data-id="{{ album.id }}">
+	<td>{{ album.name }}</td>
+	<td>{{ album.artist.name }}</td>
+	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>
+	<td><a href="{% url "album_cancel" album.id %}" class="btn btn-default album_cancel">cancel</a></td>
+</tr>

@@ -18,18 +18,18 @@ import json
 import random
 import socket
 import requests
+import threading
 import re
+import time
+from cStringIO import StringIO
 from util import capture
 
 sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
+from freshbeats import freshbeats
 
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 
 logger = logging.getLogger(__name__)
-fresh_logger = logging.StreamHandler()
-
-logger.setLevel(logging.DEBUG)
-logger.addHandler(fresh_logger)
 
 logger.debug("Setting path for RPi: %s" % settings.BEATPLAYER_SERVER)
 p = xmlrpclib.ServerProxy(settings.BEATPLAYER_SERVER)
@@ -70,61 +70,31 @@ def search(request):
 
 	return render(request, 'search.html', {})
 
-def get_search_results(request):
-
-	search_string = request.GET.get('search')
-	highlight_replace = re.compile(re.escape(search_string), re.IGNORECASE)
-
-	albums = Album.objects.filter(name__icontains=search_string)
-	albums = [ render_to_string('_album.html', {'album': a, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)}) for a in albums ]
-
-	artists = Artist.objects.filter(name__icontains=search_string)
-	artists = [ render_to_string('_artist.html', {'artist': a, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)}) for a in artists ]
-
-	songs = Song.objects.filter(name__icontains=search_string)
-	songs = [ render_to_string('_song.html', {'song': s, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, s.name)}) for s in songs ]
-
-	return JsonResponse({'artists': artists, 'albums': albums, 'songs': songs})
-
 def playlist(request):
 	pass
 
 def mobile(request):
 	
-	albums = Album.objects.raw("select distinct beater_album.* from beater_album left join beater_albumcheckout on beater_albumcheckout.album_id = beater_album.id where ((beater_albumcheckout.id is not null and beater_albumcheckout.return_at is null) or (beater_album.action is not null))")
-	#albums = Album.objects.filter((Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) | ~Q(action=None))
-	bins = { action: [ a for a in albums if a.action == action ] for action in set([ a.action for a in albums ]) }
-
-	logger.debug(bins)
-
-	return render(request, 'mobile.html', {'bins': bins})
-
-@capture
-def select_albums_for_checkout(request):
-
-	try:
-		from freshbeats import freshbeats
-		f = freshbeats.FreshBeats()
-		f.mark_albums()
-	except:
-		logger.error(sys.exc_info()[1])
-		traceback.print_tb(sys.exc_info()[2])
-
-	return JsonResponse({})
+	# -- has albumcheckout where return_at is null
+	checked_out_albums = Album.objects.filter(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True))
+	checked_out_album_action_bins = { action: [ a for a in checked_out_albums if a.action == action ] for action in [ Album.CHECKIN, Album.REFRESH ] }
+	checked_out_album_action_sizes = { action: sum([ a.total_size if a.action == Album.CHECKIN else (a.total_size - a.old_total_size) for a in checked_out_albums if a.action == action ])/(1024*1024) for action in [ Album.CHECKIN, Album.REFRESH ] }
+	checked_out_album_no_action_bins = { action if action else "No Action": [ a for a in checked_out_albums if a.action == action ] for action in [ Album.DONOTHING, None ] }
+	checked_out_no_action_size = sum([ album.total_size for album_list in checked_out_album_no_action_bins.values() for album in album_list ])/(1024*1024)
 	
-@capture
-def call_report():
-	from freshbeats import freshbeats
-	f = freshbeats.FreshBeats()
-	report_out = f.report() # - logs stuff
-	return report_out
+	# -- does not have albumcheckout where return_at is null and action is set
+	other_action_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=False))
+	other_album_action_bins = { 
+		action: [ a for a in other_action_albums if a.action == action ] for action in [ Album.REQUESTCHECKOUT, Album.CHECKOUT ]
+	}
+	other_album_action_sizes = { 
+		action: sum([ a.total_size for a in other_action_albums if a.action == action ])/(1024*1024) for action in [ Album.REQUESTCHECKOUT, Album.CHECKOUT ]
+	}
 
-def report(request):
+	return render(request, 'mobile.html', {'checked_out_album_action_bins': checked_out_album_action_bins, 'checked_out_album_action_sizes': checked_out_album_action_sizes, 'checked_out_album_no_action_bins': checked_out_album_no_action_bins, 'checked_out_no_action_size': checked_out_no_action_size, 'other_album_action_bins': other_album_action_bins, 'other_album_action_sizes': other_album_action_sizes})
 
-	out = call_report()
-	logger.info(out)
-
-	return render(request, "report.html", { 'output': out })
+def report(request):	
+	return render(request, "report.html", { })
 
 def config(request):
 	pass
@@ -142,8 +112,7 @@ def survey(request):
 			'album_count': len(albums),
 			'rating_choices': Album.ALBUM_RATING_CHOICES, 
 			'status_choices': AlbumStatus.ALBUM_STATUS_CHOICES 
-		}, 
-		context_instance=RequestContext(request))
+		})
 
 def albums(request):
 
@@ -185,26 +154,59 @@ def album_filter(request, filter):
 # - AJAX ENDPOINTS
 
 @csrf_exempt
-def command(request, type):
+def checkin(request, album_id):
 
-	response = { 'result': {}, 'success': False, 'message': "" }
+	album = Album.objects.get(pk=album_id)
+	album.action = Album.CHECKIN
+	album.save()
 
-	try:
+	return JsonResponse({ 'album_id': album_id, 'row': render_to_string("_album_row.html", {'album': album}) })
 
-		if type == "album":
-			return _album_command(request)
-		elif type == "player":
-			return _player_command(request)
+@csrf_exempt
+def checkout(request, album_id):
 
-		response['success'] = True
+	album = Album.objects.get(pk=album_id)
+	album.action = Album.REQUESTCHECKOUT
+	album.request_priority = 1
+	album.save()
 
-	except:
-		response['message'] = str(sys.exc_info()[1])
-		logger.error(response['message'])
-		traceback.print_tb(sys.exc_info()[2])
-		_publish_event('alert', json.dumps(response))
+	other_action_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=False))
 
-	return HttpResponse(json.dumps({'success': True}))
+	other_album_action_sizes = { 
+		action: sum([ a.total_size for a in other_action_albums if a.action == action ])/(1024*1024) for action in [ Album.REQUESTCHECKOUT ]
+	}
+
+	return JsonResponse({ 'album_id': album_id, 'requestcheckout_size': other_album_action_sizes[Album.REQUESTCHECKOUT], 'row': render_to_string("_album_row.html", {'album': album}) })
+
+@csrf_exempt
+def cancel(request, album_id):
+
+	album = Album.objects.get(pk=album_id)
+	album.action = None
+	album.save()
+
+	row_template = "_album_row_checkedin.html"
+	state = Album.STATE_CHECKEDIN
+
+	if album.current_albumcheckout():
+		row_template = "_album_row_checkedout.html"
+		state = Album.STATE_CHECKEDOUT
+	
+	return JsonResponse({ 'state': state, 'album_id': album_id, 'row': render_to_string(row_template, {'album': album}) })
+
+@csrf_exempt
+def album_songs(request, album_id):
+
+	album = Album.objects.get(pk=album_id)
+	return JsonResponse('\n'.join([ s.name for s in album.song_set.all() ]), safe=False)
+
+@csrf_exempt
+def fetch_remainder_albums(request):
+
+	# -- does not have albumcheckout where return_at is null and action is not set
+	remainder_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=True) & Q(sticky=False))
+		
+	return JsonResponse({ 'rows': "".join([ render_to_string("_album_row_checkedin.html", {'album': album}) for album in remainder_albums ])})
 
 @csrf_exempt
 def survey_post(request):
@@ -216,9 +218,11 @@ def survey_post(request):
 		album = Album.objects.get(pk=request.POST.get('albumid'))
 		
 		album.rating = request.POST.get('rating')
-		album.sticky = request.POST.get('sticky', 0)
+		album.sticky = request.POST.get('sticky', 0) == 1
 
-		if request.POST.get('keep', 0) == 0 and not album.sticky:
+		keep = request.POST.get('keep', 0) == 1
+
+		if not keep and not album.sticky:
 			album.action = Album.CHECKIN
 		elif album.is_refreshable():
 			album.action = Album.REFRESH
@@ -232,6 +236,69 @@ def survey_post(request):
 			album.replace_statuses(new_statuses)
 
 		album.save()
+
+		response['success'] = True
+
+	except:
+		response['message'] = str(sys.exc_info()[1])
+		logger.error(response['message'])
+		traceback.print_tb(sys.exc_info()[2])
+		_publish_event('alert', json.dumps(response))
+
+	return HttpResponse(json.dumps({'success': True}))
+
+def get_search_results(request):
+
+	search_string = request.GET.get('search')
+	highlight_replace = re.compile(re.escape(search_string), re.IGNORECASE)
+
+	albums = Album.objects.filter(name__icontains=search_string)
+	albums = [ render_to_string('_album.html', {'album': a, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)}) for a in albums ]
+
+	artists = Artist.objects.filter(name__icontains=search_string)
+	artists = [ render_to_string('_artist.html', {'artist': a, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)}) for a in artists ]
+
+	songs = Song.objects.filter(name__icontains=search_string)
+	songs = [ render_to_string('_song.html', {'song': s, 'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, s.name)}) for s in songs ]
+
+	return JsonResponse({'artists': artists, 'albums': albums, 'songs': songs})
+
+def apply_plan(request):
+	
+	_call_freshbeats('apply_plan', add_randoms=False)
+	return JsonResponse({'success': True})
+
+def device_report(request):
+
+	_call_freshbeats('report')
+	return JsonResponse({'success': True})
+
+# -- PLAYER INTERACTION
+
+def player(request, command, albumid=None, songid=None):
+	
+	problem = None
+	player_info = None
+
+	#command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
+	#albumid = request.POST.get('albumid', None)
+	#songid = request.POST.get('songid', None)
+
+	logger.debug("Got command: %s" % command)
+
+	_handle_command(command, albumid, songid, force_play=True)
+
+@csrf_exempt
+def command(request, type):
+
+	response = { 'result': {}, 'success': False, 'message': "" }
+
+	try:
+
+		if type == "album":
+			return _album_command(request)
+		elif type == "player":
+			return _player_command(request)
 
 		response['success'] = True
 
@@ -310,19 +377,6 @@ def _album_command(request):
 		album.action = Album.DONOTHING
 		album.save()
 		response['albumid'] = album.id
-		
-def player(request, command, albumid=None, songid=None):
-	
-	problem = None
-	player_info = None
-
-	#command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
-	#albumid = request.POST.get('albumid', None)
-	#songid = request.POST.get('songid', None)
-
-	logger.debug("Got command: %s" % command)
-
-	_handle_command(command, albumid, songid, force_play=True)
 
 def _handle_command(command, albumid=None, songid=None, force_play=False):
 
@@ -534,7 +588,36 @@ def _write_song_to_playlist(song, playlist):
 
 def _publish_event(event, payload):
 
-	logger.debug("publishing %s: %s" %(event, payload))
+	#logger.debug("publishing %s: %s" %(event, payload))
 	headers = { "content-type": "application/json" }
 	response = requests.post('http://%s:%s/pushevent/%s' %(settings.SWITCHBOARD_SERVER_HOST, settings.SWITCHBOARD_SERVER_PORT, event), headers=headers, data=payload)
-	
+
+def _call_freshbeats(function_name, *args, **kwargs):
+
+	try:		
+		log_capture_string = StringIO()	
+
+		ch = logging.StreamHandler(log_capture_string)
+		
+		logger = logging.getLogger('FreshBeats')
+		logger.addHandler(ch)
+
+		f = freshbeats.FreshBeats()
+		fresh_function = getattr(f, function_name)
+		
+		t = threading.Thread(target=fresh_function, args=kwargs.values())
+		t.start()		
+
+		while t.isAlive():
+			_publish_event('device_output', json.dumps({ 'out': log_capture_string.getvalue() }))
+			time.sleep(1)
+
+		_publish_event('device_output', json.dumps({ 'out': log_capture_string.getvalue() }))
+
+	except:
+		logger.error(sys.exc_info()[1])
+		traceback.print_tb(sys.exc_info()[2])
+	finally:
+		log_capture_string.close()
+		
+	return True

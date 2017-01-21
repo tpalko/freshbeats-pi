@@ -31,14 +31,22 @@ urlpatterns = [
     #url(r'^album_filter/filter/(?P<filter>[a-z0-9]+)/$', views.album_filter),
     #url(r'^album_filter/letter/(?P<letter>[a-z0-9])/$', views.album_letter),   
     
+    url(r'^album/(?P<album_id>[0-9]+)/checkin/$', views.checkin, name='album_checkin'),
+    url(r'^album/(?P<album_id>[0-9]+)/checkout/$', views.checkout, name='album_checkout'),
+    url(r'^album/(?P<album_id>[0-9]+)/cancel/$', views.cancel, name='album_cancel'),
+    url(r'^album/(?P<album_id>[0-9]+)/songs/$', views.album_songs, name='album_songs'),
+    url(r'^remainder_albums/$', views.fetch_remainder_albums, name='fetch_remainder_albums'),
+    url(r'^survey_post/$', views.survey_post, name='survey_post'),    
+    url(r'^get_search_results/$', views.get_search_results, name='get_search_results'),
+    url(r'^apply_plan/$', views.apply_plan, name='apply_plan'),
+    url(r'^device_report/$', views.device_report, name='device_report'),
+    
     url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', views.player, name='album_command'),
     url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', views.player, name='song_command'),
     url(r'^player/(?P<command>[a-zA-Z]+)/$', views.player, name='player'),
     url(r'^command/(?P<type>[a-zA-Z]+)/$', views.command, name='command'),    
-    url(r'^survey_post/$', views.survey_post, name='survey_post'),    
-    url(r'^get_search_results/$', views.get_search_results, name='get_search_results'),
     url(r'^player_complete/$', views.player_complete, name='player_complete'),
     url(r'^player_status_and_state/$', views.player_status_and_state, name='player_status_and_state'),
-    url(r'^select_albums_for_checkout/$', views.select_albums_for_checkout, name='select_albums_for_checkout'),
+    
     url(r'^admin/', include(admin.site.urls))
 ]
