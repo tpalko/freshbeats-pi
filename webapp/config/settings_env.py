@@ -3,7 +3,7 @@ from settings import *
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'HOST': '192.168.1.2',
+        'HOST': 'localhost',
         'NAME': 'beater',
         'USER': 'dev',
         'PASSWORD': 'dev'
@@ -11,7 +11,7 @@ DATABASES = {
 }
 
 #MUSIC_MOUNT = "/vagrant/mounts/music"
-SWITCHBOARD_SERVER_HOST = "192.168.1.2"
+SWITCHBOARD_SERVER_HOST = "frankenmint"
 SWITCHBOARD_SERVER_PORT = 3000
 BEATPLAYER_SERVER = 'http://alarmpi:9000' #192.168.33.11:9000'
 #PLAYLIST_WORKING_FOLDER = "/vagrant/mounts/beater_working"
