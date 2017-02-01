@@ -441,7 +441,10 @@ class FreshBeats:
 		#ps = subprocess.Popen('df -k'.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		#ps = subprocess.Popen(('grep ' + self.device_mount).split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+		
 		df_cmd = 'ssh %s@%s \'df\'' %(self.ssh_username, self.device_hostname)
+		logger.debug(df_cmd)
+
 		grep_emulated = 'grep emulated'
 		
 		ps = subprocess.Popen(df_cmd.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -450,10 +453,15 @@ class FreshBeats:
 		(out, err,) = ps.communicate(None)
 
 		if out:
+			logger.info("out:")
 			logger.error(out)
 
 		if err:
+			logger.info("err:")
 			logger.error(err)
+
+		if not out and not err:
+			logger.warn("no out or err!")
 
 		# - Filesystem               Size     Used     Free   Blksize
 		# - /mnt/shell/emulated     12G     8.5G     3.5G   4096
@@ -539,44 +547,50 @@ class FreshBeats:
 
 	def apply_plan(self, add_randoms=True):
 
-		# -- validate the plan
-		device_free_bytes = self.get_free_bytes()
-		margin = int(self.free_space_mb)*1024*1024
-		self.am = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
-		
-		self.am.validate_plan()
+		try:
 
-		if add_randoms:
-			self._pick_random_fill_albums()
+			# -- validate the plan
+			device_free_bytes = self.get_free_bytes()
+			margin = int(self.free_space_mb)*1024*1024
+			self.am = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
+			
+			self.am.validate_plan()
 
-		remove_albums = Album.objects.filter(action=Album.CHECKIN)
+			if add_randoms:
+				self._pick_random_fill_albums()
 
-		for r in remove_albums:
-			self.remove_album_from_device(r)
+			remove_albums = Album.objects.filter(action=Album.CHECKIN)
 
-		refresh_albums = Album.objects.filter(action=Album.REFRESH)
+			for r in remove_albums:
+				self.remove_album_from_device(r)
 
-		for u in refresh_albums:
-			self.remove_album_from_device(u)
-			self.copy_album_to_device(u)
+			refresh_albums = Album.objects.filter(action=Album.REFRESH)
 
-		add_albums = Album.objects.filter(action=Album.CHECKOUT)
+			for u in refresh_albums:
+				self.remove_album_from_device(u)
+				self.copy_album_to_device(u)
 
-		for a in add_albums:
-			self.copy_album_to_device(a)
+			add_albums = Album.objects.filter(action=Album.CHECKOUT)
 
-		nothing_albums = Album.objects.filter(action=Album.DONOTHING)
+			for a in add_albums:
+				self.copy_album_to_device(a)
 
-		for a in nothing_albums:
-			a.action = None
-			a.save()
+			nothing_albums = Album.objects.filter(action=Album.DONOTHING)
+
+			for a in nothing_albums:
+				a.action = None
+				a.save()
+		except:
+			logger.error(sys.exc_info()[0])
+			logger.error(sys.exc_info()[1])
+			traceback.print_tb(sys.exc_info()[2])
 
 @click.command()
 @click.option('--ingest', '-i', is_flag=True, help='Ingest new music on disk.')
 @click.option('--report', '-r', is_flag=True, help='Report on device status and copy plan.')
 @click.option('--apply_plan', '-a', is_flag=True, help='Apply copy plan to device.')
 @click.option('--pictures', '-p', is_flag=True, help='Pull pictures from device.')
-def main(ingest, mark, report, apply_plan, pictures):
+def main(ingest, report, apply_plan, pictures):
 
 	try:
 
