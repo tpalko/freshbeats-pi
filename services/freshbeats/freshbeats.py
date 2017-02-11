@@ -348,7 +348,7 @@ class FreshBeats:
 
 		logger.info("removing: %s %s" %(a.artist.name, a.name))
 
-		rm_statement = ['ssh', '%s@%s' % (self.ssh_username, self.device_hostname), 'rm -rf "%s"' %(os.path.join(self.beats_target_folder, a.artist.name, a.name))]
+		rm_statement = self._get_ssh_statement('rm -rf "%s"' %(os.path.join(self.beats_target_folder, a.artist.name, a.name)))
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -394,7 +394,7 @@ class FreshBeats:
 		
 		logger.info("adding folder: %s" %(artist_folder))
 
-		mkdir_statement = ['ssh', '%s@%s' %(self.ssh_username, self.device_hostname), '\'mkdir -p "%s"\'' % artist_folder]
+		mkdir_statement = self._get_ssh_statement("mkdir -p \"%s\"" % artist_folder)
 		logger.info(mkdir_statement)
 		
 		ps = subprocess.Popen(mkdir_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -403,7 +403,7 @@ class FreshBeats:
 		logger.debug('out: %s' % out)
 		logger.debug('err: %s' % err)
 
-		cp_statement = ['scp', '-r', self._get_storage_path(a), '%s@%s:"%s"' %(self.ssh_username, self.device_hostname, artist_folder)]
+		cp_statement = shlex.split('scp -r %s %s@%s:"%s"' %(self._get_storage_path(a), self.ssh_username, self.device_hostname, artist_folder))
 		logger.info(cp_statement)
 
 		ps = subprocess.Popen(cp_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -422,7 +422,8 @@ class FreshBeats:
 
 	def get_music_folders_on_device(self, target_folder):
 
-		find_folders_command = shlex.split("ssh %s@%s 'find %s -type d'" %(self.ssh_username, self.device_hostname, target_folder))
+		find_folders_command = self._get_ssh_statement("find %s -type d" %(target_folder))
+		
 		logger.info(find_folders_command)
 
 		ps = subprocess.Popen(find_folders_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, shell=True, executable='/bin/bash')
@@ -442,13 +443,13 @@ class FreshBeats:
 		#ps = subprocess.Popen(('grep ' + self.device_mount).split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 		
-		df_cmd = 'ssh %s@%s \'df\'' %(self.ssh_username, self.device_hostname)
+		df_cmd = self._get_ssh_statement("df")
 		logger.debug(df_cmd)
 
-		grep_emulated = 'grep emulated'
+		grep_emulated = shlex.split("grep emulated")
 		
-		ps = subprocess.Popen(df_cmd.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		ps = subprocess.Popen(grep_emulated.split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		ps = subprocess.Popen(df_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		ps = subprocess.Popen(grep_emulated, stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		
 		(out, err,) = ps.communicate(None)
 
@@ -482,6 +483,9 @@ class FreshBeats:
 		return size_in_bytes
 
 	# - END DEVICE
+
+	def _get_ssh_statement(self, command):
+		return shlex.split("ssh -i /home/tpalko/.ssh/id_rsa %s@%s '%s'" %(self.ssh_username, self.device_hostname, command))
 
 	def _get_sha1sum(self, root, filename):
 
