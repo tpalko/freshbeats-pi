@@ -485,7 +485,10 @@ class FreshBeats:
 	# - END DEVICE
 
 	def _get_ssh_statement(self, command):
-		return shlex.split("ssh -i /home/tpalko/.ssh/id_rsa %s@%s '%s'" %(self.ssh_username, self.device_hostname, command))
+		if self.ssh_key_path:
+			return shlex.split("ssh -i %s %s@%s '%s'" %(self.ssh_key_path, self.ssh_username, self.device_hostname, command))
+
+		return shlex.split("ssh %s@%s '%s'" %(self.ssh_username, self.device_hostname, command))
 
 	def _get_sha1sum(self, root, filename):
 
