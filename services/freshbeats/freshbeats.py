@@ -348,7 +348,7 @@ class FreshBeats:
 
 		logger.info("removing: %s %s" %(a.artist.name, a.name))
 
-		rm_statement = self._get_ssh_statement('rm -rf "%s"' %(os.path.join(self.beats_target_folder, a.artist.name, a.name)))
+		rm_statement = self._get_ssh_statement(r'rm -rf \"%s\"' %(os.path.join(self.beats_target_folder, a.artist.name, a.name)))
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -485,10 +485,15 @@ class FreshBeats:
 	# - END DEVICE
 
 	def _get_ssh_statement(self, command):
-		if self.ssh_key_path:
-			return shlex.split("ssh -i %s %s@%s '%s'" %(self.ssh_key_path, self.ssh_username, self.device_hostname, command))
 
-		return shlex.split("ssh %s@%s '%s'" %(self.ssh_username, self.device_hostname, command))
+		statement = ""
+
+		if self.ssh_key_path:
+			statement = "ssh -i %s %s@%s \"%s\"" %(self.ssh_key_path, self.ssh_username, self.device_hostname, command)
+		else:
+			statement = "ssh %s@%s \"%s\"" %(self.ssh_username, self.device_hostname, command)
+
+		return shlex.split(statement)
 
 	def _get_sha1sum(self, root, filename):
 
