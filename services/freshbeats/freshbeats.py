@@ -489,9 +489,9 @@ class FreshBeats:
 		statement = ""
 
 		if self.ssh_key_path:
-			statement = "ssh -i %s %s@%s \"%s\"" %(self.ssh_key_path, self.ssh_username, self.device_hostname, command)
+			statement = r"ssh -i %s %s@%s \"%s\"" %(self.ssh_key_path, self.ssh_username, self.device_hostname, command)
 		else:
-			statement = "ssh %s@%s \"%s\"" %(self.ssh_username, self.device_hostname, command)
+			statement = r"ssh %s@%s \"%s\"" %(self.ssh_username, self.device_hostname, command)
 
 		return shlex.split(statement)
 
