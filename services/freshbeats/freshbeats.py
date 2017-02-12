@@ -394,7 +394,7 @@ class FreshBeats:
 		
 		logger.info("adding folder: %s" %(artist_folder))
 
-		mkdir_statement = self._get_ssh_statement("mkdir -p \"%s\"" % artist_folder)
+		mkdir_statement = self._get_ssh_statement(r"mkdir -p \"%s\"" % artist_folder)
 		logger.info(mkdir_statement)
 		
 		ps = subprocess.Popen(mkdir_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -403,7 +403,7 @@ class FreshBeats:
 		logger.debug('out: %s' % out)
 		logger.debug('err: %s' % err)
 
-		cp_statement = shlex.split('scp -r %s %s@%s:"%s"' %(self._get_storage_path(a), self.ssh_username, self.device_hostname, artist_folder))
+		cp_statement = shlex.split(r'scp -r %s %s@%s:\"%s\"' %(self._get_storage_path(a), self.ssh_username, self.device_hostname, artist_folder))
 		logger.info(cp_statement)
 
 		ps = subprocess.Popen(cp_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
