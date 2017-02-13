@@ -95,3 +95,10 @@ Visit:
 
 	http://localhost:8000
 	
+# Future Development
+
+* acquisition timeline - horizontal scroll of albums (showing album cover) order chronologically to when in your past they are associated. could include the band's city/state/country of origin (flag would be nice).
+* fill in the gaps - a list of all artists with their full discography matched up with what is actually in the collection. would be a nice "shopping list" generator.
+* query online resource for upcoming concerts for artists of "loveit" albums
+* scrape google search results for recent news about "loveit" artists
+* query online resource to fix ID3 tags
