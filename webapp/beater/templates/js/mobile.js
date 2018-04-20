@@ -2,36 +2,17 @@ socket.on('device_output', function(data){
 	$("#device_output").html(data.out);
 });
 
-var opts = {
-  lines: 5 // The number of lines to draw
-, length: 56 // The length of each line
-, width: 5 // The line thickness
-, radius: 84 // The radius of the inner circle
-, scale: 0.25 // Scales overall size of the spinner
-, corners: 1 // Corner roundness (0..1)
-, color: '#000' // #rgb or #rrggbb or array of colors
-, opacity: 0.25 // Opacity of the lines
-, rotate: 18 // The rotation offset
-, direction: 1 // 1: clockwise, -1: counterclockwise
-, speed: 0.5 // Rounds per second
-, trail: 100 // Afterglow percentage
-, fps: 20 // Frames per second when using setTimeout() as a fallback for CSS
-, zIndex: 2e9 // The z-index (defaults to 2000000000)
-, className: 'spinner' // The CSS class to assign to the spinner
-, top: '50%' // Top position relative to parent
-, left: '50%' // Left position relative to parent
-, shadow: false // Whether to render a shadow
-, hwaccel: false // Whether to use hardware acceleration
-, position: 'absolute' // Element positioning
-}
-
 $(document).ready(function(){
 
-	var spinner = new Spinner(opts).spin();
+	var spinner = new Spinner(spinner_opts).spin();
 	$("#remainder_overlay").append(spinner.el);
 
+	var remainder_url = '{% url "fetch_remainder_albums" %}';
+
+	console.log("fetching: " + remainder_url);
+	
 	$.ajax({
-		url: '{% url "fetch_remainder_albums" %}',
+		url: remainder_url,
 		type: "GET",
 		dataType: "json",
 		success: function(data){
@@ -41,7 +22,7 @@ $(document).ready(function(){
 				"columns": [
 					{ "orderable": true, "width": "25%" },
 					{ "orderable": true, "width": "20%"  },
-					{ "orderable": false, "width": "15%"  },
+					{ "orderable": true, "width": "15%"  },
 					{ "orderable": true, "width": "15%"  },
 					{ "orderable": false, "width": "15%"  },
 					{ "orderable": false, "width": "10%"  },
@@ -119,27 +100,3 @@ $(document).on('click', '.album_checkout', function(e){
 		}
 	});
 });
-
-var album_songs_url = "{% url "album_songs" 0 %}";
-
-$(document).on('mouseover', '#remainder_albums td:nth-child(1)', function(e){
-
-	e.preventDefault();
-
-	var album_id = $(this).closest("tr").data('id');
-	var row = $(this).closest("tr");
-
-	if(row.attr("title") != undefined){
-		return;
-	}
-
-	$.ajax({
-		url: album_songs_url.replace(/0/, album_id),
-		type: "GET",
-		dataType: "json",
-		success: function(data){
-			$(row).attr("title", data);
-		}
-	});
-});
-

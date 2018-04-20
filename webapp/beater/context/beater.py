@@ -17,7 +17,7 @@ def switchboard_processor(request_context):
 	page_script_path = None
 
 	try:
-		page_script_path = "js/%s.js" %('/'.join([ p for p in request_context.path.split('/') if p ]))
+		page_script_path = "js/%s.js" %('/'.join([ p for p in request_context.path.split('/') if p and p != 'beater' ]))
 		render_to_string(page_script_path)
 	except:
 		logger.warn("page js at '%s' does not exist" % page_script_path)

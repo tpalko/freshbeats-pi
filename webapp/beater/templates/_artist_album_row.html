@@ -1,0 +1,7 @@
+<div class="row">
+	<div class="col-md-3 inline-edit" data-album_id="{{ album.id }}" data-form-method="PUT" data-form-action="{% url "update_album" album.id %}" data-input-name="album_name" data-callback="onAlbumUpdate">{{ album.name }}</div>
+	<div class="col-md-1">{% for status in album.albumstatus_set.all %}
+		<span class="label label-default">{{ status.status }}</span>
+	{% endfor %}						
+	</div>
+</div>

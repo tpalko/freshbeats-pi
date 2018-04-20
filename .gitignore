@@ -1,3 +1,4 @@
+music
 .vagrant
 .DS_Store
 ._.DS_Store
@@ -10,3 +11,6 @@ node_modules
 switchboard.log
 .idea
 venv/**/*
+services/freshbeats/config/settings.cfg
+webapp/config/settings_env.py
+webapp/src

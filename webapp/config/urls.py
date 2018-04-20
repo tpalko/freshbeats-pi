@@ -15,6 +15,8 @@ Including another URLconf
 """
 from django.conf.urls import url, include
 from django.contrib import admin
+from django.conf.urls.static import static
+from django.conf import settings
 from beater import views
 
 urlpatterns = [
@@ -22,11 +24,12 @@ urlpatterns = [
     url(r'^search/$', views.search, name='search'),
     url(r'^playlist/$', views.playlist, name='playlist'),
     url(r'^mobile/$', views.mobile, name='mobile'),
+    url(r'^manage/$', views.manage, name='manage'),
     url(r'^report/$', views.report, name='report'),
     url(r'^config/$', views.config, name='config'),
     url(r'^survey/$', views.survey, name='survey'),
     url(r'^albums/$', views.albums, name='albums'),
-    url(r'^album/(?P<albumid>[0-9]+)/$', views.album, name='album'),
+    
     
     #url(r'^album_filter/filter/(?P<filter>[a-z0-9]+)/$', views.album_filter),
     #url(r'^album_filter/letter/(?P<letter>[a-z0-9])/$', views.album_letter),   
@@ -34,8 +37,14 @@ urlpatterns = [
     url(r'^album/(?P<album_id>[0-9]+)/checkin/$', views.checkin, name='album_checkin'),
     url(r'^album/(?P<album_id>[0-9]+)/checkout/$', views.checkout, name='album_checkout'),
     url(r'^album/(?P<album_id>[0-9]+)/cancel/$', views.cancel, name='album_cancel'),
+    url(r'^album/(?P<album_id>[0-9]+)/flag/(?P<album_status>[a-z\s]+)/$', views.album_flag, name='album_flag'),    
     url(r'^album/(?P<album_id>[0-9]+)/songs/$', views.album_songs, name='album_songs'),
+    url(r'^album/(?P<album_id>[0-9]+)/$', views.update_album, name="update_album"),
+    url(r'^artist/(?P<artist_id>[0-9]+)/album/$', views.new_album, name="new_album"),
+    url(r'^artist/$', views.new_artist, name="new_artist"),
+    url(r'^album/(?P<albumid>[0-9]+)/$', views.get_album, name='get_album'),
     url(r'^remainder_albums/$', views.fetch_remainder_albums, name='fetch_remainder_albums'),
+    url(r'^fetch_manage_albums/$', views.fetch_manage_albums, name='fetch_manage_albums'),
     url(r'^survey_post/$', views.survey_post, name='survey_post'),    
     url(r'^get_search_results/$', views.get_search_results, name='get_search_results'),
     url(r'^apply_plan/$', views.apply_plan, name='apply_plan'),
@@ -48,5 +57,6 @@ urlpatterns = [
     url(r'^player_complete/$', views.player_complete, name='player_complete'),
     url(r'^player_status_and_state/$', views.player_status_and_state, name='player_status_and_state'),
     
-    url(r'^admin/', include(admin.site.urls))
+    url(r'^admin/', admin.site.urls),
+    #static(r'^%s/(?P<album_id>[0-9]+)/$' % settings.MEDIA_URL, views.album_art, document_root=settings.MEDIA_ROOT)
 ]

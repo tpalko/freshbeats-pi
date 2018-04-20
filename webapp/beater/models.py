@@ -2,11 +2,19 @@ from __future__ import unicode_literals
 
 from django.db import models
 
+class AlbumManager(models.Manager):
+
+	def get_queryset(self):
+		return super(AlbumManager, self).get_queryset().filter(deleted=False)
+
 class Artist(models.Model):
 
 	name = models.CharField(max_length=255)
 	created_at = models.DateTimeField(auto_now_add = True)
 	updated_at = models.DateTimeField(auto_now = True)
+
+	def __unicode__(self):
+		return self.name
 
 class Album(models.Model):
 
@@ -41,17 +49,23 @@ class Album(models.Model):
 		(UNDECIDED, 'Undecided'),
 		(UNRATED, 'Unrated')
 	)
+
+	objects = AlbumManager()
 	
-	artist = models.ForeignKey(Artist, null=True)
+	artist = models.ForeignKey(Artist, null=True, on_delete=models.CASCADE)
 	name = models.CharField(max_length=255)
-	tracks = models.IntegerField()
+	tracks = models.IntegerField(default=0)
 	audio_size = models.BigIntegerField(default=0)
 	total_size = models.BigIntegerField(default=0)
 	old_total_size = models.BigIntegerField(null=True)
 	rating = models.CharField(max_length=20, choices=ALBUM_RATING_CHOICES, null=False, default=UNRATED)
 	sticky = models.BooleanField(null=False, default=False)
+	rip = models.BooleanField(null=False, default=False)
+	owned = models.BooleanField(null=False, default=False)
+	wanted = models.BooleanField(null=False, default=False)
 	action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)	
 	request_priority = models.IntegerField(null=False, default=1)
+	deleted = models.BooleanField(null=False, default=False)
 	created_at = models.DateTimeField(auto_now_add = True)
 	updated_at = models.DateTimeField(auto_now = True)
 
@@ -90,36 +104,46 @@ class Album(models.Model):
 		albumstatus = self.albumstatus_set.filter(status=status)
 		albumstatus.delete()
 
+	def __unicode__(self):
+		return self.name
+
 class AlbumStatus(models.Model):
 
 	INCOMPLETE='incomplete'
 	MISLABELED='mislabeled'
-	RIPPINGPROBLEM='ripping problem'
+	RIPPINGPROBLEM='rip'	
+	OWNED = 'owned'
+	FOLLOW = 'follow'
 
 	ALBUM_STATUS_CHOICES = (
 		(INCOMPLETE, 'The album is incomplete'),
 		(MISLABELED, 'The album is mislabeled'),
-		(RIPPINGPROBLEM, 'The album has ripping problems')
+		(RIPPINGPROBLEM, 'The album has ripping problems'),		
+		(OWNED, 'The album exists materially'),
+		(FOLLOW, 'The artist is of particular interest')
 	)
 
-	album = models.ForeignKey(Album)
+	album = models.ForeignKey(Album, on_delete=models.CASCADE)
 	status = models.CharField(max_length=20, choices=ALBUM_STATUS_CHOICES, null=False)
 
 class Song(models.Model):
-	album = models.ForeignKey(Album)
+	album = models.ForeignKey(Album, on_delete=models.CASCADE)
 	name = models.CharField(max_length=255)
 	sha1sum = models.CharField(max_length=40, null=True)
 
 	class Meta:
 		ordering = ('name',)
 
+	def __unicode__(self):
+		return self.name
+
 class AlbumCheckout(models.Model):
-	album = models.ForeignKey(Album)
+	album = models.ForeignKey(Album, on_delete=models.CASCADE)
 	checkout_at = models.DateTimeField()
 	return_at = models.DateTimeField(null=True)
 	
 class PlaylistSong(models.Model):
-	song = models.ForeignKey(Song)
+	song = models.ForeignKey(Song, on_delete=models.CASCADE)
 	is_current = models.BooleanField(null=False, default=False)
 	played = models.BooleanField(null=False, default=False)
 	created_at = models.DateTimeField(auto_now_add=True)

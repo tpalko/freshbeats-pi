@@ -1,7 +1,6 @@
 from os.path import join, getsize
 import shlex
 import subprocess
-import subprocess32
 import logging
 import re
 import math

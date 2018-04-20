@@ -18,7 +18,7 @@
 
 	<body>
 
-		<div class="container">
+		<div class="container-fluid">
 
 			<div class="row">
 				<div class="col-md-12">
@@ -29,11 +29,10 @@
 			<div class="row">
 
 				<div class="col-md-12">					
-					<a class="btn btn-info" href="{% url "search" %}">search</a>
-					<a class="btn btn-info" href="{% url "playlist" %}">playlist</a>
+					<a class="btn btn-info" href="{% url "search" %}">search</a>					
 					<a class="btn btn-info" href="{% url "mobile" %}">mobile</a>
+					<a class="btn btn-info" href="{% url "manage" %}">manage</a>
 					<a class="btn btn-info" href="{% url "report" %}">report</a>
-					<a class="btn btn-info" href="{% url "config" %}">config</a>
 					<a class="btn btn-info" href="{% url "survey" %}">survey</a>
 					<a class="command btn btn-primary" endpoint="player" command="surprise" href="#">surprise me</a> 
 					<a class="command btn btn-primary" endpoint="player" command="playlist" href="#">playlist</a> 					
@@ -70,6 +69,29 @@
 		<script type="text/javascript" src="{% static "socket.io.js" %}"></script>
 		
 		<script type="text/javascript">
+
+			var spinner_opts = {
+				  lines: 5 // The number of lines to draw
+				, length: 56 // The length of each line
+				, width: 5 // The line thickness
+				, radius: 84 // The radius of the inner circle
+				, scale: 0.25 // Scales overall size of the spinner
+				, corners: 1 // Corner roundness (0..1)
+				, color: '#000' // #rgb or #rrggbb or array of colors
+				, opacity: 0.25 // Opacity of the lines
+				, rotate: 18 // The rotation offset
+				, direction: 1 // 1: clockwise, -1: counterclockwise
+				, speed: 0.5 // Rounds per second
+				, trail: 100 // Afterglow percentage
+				, fps: 20 // Frames per second when using setTimeout() as a fallback for CSS
+				, zIndex: 2e9 // The z-index (defaults to 2000000000)
+				, className: 'spinner' // The CSS class to assign to the spinner
+				, top: '50%' // Top position relative to parent
+				, left: '50%' // Left position relative to parent
+				, shadow: false // Whether to render a shadow
+				, hwaccel: false // Whether to use hardware acceleration
+				, position: 'absolute' // Element positioning
+			};
 
 			var tabs;
 			var socket;
@@ -110,6 +132,93 @@
 			        // or any other URL that isn't scheme relative or absolute i.e relative.
 			        !(/^(\/\/|http:|https:).*/.test(url));
 			}
+
+			var album_songs_url = "{% url "album_songs" 0 %}";
+
+			$(document).on('blur', "input.blurpost", function(e) {
+				e.preventDefault();
+
+				var input = $(this);
+
+				if(input.val().trim() == '') {
+					return false;
+				}
+
+				var form = $(this).closest('form');				
+				var callback = $(this).data("callback");	
+
+				var savedro = $(form).find(".savero");
+				var savedroEl;
+				
+				if (savedro.length > 0) {
+					var savedroEl = $.parseHTML(savedro.html().replace(/^<!--/, '').replace(/-->$/, ''));	
+					$(savedro).remove();
+				}	
+
+				$.ajax({
+					url: $(form).attr('action'),
+					data: $(form).serialize(),
+					type: $(form).attr("method"),
+					dataType: "json",		
+					success: function(data, textStatus, jqXHR) {
+						if (savedroEl) {
+							$(form).replaceWith(savedroEl);
+						}
+						window[callback](data);	
+						$(e.target).val("");					
+					},
+					error: function(jqXHR, textStatus, errorThrown) {
+						$("<div />").addClass('error').text(errorThrown).appendTo($(form));
+					}
+				});
+				return false;
+			});
+
+			$(document).on('click', '.inline-edit', function(e){
+
+				var savero = $("<div />").append($(this).clone()).html();
+
+				var newForm = $("<form />").attr("method", $(this).data("form-method")).attr("action", $(this).data("form-action"));
+
+				var newInput = $("<input />").attr("type", "text").attr("name", $(this).data("input-name")).addClass("blurpost").addClass("col-md-3").attr("data-callback", $(this).data("callback")).attr("value", $(this).text());
+
+				$(newInput).appendTo(newForm);
+				$("<span />").addClass('savero').html("<!--" + savero + "-->").appendTo(newForm);
+				$(this).replaceWith(newForm);
+
+				$(newInput).focus();
+
+			});
+
+			$(document).on('mouseover', '.album', function(e){
+
+				e.preventDefault();
+
+				var album_id = $(this).closest("tr").data('id');
+
+				if(album_id == undefined){
+					album_id = $(this).data('id');
+				}
+
+				if(album_id == undefined){
+					return;
+				}
+				
+				var row = $(this).closest("tr");
+
+				if(row.attr("title") != undefined){
+					return;
+				}
+
+				$.ajax({
+					url: album_songs_url.replace(/0/, album_id),
+					type: "GET",
+					dataType: "json",
+					success: function(data){
+						$(row).attr("title", data);
+					}
+				});
+			});
 
 			$.ajaxSetup({
 			    beforeSend: function(xhr, settings) {

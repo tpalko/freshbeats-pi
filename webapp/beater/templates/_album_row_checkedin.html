@@ -1,7 +1,7 @@
 {% load beater %}
 
 <tr data-id="{{ album.id }}">
-	<td>{{ album.name }}</td>
+	<td class="album">{{ album.name }}</td>
 	<td>{{ album.artist.name }}</td>
 	<td>{{ album.tracks }}</td>
 	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>

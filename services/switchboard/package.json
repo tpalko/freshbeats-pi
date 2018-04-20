@@ -1,5 +1,6 @@
 {
   "name": "switchboard",
+  "repository": "http://palkosoftware.ddns.net/repo",
   "preferGlobal": false,
   "version": "0.1.0",
   "author": "C. A. Cois <cacois@sei.cmu.edu>",

@@ -1,0 +1,19 @@
+{% load beater %}
+
+<tr data-id="{{ album.id }}">
+	<td class="album">{{ album.name }}</td>
+	<td>
+		{{ artist.name }}
+		{{ MEDIA_URL }}
+	</td>
+	<td>{{ album.tracks }}</td>
+	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>	
+	<td>
+		{% for status_choice in status_choices %}
+			<a href="{% url "album_flag" album.id status_choice.0 %}" class="btn {% if album_statuses|map:"status"|contains:status_choice.0 %}btn-info{% else %}btn-default{% endif %} album_flag">
+				{{ status_choice.0 }}
+			</a>
+		{% endfor %}
+		
+	</td>
+</tr>

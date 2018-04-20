@@ -9,11 +9,11 @@ import random
 import logging
 import traceback
 import datetime
-from ConfigParser import ConfigParser
+import configparser
 import re
 import math
-from device import DeviceManager
-from checkout import AlbumManager
+from .device import DeviceManager
+from .checkout import AlbumManager
 import click
 import hashlib
 
@@ -38,18 +38,21 @@ logging.basicConfig(
 #fresh_logger = logging.StreamHandler()
 
 logger = logging.getLogger('FreshBeats')
+logger.setLevel(logging.INFO)
 
 django_logger = logging.getLogger('django')
 django_logger.setLevel(logging.INFO)
 requests_logger = logging.getLogger('requests')
 requests_logger.setLevel(logging.INFO)
+urllib3_logger = logging.getLogger('urllib3')
+urllib3_logger.setLevel(logging.WARN)
 
 #name_logger = logging.getLogger(__name__)
 
 '''
 # mount -t vfat /dev/sdb /mnt/phone -o uid=1000,gid=1000,utf8,dmask=027,fmask=137
 
-productid 
+productid
 	708B - windows phone portal
 	7089 - windows media sync
 	7087 - usb mass storage
@@ -83,7 +86,7 @@ device mounted at:
 
 plug in android device
 ensure device is connected MTP
-ensure device shows as mounted 
+ensure device shows as mounted
 $ gvfs-mount -li | grep Android -A10
 create mount point
 $ sudo mkidr /media/android
@@ -139,18 +142,18 @@ class FreshBeats:
 		#found_on_device_no_subfolder = []
 
 		for folder_path in folders_on_device:
-			
+
 			#logger.debug("Folder found: %s" % folder_path)
 
 			tup = folder_path.split('/')
-			
+
 			if len(tup) < 2:
 				#found_on_device_no_subfolder.append(folder_path)
 				continue
-			
+
 			artist = tup[-2]
-			album = tup[-1]				
-		
+			album = tup[-1]
+
 			artist_matches = Artist.objects.filter(name=artist)
 
 			if len(artist_matches) > 1:
@@ -167,7 +170,7 @@ class FreshBeats:
 			logger.warn("%s folders found without proper structure to perform lookup" % len(found_on_device_no_subfolder))
 			logger.warn(found_on_device_no_subfolder)
 		'''
-		
+
 		if len(found_on_device) == 0:
 			logger.warn("No albums found on device")
 		else:
@@ -178,8 +181,8 @@ class FreshBeats:
 			logger.info("Albums on Device")
 
 			for a in found_on_device:
-				checked_out = a.current_albumcheckout() is not None 
-				logger.info("{0:<{1}} {2:<{3}} {4:>32} {5:>10}".format(a.name.encode('utf-8'), max_album, a.artist.name.encode('utf-8'), max_artist, a.action, "checked-out" if checked_out else "-")) 
+				checked_out = a.current_albumcheckout() is not None
+				logger.info("{0:<{1}} {2:<{3}} {4:>32} {5:>10}".format(a.name.encode('utf-8'), max_album, a.artist.name.encode('utf-8'), max_artist, a.action, "checked-out" if checked_out else "-"))
 
 		action_albums = Album.objects.filter(~Q(action=Album.DONOTHING), action__isnull=False)
 		if len(action_albums) > 0:
@@ -188,8 +191,8 @@ class FreshBeats:
 		checkout_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT) | Q(action=Album.REQUESTCHECKOUT)) ])
 		refresh_size = sum([ a.total_size - a.old_total_size for a in action_albums.filter(Q(action=Album.REFRESH)) ])
 		checkin_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
-		
-		logger.info("Albums in Plan")		
+
+		logger.info("Albums in Plan")
 		for a in action_albums:
 			logger.info("{0:<{1}} / {2:<{3}}: {4:>32}".format(a.name.encode('utf-8'), max_album, a.artist.name.encode('utf-8'), max_artist, a.action))
 
@@ -200,22 +203,22 @@ class FreshBeats:
 		direction = "out" if net >= 0 else "in"
 		logger.info("Net: {0} MB {1}".format(abs(net)/(1024*1024), direction))
 
-	def update_db(self):
+	def update_db(self, sha1_scan=False):
 
 		try:
 
 			for root, dirs, files in os.walk(self.music_path):
 
 				if all(f in self.skip_files for f in files):
-					logger.debug("	%s: all files skipped" % root)
+					logger.debug("%s: all files skipped" % root)
 					continue
 
 				parts = root.split('/')
 
-				album = parts[-1].strip()
-				artist = parts[-2].strip()	
+				album_name = parts[-1].strip()
+				artist = parts[-2].strip()
 
-				logger.debug("%s / %s" %(artist, album))
+				logger.info("%s / %s" %(artist, album_name))
 
 				if '/'.join(parts[0:-2]) != self.music_path and artist != self.music_folder and '/'.join(parts) != self.music_path:
 					logger.warn("	Path too deep - skipping - : %s" %('/'.join(parts)))
@@ -230,16 +233,16 @@ class FreshBeats:
 				if tracks == 0:
 					logger.debug("	No tracks - skipping")
 					continue
-					
+
 				total_size = sum(getsize(join(root, name)) for name in all_files)
 				audio_size = sum(getsize(join(root, name)) for name in music_files)
 
 				# -- files in the root of the artist folder, i.e. not in an album folder
 				if artist == self.music_folder:
 					logger.debug("	Only one level deep - no album")
-					artist = album
-					album = 'no album'	
-				
+					artist = album_name
+					album_name = 'no album'
+
 				artist_match = None
 
 				try:
@@ -249,7 +252,7 @@ class FreshBeats:
 
 				if artist_match is None:
 
-					logger.debug("	New Artist: %s" % artist)
+					logger.info("	New Artist: %s" % artist)
 
 					artist_match = Artist(name=artist)
 					artist_match.save()
@@ -258,48 +261,50 @@ class FreshBeats:
 				updated_existing_album = False
 
 				try:
-					
-					possible_album_match = Album.objects.get(artist=artist_match, name=album)
+
+					possible_album_match = Album.objects.get(artist=artist_match, name=album_name)
 
 				except Album.DoesNotExist as d:
 
 					pass # - it's OK
 
+				album = None
+
 				if possible_album_match is None:
 
-					logger.debug("	New Album: %s" % album)
+					logger.info("	New Album: %s" % album_name)
 
-					a = Album(artist=artist_match, name=album, tracks=0, total_size=total_size, audio_size=0, old_total_size=0, rating=Album.UNRATED)
-					a.save()
+					album = Album(artist=artist_match, name=album_name, tracks=0, total_size=total_size, audio_size=0, old_total_size=0, rating=Album.UNRATED)
+					album.save()
 
 				else:
 
-					a = possible_album_match
+					album = possible_album_match
 
 					# - why True? forcing all albums to update?
-					if int(a.tracks) != len(music_files) or int(a.total_size) != int(total_size) or int(a.audio_size) != int(audio_size):
+					if int(album.tracks) != len(music_files) or int(album.total_size) != int(total_size) or int(album.audio_size) != int(audio_size):
 
-						logger.debug("	Updating this album (hardcoded or for a following reason:)")
+						logger.info("	Updating this album (hardcoded or for a following reason:)")
 
-						if int(a.tracks) != len(music_files):
-							logger.info("Track count: %s/%s" %(int(a.tracks), len(music_files)))
-						if int(a.total_size) != int(total_size):
-							logger.info("Total size: %s/%s" %(int(a.total_size), int(total_size)))
-						if int(a.audio_size) != int(audio_size):
-							logger.info("Audio size: %s/%s" %(int(a.audio_size), int(audio_size)))
+						if int(album.tracks) != len(music_files):
+							logger.info("		Track count: %s/%s" %(int(album.tracks), len(music_files)))
+						if int(album.total_size) != int(total_size):
+							logger.info("		Total size: %s/%s" %(int(album.total_size), int(total_size)))
+						if int(album.audio_size) != int(audio_size):
+							logger.info("		Audio size: %s/%s" %(int(album.audio_size), int(audio_size)))
 
 						updated_existing_album = True
 
-						a.tracks = 0
-						a.old_total_size = a.total_size
-						a.total_size = total_size
-						a.audio_size = 0
+						album.tracks = 0
+						album.old_total_size = album.total_size
+						album.total_size = total_size
+						album.audio_size = 0
 
 						# - keep statuses!
 
-						a.save()
+						album.save()
 
-						for song in a.song_set.all():
+						for song in album.song_set.all():
 							song.delete()
 
 				# - if new, or we made any changes to the album, rewrite the song records
@@ -307,32 +312,62 @@ class FreshBeats:
 				if possible_album_match is None or updated_existing_album:
 
 					for f in music_files:
-						
+
 						song_sha1sum = self._get_sha1sum(root, f)
 
-						#logger.debug("%s: %s - %s" %(a.name, f.encode('utf-8'), song_sha1sum))
+						#logger.debug("%s: %s - %s" %(album.name, f.encode('utf-8'), song_sha1sum))
 
-						s = Song(album=a, name=f, sha1sum=song_sha1sum)
+						s = Song(album=album, name=f, sha1sum=song_sha1sum)
 						s.save()
 
-						a.tracks += 1
-						a.audio_size += getsize(join(root, f))
+						album.tracks += 1
+						album.audio_size += getsize(join(root, f))
 
-						a.save()
+						album.save()
 
-					if possible_album_match is None :
-						logger.info("Inserted %s %s" %(artist, album))
+					if possible_album_match is None:
+						logger.info("	Inserted %s %s" %(album.artist, album))
 					elif updated_existing_album:
-						logger.info("Updated %s %s" %(artist, album))
+						logger.info("	Updated %s %s" %(album.artist, album))
+
+				elif sha1_scan:
+
+					for f in music_files:
+
+						song_sha1sum = self._get_sha1sum(root, f)
+
+						try:
+							logger.debug("	Looking for album %s song %s in DB.." %(album, f))
+							song = Song.objects.get(album=album, name=f)
+						except Song.DoesNotExist as d:
+							pass
+
+						if song.sha1sum != song_sha1sum:
+							song.sha1sum = song_sha1sum
+							song.save()
+							logger.info("	Updated SHA1 for %s (%s %s)" %(song, artist, album))
 
 			# - when we're all said and done adding, delete albums that cannot be found on disk (if they've never been checked-out)
-			albums = Album.objects.filter(albumcheckout__isnull=True)
+			albums = Album.objects.filter(albumcheckout__isnull=True, albumstatus__status=AlbumStatus.WANTED)
+
+			logger.info("Hard deleting albums never checked-out..")
 
 			for a in albums:
 
 				if not os.path.exists(self._get_storage_path(a)):
-					a.delete()
-					logger.info("Deleted %s %s" %(a.artist, a.name))
+					#a.delete()
+					logger.info("	Deleted %s %s" %(a.artist, a.name))
+
+			albums = Album.objects.all()
+
+			logger.info("Soft deleting other albums..")
+
+			for a in albums:
+
+				if not os.path.exists(self._get_storage_path(a)):
+					a.deleted = True
+					a.save()
+					logger.info("	Soft-Deleted %s %s" %(a.artist.name.encode('utf-8'), a.name.encode('utf-8')))
 
 		except:
 
@@ -346,9 +381,9 @@ class FreshBeats:
 
 	def remove_album_from_device(self, a):
 
-		logger.info("removing: %s %s" %(a.artist.name, a.name))
+		logger.info("removing: %s %s" %(a.artist.name.encode('utf-8'), a.name.encode('utf-8')))
 
-		rm_statement = self._get_ssh_statement("rm -rf \"%s\"" %(os.path.join(self.beats_target_folder, a.artist.name, a.name)))
+		rm_statement = self._get_ssh_statement(r'rm -rf \"%s\"' %(os.path.join(self.beats_target_folder, a.artist.name.encode('utf-8'), a.name.encode('utf-8'))))
 		ps = subprocess.Popen(rm_statement)
 		(out,err,) = ps.communicate(None)
 
@@ -383,7 +418,7 @@ class FreshBeats:
 
 			logger.info(out)
 
-			if err:				
+			if err:
 				logger.error(err)
 
 			logger.debug("Copy code: %s" % ps.returncode)
@@ -391,28 +426,40 @@ class FreshBeats:
 	def copy_album_to_device(self, a):
 
 		artist_folder = os.path.join(self.beats_target_folder, a.artist.name) #join(self.device_mount, self.beats_target_folder, a.artist)
-		
-		logger.info("adding folder: %s" %(artist_folder))
 
-		mkdir_statement = self._get_ssh_statement(r"mkdir -p \"%s\"" % artist_folder)
+		logger.info("adding folder: \"%s\"" %(artist_folder.encode('utf-8')))
+
+		mkdir_statement = self._get_ssh_statement(r'mkdir -p \"%s\"' % artist_folder)
 		logger.info(mkdir_statement)
-		
+
 		ps = subprocess.Popen(mkdir_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		(out,err,) = ps.communicate(None)
 
-		logger.debug('out: %s' % out)
-		logger.debug('err: %s' % err)
+		logger.info(out)
 
-		cp_statement = self._get_scp_statement(r"%s" %(self._get_storage_path(a)), r"\"%s\"" %(artist_folder))
-		logger.info(cp_statement)
+		if err:
+			logger.error(err)
 
-		ps = subprocess.Popen(cp_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		storage_path = self._get_storage_path(a)
+		logger.debug("storage path: %s" % storage_path.encode('utf-8'))
+
+		modified_artist_folder = artist_folder.replace(' ', r'\ ').replace("'", r'\'').replace("&", r'\&')
+		logger.debug("modified artist folder: %s" % modified_artist_folder.encode('utf-8'))
+
+		cp_statement = 'scp -r "%s" %s@%s:"%s/"' %(storage_path, self.ssh_username, self.device_hostname, modified_artist_folder)
+		logger.debug(cp_statement.encode('utf-8'))
+
+		ps = subprocess.Popen(shlex.split(cp_statement.encode('utf-8')), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		(out,err,) = ps.communicate(None)
 
-		logger.debug('out: %s' % out)
-		logger.debug('err: %s' % err)
+		logger.info(out)
 
-		logger.info("Add code: %s" % ps.returncode)
+		err = err.replace("void endpwent()(3) is not implemented on Android\n", "")
+
+		if err != "":
+			raise Exception("'%s'" % err)
+
+		logger.debug("Add code: %s" % ps.returncode)
 
 		if ps.returncode == 0:
 			ac = AlbumCheckout(album=a, checkout_at=timezone.now())
@@ -422,8 +469,8 @@ class FreshBeats:
 
 	def get_music_folders_on_device(self, target_folder):
 
-		find_folders_command = self._get_ssh_statement("find %s -type d" %(target_folder))
-		
+		find_folders_command = self._get_ssh_statement(r'find \"%s\" -type d' %(target_folder))
+
 		logger.info(find_folders_command)
 
 		ps = subprocess.Popen(find_folders_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, shell=True, executable='/bin/bash')
@@ -437,21 +484,40 @@ class FreshBeats:
 
 		return folders
 
+	def is_album_on_device(self, album):
+
+		artist_folder = os.path.join(self.beats_target_folder, album.artist.name, album.name)
+
+		find_album_command = self._get_ssh_statement(r'find \"%s\"' %(artist_folder))
+		get_line_count_command = self._get_ssh_statement(r'wc -l')
+
+		ps_find = subprocess.Popen(find_album_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		ps_count = subprocess.Popen(get_line_count_command, stdin=ps_find.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		(out_count,err_count,) = ps_count.communicate(None)
+		(out_find,err_find,) = ps_find.communicate(None)
+
+		return int(out_count) > 1
+
 	def get_free_bytes(self):
 
 		#ps = subprocess.Popen('df -k'.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		#ps = subprocess.Popen(('grep ' + self.device_mount).split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-		
 		df_cmd = self._get_ssh_statement("df")
 		logger.debug(df_cmd)
 
 		grep_emulated = shlex.split("grep emulated")
-		
-		ps = subprocess.Popen(df_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		ps = subprocess.Popen(grep_emulated, stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		
-		(out, err,) = ps.communicate(None)
+		logger.debug(grep_emulated)
+
+		ps1 = subprocess.Popen(df_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		ps2 = subprocess.Popen(grep_emulated, stdin=ps1.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		(out1, err1,) = ps1.communicate(None)
+		(out, err,) = ps2.communicate(None)
+
+		logger.debug("ssh return code: %s" % ps1.returncode)
+		logger.debug("grep return code: %s" % ps2.returncode)
 
 		if out:
 			logger.info("out:")
@@ -462,7 +528,7 @@ class FreshBeats:
 			logger.error(err)
 
 		if not out and not err:
-			logger.warn("no out or err!")
+			raise Exception("no out or err in get_free_bytes!")
 
 		# - Filesystem               Size     Used     Free   Blksize
 		# - /mnt/shell/emulated     12G     8.5G     3.5G   4096
@@ -479,7 +545,7 @@ class FreshBeats:
 		size_in_bytes = int(math.floor(float(size)*unit_multiplier[unit]))
 
 		logger.debug("free space: %s (%s bytes)" % (free, size_in_bytes))
-		
+
 		return size_in_bytes
 
 	# - END DEVICE
@@ -493,18 +559,25 @@ class FreshBeats:
 		else:
 			statement = "scp -r \"%s\" %s@%s:\"%s\"" %(source, self.ssh_username, self.device_hostname, dest)
 
-		return shlex.split(statement)		
+		return shlex.split(statement)
 
 	def _get_ssh_statement(self, command):
 
 		statement = ""
 
-		if self.ssh_key_path:
-			statement = "ssh -i %s %s@%s \"%s\"" %(self.ssh_key_path, self.ssh_username, self.device_hostname, command)
-		else:
-			statement = "ssh %s@%s \"%s\"" %(self.ssh_username, self.device_hostname, command)
+		user = self._whoami()
 
-		return shlex.split(statement)
+		ssh_key = ''
+
+		if user == 'www-data':
+			ssh_key = "-i %s" % self.ssh_key_path
+
+		if self.ssh_key_path:
+			statement = r'ssh %s -o StrictHostKeyChecking=no %s@%s "%s"' %(ssh_key, self.ssh_username, self.device_hostname, command)
+		else:
+			statement = 'ssh %s@%s %s' %(self.ssh_username, self.device_hostname, command)
+
+		return shlex.split(statement.encode('utf-8'))
 
 	def _get_sha1sum(self, root, filename):
 
@@ -518,7 +591,7 @@ class FreshBeats:
 		        sha1.update(data)
 
 		song_sha1sum = sha1.hexdigest()
-		
+
 		return song_sha1sum
 
 	def _get_storage_path(self, album):
@@ -533,11 +606,11 @@ class FreshBeats:
 		# - we want to keep at least one mix-it-up-rated album
 		# - if we aren't renewing one, pick one to check out
 		any_kept_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True).exists()
-		
+
 		if not any_kept_mixins:
 
 			new_mixins = Album.objects.filter((Q(albumcheckout__isnull=True) | (Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=False))), rating=Album.MIXITUP)
-			new_mixin_list = list(new_mixins)				
+			new_mixin_list = list(new_mixins)
 
 			if len(new_mixin_list) > 0:
 				new_mixin = random.choice(new_mixin_list)
@@ -548,7 +621,7 @@ class FreshBeats:
 		loveit_albums = Album.objects.filter(rating=Album.LOVEIT, action=None)
 		never_checked_out_albums = Album.objects.filter(albumcheckout__isnull=True, action=None)
 		unrated_albums = Album.objects.filter(rating=Album.UNRATED, action=None, albumstatus__isnull=True)
-		
+
 		album_lists = [loveit_albums, never_checked_out_albums, unrated_albums]
 
 		fails = 10
@@ -562,13 +635,13 @@ class FreshBeats:
 			logger.info("Registering a random album...")
 			if not self.am.checkout_album(album):
 				fails = fails - 1
-				logger.warn("Rejected checkout of %s/%s - attempts left: %s" % (album.artist.name, album.name, fails))				
+				logger.warn("Rejected checkout of %s/%s - attempts left: %s" % (album.artist.name, album.name, fails))
 			if fails <= 0:
 				break
 
 		self.am.send_status_to_logger()
 
-	def apply_plan(self, add_randoms=True):
+	def apply_plan(self, new_randoms=True):
 
 		try:
 
@@ -576,10 +649,10 @@ class FreshBeats:
 			device_free_bytes = self.get_free_bytes()
 			margin = int(self.free_space_mb)*1024*1024
 			self.am = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
-			
+
 			self.am.validate_plan()
 
-			if add_randoms:
+			if new_randoms:
 				self._pick_random_fill_albums()
 
 			remove_albums = Album.objects.filter(action=Album.CHECKIN)
@@ -592,6 +665,16 @@ class FreshBeats:
 			for u in refresh_albums:
 				self.remove_album_from_device(u)
 				self.copy_album_to_device(u)
+
+			sticky_albums = Album.objects.filter(sticky=True)
+
+			for s in sticky_albums:
+				#self.remove_album_from_device(s)
+				if not self.is_album_on_device(s):
+					logger.info("Sticky album %s missing" % s)
+					self.copy_album_to_device(s)
+				else:
+					logger.info("Sticky album %s already present, moving on.." % s)
 
 			add_albums = Album.objects.filter(action=Album.CHECKOUT)
 
@@ -608,22 +691,37 @@ class FreshBeats:
 			logger.error(sys.exc_info()[1])
 			traceback.print_tb(sys.exc_info()[2])
 
+	def _whoami(self):
+
+		ps = subprocess.Popen(shlex.split("whoami"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		(out, err,) = ps.communicate(None)
+
+		if err:
+			logger.error(err)
+		#logger.info("I am out: %s" % out)
+		#logger.info("I am err: %s" % err)
+
+		return out
+
 @click.command()
 @click.option('--ingest', '-i', is_flag=True, help='Ingest new music on disk.')
+@click.option('--sha1_scan', '-s', is_flag=True, help='Test existing songs for SHA1 match.')
 @click.option('--report', '-r', is_flag=True, help='Report on device status and copy plan.')
 @click.option('--apply_plan', '-a', is_flag=True, help='Apply copy plan to device.')
+@click.option('--new_randoms', '-n', is_flag=True, help='Try to fit new random albums during "apply".')
 @click.option('--pictures', '-p', is_flag=True, help='Pull pictures from device.')
-def main(ingest, report, apply_plan, pictures):
+@click.option('--free', '-f', is_flag=True, help='Show device free information.')
+def main(ingest, sha1_scan, report, apply_plan, new_randoms, pictures, free):
 
 	try:
 
 		f = FreshBeats()
 
 		if ingest:
-			f.update_db()
-		
+			f.update_db(sha1_scan=sha1_scan)
+
 		if apply_plan:
-			f.apply_plan()
+			f.apply_plan(new_randoms=new_randoms)
 
 		if report:
 			logger.info("Reporting!")
@@ -631,6 +729,9 @@ def main(ingest, report, apply_plan, pictures):
 
 		if pictures:
 			f.pull_photos()
+
+		if free:
+			f.get_free_bytes()
 
 	except:
 		logger.error(sys.exc_info()[0])
