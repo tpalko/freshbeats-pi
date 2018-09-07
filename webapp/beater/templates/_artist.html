@@ -7,7 +7,13 @@
 			{% endfor %}
 		</div>
 		<form id="new_album_form" method="POST" action='{% url "new_album" artist.id %}'>
-			Add Album: <input id="album_name" class="blurpost" data-callback="onAlbumAdd" type="text" name="album_name" value="" />			
+			Add Album: <input
+										id="album_name"
+										class="blurpost"
+										data-callback="onAlbumAdd"
+										type="text"
+										name="album_name"
+										value="" />			
 		</form>
 	</div>
 </div>

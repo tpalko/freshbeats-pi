@@ -1,5 +1,27 @@
+h1, h2, h3, h4, h5, h6 {
+	margin: 0;
+}
+
+.title {
+	background-color: #633;
+	color: #3cf;
+	padding: 1em;
+}
+
+.title h2 {
+	margin: 0;
+}
+
+#remainder_albums {
+	table-layout: fixed;
+}
+
+#remainder_albums td {
+	word-wrap: break-word;
+}
+
 #errors{
-	
+
 	text-align: center;
 	//background-color: #fcc;
 	color: #f00;
@@ -7,9 +29,48 @@
 }
 
 .row{
-	margin-bottom: 15px;
+	// margin-bottom: 15px;
 }
 
 .highlight {
 	color: #f00;
+}
+
+form input[type=text] {
+	width: 65vw;
+}
+
+input[type='checkbox'] {
+	width: 5vw;
+}
+
+#new_artist_form input[type='submit'] {
+	width: 19vw;
+}
+
+/* Extra small devices (phones, 600px and down) */
+@media only screen and (max-width: 600px) {}
+
+/* Small devices (portrait tablets and large phones, 600px and up) */
+@media only screen and (max-width: 768px) {
+	input {
+		font-size: 2em;
+	}
+	#search_results{
+		font-size: 3em;
+	}
+}
+
+/* Medium devices (landscape tablets, 768px and up) */
+@media only screen and (min-width: 768px) {
+}
+
+/* Large devices (laptops/desktops, 992px and up) */
+@media only screen and (min-width: 992px) {
+
+}
+
+/* Extra large devices (large laptops and desktops, 1200px and up) */
+@media only screen and (min-width: 1200px) {
+
 }

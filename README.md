@@ -100,3 +100,26 @@ Visit:
 Needed:
 
 * prevent delete for shopping albums (in DB but not on disk)
+
+# Appendix A: Provisioning
+
+The Raspberry Pi module is expected to be running some flavor of Linux. This was tested with Arch ARM.
+
+In the /deploy folder, find ansible scripts.
+
+The `hosts` file has two host groups: `bootstrap` and `devboard`. The dev board (e.g. Raspberry Pi) module hostname should appear in this file.
+The `host_vars/devboard.yml` has variables for the deploy user's name and public key, and the path to the python interpreter on the module.
+
+Assuming, in this example, a password authenticated account `root` on the dev board, the command to provision said dev board with the deployment user and respective SSH key is:
+
+	ANSIBLE_CONFIG=./ansible.cfg ansible-playbook -k bootstrap.yml --extra-vars "ansible_ssh_user=root"
+
+NOTE: `hosts` should list the dev board hostname under `bootstrap`
+
+Now the module is ready to receive provisioning through ansible by somewhat standard means.
+
+As the deployment user:
+
+	ANSIBLE_CONFIG=./ansible.cfg ansible-playbook site.yml
+
+NOTE: `hosts` should list the dev board hostname under `devboard`

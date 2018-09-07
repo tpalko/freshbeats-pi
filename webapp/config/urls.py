@@ -18,26 +18,39 @@ from django.contrib import admin
 from django.conf.urls.static import static
 from django.conf import settings
 from beater import views
+from beater import beatplayer
+from beater import freshbeats_client
 
 urlpatterns = [
     url(r'^$', views.home, name='home'),
     url(r'^search/$', views.search, name='search'),
-    url(r'^playlist/$', views.playlist, name='playlist'),
     url(r'^mobile/$', views.mobile, name='mobile'),
+    url(r'^devices/$', views.devices, name='devices'),
     url(r'^manage/$', views.manage, name='manage'),
     url(r'^report/$', views.report, name='report'),
-    url(r'^config/$', views.config, name='config'),
     url(r'^survey/$', views.survey, name='survey'),
+
+    url(r'^command/(?P<type>[a-zA-Z]+)/$', beatplayer.command, name='command'),
+    url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer.player, name='album_command'),
+    url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer.player, name='song_command'),
+    url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer.player, name='player'),
+    url(r'^player_complete/$', beatplayer.player_complete, name='player_complete'),
+    url(r'^player_status_and_state/$', beatplayer.player_status_and_state, name='player_status_and_state'),
+
+    url(r'^apply_plan/$', freshbeats_client.apply_plan, name='apply_plan'),
+    url(r'^validate_plan/$', freshbeats_client.validate_plan, name='validate_plan'),
+    url(r'^plan_report/$', freshbeats_client.plan_report, name='plan_report'),
+    url(r'^update_db/$', freshbeats_client.update_db, name='update_db'),
+
     url(r'^albums/$', views.albums, name='albums'),
-    
-    
+
     #url(r'^album_filter/filter/(?P<filter>[a-z0-9]+)/$', views.album_filter),
-    #url(r'^album_filter/letter/(?P<letter>[a-z0-9])/$', views.album_letter),   
-    
+    #url(r'^album_filter/letter/(?P<letter>[a-z0-9])/$', views.album_letter),
+
     url(r'^album/(?P<album_id>[0-9]+)/checkin/$', views.checkin, name='album_checkin'),
     url(r'^album/(?P<album_id>[0-9]+)/checkout/$', views.checkout, name='album_checkout'),
     url(r'^album/(?P<album_id>[0-9]+)/cancel/$', views.cancel, name='album_cancel'),
-    url(r'^album/(?P<album_id>[0-9]+)/flag/(?P<album_status>[a-z\s]+)/$', views.album_flag, name='album_flag'),    
+    url(r'^album/(?P<album_id>[0-9]+)/flag/(?P<album_status>[a-z\s]+)/$', views.album_flag, name='album_flag'),
     url(r'^album/(?P<album_id>[0-9]+)/songs/$', views.album_songs, name='album_songs'),
     url(r'^album/(?P<album_id>[0-9]+)/$', views.update_album, name="update_album"),
     url(r'^artist/(?P<artist_id>[0-9]+)/album/$', views.new_album, name="new_album"),
@@ -45,18 +58,9 @@ urlpatterns = [
     url(r'^album/(?P<albumid>[0-9]+)/$', views.get_album, name='get_album'),
     url(r'^remainder_albums/$', views.fetch_remainder_albums, name='fetch_remainder_albums'),
     url(r'^fetch_manage_albums/$', views.fetch_manage_albums, name='fetch_manage_albums'),
-    url(r'^survey_post/$', views.survey_post, name='survey_post'),    
+    url(r'^survey_post/$', views.survey_post, name='survey_post'),
     url(r'^get_search_results/$', views.get_search_results, name='get_search_results'),
-    url(r'^apply_plan/$', views.apply_plan, name='apply_plan'),
-    url(r'^device_report/$', views.device_report, name='device_report'),
-    
-    url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', views.player, name='album_command'),
-    url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', views.player, name='song_command'),
-    url(r'^player/(?P<command>[a-zA-Z]+)/$', views.player, name='player'),
-    url(r'^command/(?P<type>[a-zA-Z]+)/$', views.command, name='command'),    
-    url(r'^player_complete/$', views.player_complete, name='player_complete'),
-    url(r'^player_status_and_state/$', views.player_status_and_state, name='player_status_and_state'),
-    
+
     url(r'^admin/', admin.site.urls),
     #static(r'^%s/(?P<album_id>[0-9]+)/$' % settings.MEDIA_URL, views.album_art, document_root=settings.MEDIA_ROOT)
 ]

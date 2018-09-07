@@ -1,5 +1,8 @@
 socket.on('device_output', function(data){
 	$("#device_output").html(data.out);
+	if (data.complete) {
+		$("#" + data.function_name).attr('disabled', false);
+	}
 });
 
 $(document).ready(function(){
@@ -10,7 +13,7 @@ $(document).ready(function(){
 	var remainder_url = '{% url "fetch_remainder_albums" %}';
 
 	console.log("fetching: " + remainder_url);
-	
+
 	$.ajax({
 		url: remainder_url,
 		type: "GET",
@@ -20,14 +23,15 @@ $(document).ready(function(){
 			$("#remainder_albums").dataTable({
 				"paging": false,
 				"columns": [
-					{ "orderable": true, "width": "25%" },
+					{ "orderable": true, "width": "20%" },
 					{ "orderable": true, "width": "20%"  },
-					{ "orderable": true, "width": "15%"  },
-					{ "orderable": true, "width": "15%"  },
-					{ "orderable": false, "width": "15%"  },
-					{ "orderable": false, "width": "10%"  },
+					{ "orderable": true, "width": "10%"  },
+					{ "orderable": true, "width": "10%"  },
+					{ "orderable": true, "width": "10%"  },
+					{ "orderable": true, "width": "10%"  },
+					{ "orderable": true, "width": "10%"  },
 				],
-				"scrollY": "400px",
+				"scrollY": "300px",
 				"scrollX": true,
 				"dom": 'ift'
 			});
@@ -36,7 +40,7 @@ $(document).ready(function(){
 	})
 });
 
-$(document).on('click', '#apply_plan', function(e){
+$(document).on('click', '.freshbeats_client', function(e){
 
 	e.preventDefault();
 
@@ -48,6 +52,8 @@ $(document).on('click', '#apply_plan', function(e){
 			console.log(data);
 		}
 	});
+
+	$(this).attr('disabled', true);
 });
 
 $(document).on('click', '.album_cancel', function(e){
@@ -65,7 +71,7 @@ $(document).on('click', '.album_cancel', function(e){
 				$("#remainder_albums").append($(data.row));
 			}else if(data.state == 'checkedout'){
 				$("#checkedout_albums").append($(data.row));
-			}			
+			}
 		}
 	});
 });
@@ -83,6 +89,8 @@ $(document).on('click', '.album_checkin', function(e){
 			$("#targeted_albums_checkin").append(data.row);
 		}
 	});
+
+	return false;
 });
 
 $(document).on('click', '.album_checkout', function(e){

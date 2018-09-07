@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load beater %}
+
+{% block content %}
+
+<div class="row">
+	<div class="col-md-6">
+		<h2>Devices</h2>
+    <table id="device_table" width="100%">
+      <thead>
+        <tr>
+          <th>Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices %}
+          <tr>
+            <td>{{ device.name }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+	</div>
+</div>
+
+{% endblock %}

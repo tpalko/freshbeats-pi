@@ -3,25 +3,23 @@
 {% block content %}
 
 <div class="row">
-	<div class="col-md-6">
+	<div class="col-md-12">
 		<form id="new_artist_form" method="POST" action="{% url "new_artist" %}">
-			<input tabindex="1" type="text" name="artist_name" value="" />
-			<input tabindex="2" type="submit" value="Add Artist" />
+			<input tabindex="1" type="text" name="artist_name" placeholder="new artist.." value="" />
+			<input tabindex="2" type="submit" value="Add" />
 		</form>
 	</div>
 </div>
 
 <div class="row">
-	<div class="col-md-6">
-		<form id="search_form" method="get">
-			<input type="hidden" name="record_shop_mode" value="0" />
-			<input tabindex="3" id="record_shop_mode" type="checkbox" name="record_shop_mode" value="1" /> Record Shop Mode
-			<input tabindex="4" id="search" type="text" class="form-control" name="search" value="" />
+	<div class="col-md-12">
+		<form id="search_form" method="post">
+			<input type="hidden" id="record_shop_mode" name="record_shop_mode" value="1" />
+			<button class="btn" id="record_shop_mode_btn">Record Shop Mode</button>
+			<input tabindex="4" id="search" type="text" name="search" value="" />
 		</form>
 	</div>
 </div>
-
-
 
 <div id="search_results"></div>
 {% endblock %}

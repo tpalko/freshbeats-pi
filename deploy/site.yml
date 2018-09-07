@@ -1,0 +1,7 @@
+---
+- import_playbook: playback_device.yml
+  tags:
+    - playback_device
+- import_playbook: webapp.yml
+  tags:
+    - webapp

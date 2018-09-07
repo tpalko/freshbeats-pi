@@ -4,16 +4,18 @@
 {% block content %}
 
 <div class="row">
-	<div class="col-md-12">
-		<div id="remainder_overlay" style="min-height: 400px;">
-			<table id="remainder_albums" width="100%"> 
+	<div class="col-md-6">
+		<h2>Music Library</h2>
+		<div id="remainder_overlay" style="min-height: 250px;">
+			<table id="remainder_albums" width="100%">
 				<thead>
 					<tr>
-						<th width="25%">Album</th>
+						<th width="20%">Album</th>
 						<th width="20%">Artist</th>
-						<th width="15%">Tracks</th>
-						<th width="15%">Size (MB)</th>
-						<th width="15%">Flags</th>
+						<th width="10%">Tracks</th>
+						<th width="10%">Size (MB)</th>
+						<th width="10%">Added On</th>
+						<th width="10%" wrap>Flags</th>
 						<th width="10%"></th>
 					</tr>
 				</thead>
@@ -22,18 +24,24 @@
 			</table>
 		</div>
 	</div>
-</div>
-
-<div class="row">
-	<div class="col-md-12">
-		<pre id="device_output"></pre>
-	</div>
 	<div class="col-md-6">
-		<h1>Checked-Out ({{ checked_out_no_action_size }} MB)</h1>
+		<h2>Device Output</h2>
+		<pre id="device_output" style="height: 345px; overflow-y: scroll;"></pre>
+		<div class="btn-group" role="group">
+			<a id="plan_report" href="{% url "plan_report" %}" class="btn btn-default freshbeats_client">plan report</a>
+			<a id="validate_plan" href="{% url "validate_plan" %}" class="btn btn-default freshbeats_client">validate plan</a>
+			<a id="apply_plan" href="{% url "apply_plan" %}" class="btn btn-default freshbeats_client">apply plan</a>
+			<a id="update_db" href="{% url "update_db" %}" class="btn btn-default freshbeats_client">update db</a>
+		</div>
+	</div>
+</div>
+<div class="row">
+	<div class="col-md-6">
+		<h2>Checked-Out ({{ checked_out_no_action_size }} MB)</h2>
 		{% for b in checked_out_album_no_action_bins %}
 			<table id="checkedout_albums" class='table table-striped'>
 				<tr>
-					<th>album</th>
+					<th>{{ b }} album</th>
 					<th>artist</th>
 					<th>size</th>
 					<th></th>
@@ -45,10 +53,8 @@
 		{% endfor %}
 	</div>
 	<div class="col-md-6">
-		<div class="btn-group" role="group">
-			<a id="apply_plan" href="{% url "apply_plan" %}" class="btn btn-default">apply plan</a>
-		</div>		
-		<h2>checkin {{ checked_out_album_action_sizes|getattribute:'checkin' }} MB</h2>		
+		<h2>The Plan</h2>
+		<h3>Check-in {{ checked_out_album_action_sizes|getattribute:'checkin' }} MB</h3>
 		<table id="targeted_albums_checkin" class='table table-striped'>
 			<tr>
 				<th>album</th>
@@ -57,10 +63,10 @@
 				<th></th>
 			</tr>
 			{% for album in checked_out_album_action_bins|getattribute:'checkin' %}
-			{% include '_album_row.html' %}				
+			{% include '_album_row.html' %}
 			{% endfor %}
 		</table>
-		<h2>requestcheckout <span id="requestcheckout_size">{{ other_album_action_sizes|getattribute:'requestcheckout' }}</span> MB</h2>
+		<h3>Request Check-out <span id="requestcheckout_size">{{ other_album_action_sizes|getattribute:'requestcheckout' }}</span> MB</h3>
 		<table id="targeted_albums_requestcheckout" class='table table-striped'>
 			<tr>
 				<th>album</th>
@@ -69,10 +75,10 @@
 				<th></th>
 			</tr>
 			{% for album in other_album_action_bins|getattribute:'requestcheckout' %}
-			{% include '_album_row.html' %}				
+			{% include '_album_row.html' %}
 			{% endfor %}
 		</table>
-		<h2>checkout {{ other_album_action_sizes|getattribute:'checkout' }} MB</h2>
+		<h3>Check-out {{ other_album_action_sizes|getattribute:'checkout' }} MB</h3>
 		<table id="targeted_albums_checkout" class='table table-striped'>
 			<tr>
 				<th>album</th>
@@ -81,10 +87,10 @@
 				<th></th>
 			</tr>
 			{% for album in other_album_action_bins|getattribute:'checkout' %}
-			{% include '_album_row.html' %}				
+			{% include '_album_row.html' %}
 			{% endfor %}
 		</table>
-		<h2>refresh {{ checked_out_album_action_sizes|getattribute:'refresh' }} MB</h2>
+		<h3>Refresh {{ checked_out_album_action_sizes|getattribute:'refresh' }} MB</h3>
 		<table id="targeted_albums_refresh" class='table table-striped'>
 			<tr>
 				<th>album</th>
@@ -93,7 +99,7 @@
 				<th></th>
 			</tr>
 			{% for album in checked_out_album_action_bins|getattribute:'refresh' %}
-			{% include '_album_row.html' %}				
+			{% include '_album_row.html' %}
 			{% endfor %}
 		</table>
 	</div>

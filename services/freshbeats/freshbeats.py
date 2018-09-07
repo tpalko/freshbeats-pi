@@ -33,12 +33,12 @@ BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
 django.setup()
 
 logging.basicConfig(
-    level=logging.INFO
+    level=logging.DEBUG
 )
 # fresh_logger = logging.StreamHandler()
 
 logger = logging.getLogger('FreshBeats')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 DJANGO_LOGGER = logging.getLogger('django')
 DJANGO_LOGGER.setLevel(logging.INFO)
@@ -142,7 +142,7 @@ class FreshBeats(object):
             exit(1)
 
 
-    def report(self):
+    def plan_report(self):
 
         logger.info("Report on device folder '%s'", self.beats_target_folder)
 
@@ -313,13 +313,13 @@ class FreshBeats(object):
                             (hardcoded or for a following reason:)")
 
                         if int(album.tracks) != len(music_files):
-                            logger.info("        Track count: %s/%s \
+                            logger.info("        Track count (db/disk): %s/%s \
                                 ", int(album.tracks), len(music_files))
                         if int(album.total_size) != int(total_size):
-                            logger.info("        Total size: %s/%s \
+                            logger.info("        Total size (db/disk): %s/%s \
                                 ", int(album.total_size), int(total_size))
                         if int(album.audio_size) != int(audio_size):
-                            logger.info("        Audio size: %s/%s \
+                            logger.info("        Audio size (db/disk): %s/%s \
                                 ", int(album.audio_size), int(audio_size))
 
                         updated_existing_album = True
@@ -388,7 +388,7 @@ class FreshBeats(object):
             for album in albums:
                 if not os.path.exists(self._get_storage_path(album)):
                     # a.delete()
-                    logger.info("    Deleted %s %s", album.artist, album.name)
+                    logger.info("    Deleted %s %s", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
 
             albums = Album.objects.filter(
                 ~Q(albumstatus__status=AlbumStatus.WANTED)
@@ -577,7 +577,7 @@ class FreshBeats(object):
 
         size_in_bytes = int(math.floor(float(size)*unit_multiplier[unit]))
 
-        logger.debug("free space: %s (%s bytes)" % (free, size_in_bytes))
+        logger.debug("free space: %s MB (%s bytes)" % (int(math.floor(float(size_in_bytes)/unit_multiplier['M'])), size_in_bytes))
 
         return size_in_bytes
 
@@ -599,7 +599,8 @@ class FreshBeats(object):
         else:
             statement = 'ssh %s@%s %s' %(self.ssh_username, self.device_hostname, command)
 
-        return shlex.split(statement.encode('utf-8'))
+        # - removing encode('utf-8') here because we may be doubling up encoding on string literals passed in to this function
+        return shlex.split(statement) # .encode('utf-8'))
 
     def _get_sha1sum(self, root, filename):
 
@@ -619,9 +620,9 @@ class FreshBeats(object):
     def _get_storage_path(self, album):
 
         if album.name == 'no album':
-            return join(self.music_base_path, self.music_folder, album.artist.name)
+            return join(self.music_base_path, self.music_folder, album.artist.name.encode('utf-8'))
 
-        return join(self.music_base_path, self.music_folder, album.artist.name, album.name)
+        return join(self.music_base_path, self.music_folder, album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
 
     def _pick_random_fill_albums(self):
 
@@ -663,16 +664,18 @@ class FreshBeats(object):
 
         self.album_manager.send_status_to_logger()
 
+    def validate_plan(self):
+        # -- validate the plan
+        device_free_bytes = self.get_free_bytes()
+        margin = int(self.free_space_mb)*1024*1024
+        self.album_manager = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
+        self.album_manager.validate_plan()
+
     def apply_plan(self, new_randoms=True):
 
         try:
 
-            # -- validate the plan
-            device_free_bytes = self.get_free_bytes()
-            margin = int(self.free_space_mb)*1024*1024
-            self.album_manager = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
-
-            self.album_manager.validate_plan()
+            self.validate_plan()
 
             if new_randoms:
                 self._pick_random_fill_albums()
@@ -729,11 +732,12 @@ class FreshBeats(object):
 @click.option('--ingest', '-i', is_flag=True, help='Ingest new music on disk.')
 @click.option('--sha1_scan', '-s', is_flag=True, help='Test existing songs for SHA1 match.')
 @click.option('--report', '-r', is_flag=True, help='Report on device status and copy plan.')
+@click.option('--validate', '-v', is_flag=True, help='Validates album copy plan.')
 @click.option('--apply_plan', '-a', is_flag=True, help='Apply copy plan to device.')
 @click.option('--new_randoms', '-n', is_flag=True, help='Try to fit new random albums during "apply".')
 @click.option('--pictures', '-p', is_flag=True, help='Pull pictures from device.')
 @click.option('--free', '-f', is_flag=True, help='Show device free information.')
-def main(ingest, sha1_scan, report, apply_plan, new_randoms, pictures, free):
+def main(ingest, sha1_scan, report, validate_plan, apply_plan, new_randoms, pictures, free):
 
     try:
 
@@ -742,12 +746,15 @@ def main(ingest, sha1_scan, report, apply_plan, new_randoms, pictures, free):
         if ingest:
             f.update_db(sha1_scan=sha1_scan)
 
+        if validate_plan:
+            f.validate_plan()
+
         if apply_plan:
             f.apply_plan(new_randoms=new_randoms)
 
         if report:
             logger.info("Reporting!")
-            f.report()
+            f.plan_report()
 
         if pictures:
             f.pull_photos()

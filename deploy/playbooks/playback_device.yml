@@ -1,0 +1,6 @@
+- hosts: playback_device
+  tasks:
+    - import_role:
+        name: beater
+      tags:
+        - beater

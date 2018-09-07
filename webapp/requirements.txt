@@ -1,5 +1,7 @@
-django==1.11
+django==1.9
+configparser
 requests
 click
 pytz
-git+git://github.com/theatlantic/django-mysqlndb-backend.git@v1.1.0#egg=django-mysqlndb-backend
+#git+git://github.com/theatlantic/django-mysqlndb-backend.git@v1.1.0#egg=django-mysqlndb-backend
+mysqlclient
