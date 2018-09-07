@@ -2,6 +2,7 @@ version: "3.3"
 services:
   freshbeats:
     build: .
+    container_name: freshbeats-pi
     ports:
       - "8000:8000"
     environment:
