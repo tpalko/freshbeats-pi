@@ -3,5 +3,5 @@ configparser
 requests
 click
 pytz
-#git+git://github.com/theatlantic/django-mysqlndb-backend.git@v1.1.0#egg=django-mysqlndb-backend
-mysqlclient
+git+git://github.com/theatlantic/django-mysqlndb-backend.git@v1.1.0#egg=django-mysqlndb-backend
+#mysqlclient

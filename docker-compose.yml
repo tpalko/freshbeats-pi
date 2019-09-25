@@ -1,12 +1,26 @@
 version: "3.3"
 services:
-  freshbeats:
+  freshbeats_app:
+    image: freshbeats:latest
     build: .
-    container_name: freshbeats-pi_freshbeats_1
-    ports:
-      - "8000:8000"
+      # context: .
+      # args:
+      #   - gitcommithash=05c10666dcb5829f574881f6ab1b2cbdd05f8ec8
+    container_name: freshbeats_app
+    # ports:
+    #   - "8030:8000"
     environment:
      - PYTHONUNBUFFERED=1
+    restart: "always"
+    external_links:
+      - frankdb_mysql
+    networks:
+      - frankenbridge
+  freshbeats_switchboard:
+    image: switchboard:latest
+    build: services/switchboard
+    container_name: freshbeats_switchboard
+    restart: "always"
     networks:
       - frankenbridge
 networks:

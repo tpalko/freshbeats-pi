@@ -95,6 +95,15 @@ Visit:
 
 	http://localhost:8000
 
+## Get Some Prompt
+
+import sys, os, django
+sys.path.append('../../webapp')
+os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
+django.setup()
+from beater.models import *
+album = Album.manager.find(name='Rage Against the Machine')
+
 ## State of Development
 
 Needed:

@@ -19,6 +19,7 @@ class AlbumManager(models.Manager):
 class Artist(models.Model):
 
     name = models.CharField(max_length=255)
+    followed = models.BooleanField(default=False, null=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -62,8 +62,8 @@ function rootHandler(req, res) {
 // take inbound generic event requests from django app and pass on to client
 function pushEventHandler(req, res, next) {
 
-  console.log(req.params.event);
-  console.log(req.body);
+  //console.log(req.params.event);
+  //console.log(req.body);
   io.sockets.emit(req.params.event, req.body);
 
   res.send(200, "OK");

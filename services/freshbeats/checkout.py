@@ -95,14 +95,15 @@ class AlbumManager:
 
     def send_status_to_logger(self):
 
-        logger.info("-- Device Status -- ")
+        logger.info("-- Device Current Status -- ")
         logger.info(" Device Free: {0:>10}".format(self.device_free_bytes))
         logger.info(" Free Margin: {0:>10}".format(self.free_bytes_margin))
-        logger.info("-- Update Plan -- ")
+        logger.info("-- Plan Result -- ")
         logger.info(" Checking-in: {0:>10}".format(sum([ a.total_size for a in self.albums_to_checkin ])))
         logger.info("  Refreshing: {0:>10}".format(sum([ a.total_size - a.old_total_size for a in self.albums_to_refresh ])))
         logger.info("Checking-out: {0:>10}".format(sum([ a.total_size for a in self.albums_to_checkout ])))
-        logger.info(" Plan Result: {0:>10}".format(self.checkout_delta))
+        logger.info("  Plan Delta: {0:>10}".format(self.checkout_delta))
+        logger.info(" Device Free: {0:>10}".format(self.real_available_bytes()))
 
     def plan_available_bytes(self):
         '''Zero-floored available bytes accounting for the current checkout tally per validation, CONSIDERING the desired free space margin'''

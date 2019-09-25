@@ -284,7 +284,7 @@ def survey_post(request):
 
     return HttpResponse(json.dumps({'success': True}))
 
-
+@csrf_exempt
 def get_search_results(request):
     '''Search page: handle search'''
     record_shop_mode = bool(request.POST.get('record_shop_mode'))

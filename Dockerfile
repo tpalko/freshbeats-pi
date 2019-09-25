@@ -10,11 +10,22 @@ COPY ./webapp/requirements.txt ./webapp_requirements.txt
 COPY ./services/freshbeats/requirements.txt ./freshbeats_requirements.txt
 RUN pip install -r webapp_requirements.txt
 RUN pip install -r freshbeats_requirements.txt
-COPY ./webapp ./webapp
-COPY ./services/freshbeats ./services/freshbeats
 
 EXPOSE 8000
 
-#ENV DJANGO_DATABASE=docker
+ENV FRESHBEATS_DATABASE_HOST=frankdb_mysql
+ENV FRESHBEATS_SWITCHBOARD_EXTERNAL_HOST=switchboard.freshbeats.palkosoftware.ddns.net
+ENV FRESHBEATS_SWITCHBOARD_INTERNAL_HOST=freshbeats_switchboard
+ENV FRESHBEATS_SWITCHBOARD_EXTERNAL_PORT=80
+ENV FRESHBEATS_SWITCHBOARD_INTERNAL_PORT=3333
+ENV FRESHBEATS_MUSIC_PATH=/music
+
+VOLUME /music
+VOLUME /ssh
+
+COPY ./webapp ./webapp
+COPY ./services/freshbeats ./services/freshbeats
+
 WORKDIR /usr/src/app/webapp
+
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

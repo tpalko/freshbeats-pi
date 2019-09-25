@@ -14,30 +14,29 @@ from .switchboard import _publish_event
 sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
 from freshbeats import freshbeats
 
-
+@csrf_exempt
 def apply_plan(request):
 
     _call_freshbeats('apply_plan', add_randoms=False)
     return JsonResponse({'success': True})
 
-
+@csrf_exempt
 def validate_plan(request):
 
     _call_freshbeats('validate_plan')
     return JsonResponse({'success': True})
 
-
+@csrf_exempt
 def plan_report(request):
 
     _call_freshbeats('plan_report')
     return JsonResponse({'success': True})
 
-
+@csrf_exempt
 def update_db(request):
 
     _call_freshbeats('update_db')
     return JsonResponse({'success': True})
-
 
 def _call_freshbeats(function_name, *args, **kwargs):
 
@@ -61,6 +60,8 @@ def _call_freshbeats(function_name, *args, **kwargs):
 
         _publish_event('device_output', json.dumps({'function_name': function_name, 'complete': True, 'out': log_capture_string.getvalue()}))
 
+        logger.removeHandler(ch)
+        
     except:
         logger.error(sys.exc_info()[1])
         traceback.print_tb(sys.exc_info()[2])

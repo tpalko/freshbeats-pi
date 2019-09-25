@@ -3,3 +3,4 @@ mysql-python
 click
 subprocess32
 pytz
+mutagen

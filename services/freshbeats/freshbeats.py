@@ -22,10 +22,10 @@ import django
 from django.db.models import Q
 from django.utils import timezone
 from django.conf import settings
+from mutagen import easyid3, id3
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
-
 
 # BUF_SIZE is totally arbitrary, change for your app!
 BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
@@ -108,6 +108,55 @@ but 'shell' user is really weak
 
 '''
 
+album_tags = [
+    'album',
+    'musicbrainz_artistid',
+    'conductor',
+    'musicbrainz_albumstatus',
+    'artist',
+    'media',
+    'releasecountry',
+    'musicbrainz_albumid',
+    'date',
+    'albumartist',
+    'musicbrainz_albumtype',
+    'organization',
+    'genre',
+    'originaldate'
+]
+frame_types = {
+    'TPE1': 'artist',
+    'TALB': 'album',
+    'TDRC': 'date',
+    'TCON': 'genre',
+    'TPUB': 'organization',
+    'TPE2': 'albumartist'
+}
+song_frame_types = ['TIT2', 'TCOM', 'TRCK']
+easy_song_frame_types = ['title', 'composer', 'tracknumber']
+
+class Albummeta(object):
+
+    def __init__(self, *args, **kwargs):
+        for k in kwargs:
+            self.__setattr__(k, kwargs[k])
+
+    def printmeta(self):
+        print("")
+        print("--- ")
+        print("Working Folder: %s" % self.sub_path)
+        print("        Artist: %s" % self.artist.name)
+        print("         Album: %s" % self.album.name)
+        if len(self.album.albumstatus_set.all()) > 0:
+            print("         Flags:")
+            for f in self.album.albumstatus_set.all():
+                print("          - %s" % f.status)
+ 	else:
+	    print("         Flags: none")
+        print("        Tracks: %s" % self.track_count)
+        print("         Files:")
+        for f in self.id3_files:
+            print("          - %s" % f)
 
 class FreshBeats(object):
 
@@ -135,7 +184,9 @@ class FreshBeats(object):
         # self.device = DeviceManager(hostname=self.device_hostname,
         # username=self.ssh_username, target_folder=self.beats_target_folder)
         self.album_manager = None
-        self.music_path = os.path.join(self.music_base_path, self.music_folder)
+
+        if os.getenv('FRESHBEATS_MUSIC_PATH'):
+            self.music_path = os.getenv('FRESHBEATS_MUSIC_PATH')
 
         if not os.path.exists(self.music_path):
             logger.error("Music path %s does not exist. Exiting.", self.music_path)
@@ -213,27 +264,127 @@ class FreshBeats(object):
         direction = "out" if net >= 0 else "in"
         logger.info("Net: {0} MB {1}".format(abs(net)/(1024*1024), direction))
 
+    def _save_artist(self, artist_name):
+        artist = None
+        added = False
+        try:
+            artist = Artist.objects.get(name=artist_name)
+            logger.debug(" - db artist %s (%s) found" % (artist.name.encode('utf-8'), artist.id))
+        except Artist.DoesNotExist as does_not_exist_exc:
+            artist = Artist(name=artist_name)
+            artist.save()
+            logger.info(" - new artist saved: %s", artist.encode('utf-8'))
+            added = True
+        return (artist, added)
 
-    def update_db(self, sha1_scan=False):
+    def _save_album(self, artist, album_name):
+        album = None
+        added = False
+        try:
+            album = Album.objects.get(
+                artist=artist,
+                name=album_name)
+            logger.debug(" - album found: %s" % album_name)
+        except Album.DoesNotExist as d:
+            album = Album(
+                artist=artist,
+                name=album_name,
+                tracks=0,
+                total_size=total_size,
+                audio_size=0,
+                old_total_size=0,
+                rating=Album.UNRATED)
+            album.save()
+            logger.info(" - new album saved: %s/%s", artist.encode('utf-8'), album_name.encode('utf-8'))
+            added = True
+
+        return (album, added)
+
+    def _verify_album_meta(self, album, albummeta):
+        verified = False
+        if int(album.tracks) == albummeta.track_count and \
+                int(album.total_size) == int(albummeta.total_size) and \
+                int(album.audio_size) == int(albummeta.audio_size):
+            logger.debug(" - metadata match, no changes")
+            verified = True
+        else:
+            logger.info(" - metadata has changed, will reingest album songs")
+            if int(album.tracks) != albummeta.track_count:
+                logger.info(" - track count (db/disk): %s/%s \
+                    ", int(album.tracks), album_meta.track_count)
+            if int(album.total_size) != int(albummeta.total_size):
+                logger.info(" - total size (db/disk): %s/%s \
+                    ", int(album.total_size), int(albummeta.total_size))
+            if int(album.audio_size) != int(albummeta.audio_size):
+                logger.info(" - audio size (db/disk): %s/%s \
+                    ", int(album.audio_size), int(albummeta.audio_size))
+        return verified
+
+    def _clear_album_meta(self, album):
+        album.tracks = 0
+        album.old_total_size = album.total_size
+        album.total_size = total_size
+        album.audio_size = 0
+
+        # - keep statuses!
+
+        album.save()
+
+        for song in album.song_set.all():
+            song.delete()
+
+    def update_db(self, artist_filter=None, sha1_scan=False, purge=False):
         ''' Read folders on disk and update database accordingly.'''
 
         try:
 
+            parent_folder = self.music_path.rpartition('/')[1]
+	    quit = False
+
             for root, dirs, files in os.walk(self.music_path):
 
-                parts = root.split('/')
+		if quit:
+		    break
 
-                # -- assume the last folder is the album name,
-                # -- second to last is the artist
-                album_name = parts[-1].strip()
-                artist = parts[-2].strip()
+                sub_path = root.replace(self.music_path, "")
 
-                # logger.debug("%s / %s \
-                #    ", artist.encode('utf-8'), album_name.encode('utf-8'))
+                if len(files) == 0:
+                    logger.debug(" - %s -> no files, skipping" % sub_path)
+                    continue
 
-                if len(parts) > len(self.music_path.split('/')) + 2:
-                    logger.warn("Path too deep - skipping - : %s \
-                        ", '/'.join(parts))
+                root_splits = root.split('/')
+                if len(root_splits) > 0:
+                    parent = root.split('/')[-1]
+                if len(root_splits) > 1:
+                    grandparent = root.split('/')[-2]
+
+                parts = [ p for p in sub_path.split('/') if p ]
+
+                if len(parts) == 0:
+                    logger.debug(" - %s -> skipping the base path" % sub_path)
+                    continue
+
+                logger.info("")
+                logger.info("Processing path %s" % sub_path)
+
+                if len(parts) < 2:
+                    logger.debug(" - artist only, no album name")
+                    artist_name = parts[0]
+                    album_name = 'no album'
+                elif len(parts) >= 2:
+                    # -- assume the last folder is the album name,
+                    # -- second to last is the artist
+                    # -- extra folders?
+                    album_name = parts[-1].strip()
+                    artist_name = parts[-2].strip()
+
+                #logger.debug("folder path is type %s while input flag is type %s" % (type(artist), type(artist_filter)))
+                if artist_filter and str(artist_filter) != artist_name:
+                    logger.debug(" - %s no match for artist filter %s" % (artist_name, str(artist_filter)))
+                    continue
+
+                if len(files) > 0 and all(f in self.skip_files for f in files):
+                    logger.debug(" - all files are skip files, skipping")
                     continue
 
                 all_files = files
@@ -241,174 +392,327 @@ class FreshBeats(object):
                     in self.music_file_extensions and f.find("._") < 0
                 ]
 
-                tracks = len(music_files)
+                track_count = len(music_files)
 
-                if tracks == 0:
-                    logger.debug("No music tracks - skipping - : %s \
-                        ", '/'.join(parts))
+                if track_count == 0:
+                    logger.debug(" - no music tracks, skipping")
                     continue
 
-                if all(f in self.skip_files for f in files):
-                    logger.info("%s: all files skipped", root)
-                    continue
+                (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(root)
+
+                user_action = False
+                for t in dist:
+                    if len(dist[t]) > 1 or any([ v for v in dist[t] if v is None ]):
+                        user_action = True
+                        break
 
                 total_size = sum(getsize(join(root, name)) for name in all_files)
                 audio_size = sum(getsize(join(root, name)) for name in music_files)
 
-                # -- files in the root of the artist folder,
-                # -- i.e. not in an album folder
-                if artist == self.music_folder:
-                    logger.warn("Only one level deep - no album: %s \
-                        ", '/'.join(parts))
-                    artist = album_name
-                    album_name = 'no album'
+                logger.debug(" - path parsed -> artist: %s, album: %s" % (artist_name, album_name))
 
-                artist_match = None
+                (artist, artist_added) = self._save_artist(artist_name)
+                (album, album_added) = self._save_album(artist, album_name)
+                flags = AlbumStatus.objects.filter(album=album)
 
-                try:
-                    artist_match = Artist.objects.get(name=artist)
-                except Artist.DoesNotExist as does_not_exist_exc:
-                    pass
-
-                if artist_match is None:
-
-                    logger.info("New Artist Saved: %s", artist)
-
-                    artist_match = Artist(name=artist)
-                    artist_match.save()
-
-                possible_album_match = None
-                updated_existing_album = False
-
-                try:
-                    possible_album_match = Album.objects.get(
-                        artist=artist_match,
-                        name=album_name)
-                except Album.DoesNotExist as d:
-                    pass  # - it's OK
-
-                album = None
-
-                if possible_album_match is None:
-                    logger.info("New Album Saved: %s/%s", artist, album_name)
-                    album = Album(
-                        artist=artist_match,
-                        name=album_name,
-                        tracks=0,
-                        total_size=total_size,
-                        audio_size=0,
-                        old_total_size=0,
-                        rating=Album.UNRATED)
-                    album.save()
-                else:
-
-                    album = possible_album_match
-
-                    # - why True? forcing all albums to update?
-                    if int(album.tracks) != len(music_files) or \
-                            int(album.total_size) != int(total_size) or \
-                            int(album.audio_size) != int(audio_size):
-
-                        logger.info("    Updating this album \
-                            (hardcoded or for a following reason:)")
-
-                        if int(album.tracks) != len(music_files):
-                            logger.info("        Track count (db/disk): %s/%s \
-                                ", int(album.tracks), len(music_files))
-                        if int(album.total_size) != int(total_size):
-                            logger.info("        Total size (db/disk): %s/%s \
-                                ", int(album.total_size), int(total_size))
-                        if int(album.audio_size) != int(audio_size):
-                            logger.info("        Audio size (db/disk): %s/%s \
-                                ", int(album.audio_size), int(audio_size))
-
-                        updated_existing_album = True
-
-                        album.tracks = 0
-                        album.old_total_size = album.total_size
-                        album.total_size = total_size
-                        album.audio_size = 0
-
-                        # - keep statuses!
-
-                        album.save()
-
-                        for song in album.song_set.all():
-                            song.delete()
+                albummeta = Albummeta(full_path=root,
+                    sub_path=sub_path,
+                    artist=artist,
+                    album=album,
+                    track_count=track_count,
+                    total_size=total_size,
+                    audio_size=audio_size,
+                    id3_files=id3_files,
+                    user_action=user_action)
 
                 # - if new, or we made any changes to the album,
                 # rewrite the song records
                 # - the songs were already cleared (above)
                 # if we updated and naturally empty if new
-                if possible_album_match is None or updated_existing_album:
+                update_album_meta = not album_added and not self._verify_album_meta(album, albummeta)
+
+                if user_action:
+                    while(True):
+                        albummeta.printmeta()
+                        print("What do you want to do?")
+                        print("")
+                        print("fix ID3 (t)ags")
+                        print("    set (f)lags")
+                        print("        (c)ontinue")
+			print("        (q)uit")
+                        print("")
+                        chosen = raw_input("       ? ")
+
+                        if str(chosen).lower() == "t":
+                            self.normalize_id3_tags(albummeta)
+                        elif str(chosen).lower() == "f":
+                            self.set_flags(albummeta)
+                        elif str(chosen).lower() == "c":
+                            break
+			elif str(chosen).lower() == "q":
+			    quit = True
+			    break
+
+                if album_added or update_album_meta:
+                    if update_album_meta:
+                        self._clear_album_meta(album)
+                    logger.debug(" - ingesting %s songs" % track_count)
                     for music_file in music_files:
                         sha1sum = self._get_sha1sum(root, music_file)
-                        logger.debug("%s: %s - %s \
-                            ", album.name,
-                               music_file, sha1sum)
                         song = Song(
                             album=album,
                             name=music_file,
                             sha1sum=sha1sum)
                         song.save()
                         album.tracks += 1
-                        album.audio_size += getsize(join(root, music_file))
+                        audio_size = getsize(join(root, music_file))
+                        album.audio_size += audio_size
                         album.save()
-                    if possible_album_match is None:
-                        logger.info("    Inserted %s %s", album.artist, album)
-                    elif updated_existing_album:
-                        logger.info("    Updated %s %s", album.artist, album)
+                        logger.debug(" - %s, %s, %s bytes", music_file, sha1sum, audio_size)
+                    if album_added:
+                        logger.info(" - inserted %s/%s", album.artist, album)
+                    else:
+                        logger.info(" - updated %s/%s", album.artist, album)
                 elif sha1_scan:
+                    logger.info(" - calculating song hashes")
                     for music_file in music_files:
                         sha1sum = self._get_sha1sum(root, music_file)
                         try:
-                            logger.debug("    Looking for album %s song %s \
-                                in DB..", album, music_file)
+                            logger.debug(" - looking for song %s (album %s) \
+                                in DB..", album.encode('utf-8'), music_file.encode('utf-8'))
                             song = Song.objects.get(
                                 album=album,
                                 name=music_file)
+                            if song.sha1sum != sha1sum:
+                                song.sha1sum = sha1sum
+                                song.save()
+                                logger.info(" - SHA1 mismatch, updated %s (%s/%s) \
+                                    ", song.encode('utf-8'),
+                                    artist.encode('utf-8'),
+                                    album.encode('utf-8'))
                         except Song.DoesNotExist as does_not_exist_exc:
                             pass
-                        if song.sha1sum != sha1sum:
-                            song.sha1sum = sha1sum
-                            song.save()
-                            logger.info("    Updated SHA1 for %s (%s %s) \
-                                        ", song.encode('utf-8'),
-                                        artist.encode('utf-8'),
-                                        album.encode('utf-8'))
 
-            # -- when we're all said and done adding,
-            # -- delete albums that cannot be found on disk
-            # -- (if they've never been checked-out)
-            albums = Album.objects.filter(
-                ~Q(albumstatus__status=AlbumStatus.WANTED),
-                albumcheckout__isnull=True
-            )
-            logger.info("Hard deleting albums never checked-out..")
-            for album in albums:
-                if not os.path.exists(self._get_storage_path(album)):
-                    # a.delete()
-                    logger.info("    Deleted %s %s", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
+            if purge:
+                # -- when we're all said and done adding,
+                # -- delete albums that cannot be found on disk
+                # -- (if they've never been checked-out)
+                albums = Album.objects.filter(
+                    ~Q(albumstatus__status=AlbumStatus.WANTED),
+                    albumcheckout__isnull=True
+                )
+                logger.info("Hard deleting non-existant albums (never checked-out)..")
+                for album in albums:
+                    if not os.path.exists(self._get_storage_path(album)):
+                        # a.delete()
+                        logger.info(" - would delete %s/%s", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
 
-            albums = Album.objects.filter(
-                ~Q(albumstatus__status=AlbumStatus.WANTED)
-            )
+                albums = Album.objects.filter(
+                    ~Q(albumstatus__status=AlbumStatus.WANTED)
+                )
 
-            logger.info("Soft deleting other albums not found on disk..")
+                logger.info("Soft deleting other albums not found on disk..")
 
-            for album in albums:
-                if not os.path.exists(self._get_storage_path(album)):
-                    # a.deleted = True
-                    # a.save()
-                    logger.info("    Soft-Deleted %s %s",
-                                album.artist.name.encode('utf-8'),
-                                album.name.encode('utf-8'))
+                for album in albums:
+                    if not os.path.exists(self._get_storage_path(album)):
+                        # a.deleted = True
+                        # a.save()
+                        logger.info("    Soft-Deleted %s %s",
+                                    album.artist.name.encode('utf-8'),
+                                    album.name.encode('utf-8'))
 
         except Exception as update_db_exception:
             message = str(sys.exc_info()[1])
             logging.error(str(sys.exc_info()[0]))
             logging.error(message)
             traceback.print_tb(sys.exc_info()[2])
+
+    def set_flags(self, albummeta):
+
+        flag_menu = { i: c for i, c in enumerate(AlbumStatus.ALBUM_STATUS_CHOICES, 1) }
+
+        while(True):
+            for i in flag_menu.keys():
+                print("%s (%s) %s: %s" % ("***" if albummeta.album.albumstatus_set.filter(status=flag_menu[i][0]).exists() else "   ", i, flag_menu[i][0], flag_menu[i][1]))
+	    print("(q)uit")
+            chosen_flag = raw_input(" ?: ")
+	    if chosen_flag.lower() == 'q':
+	        break
+            if chosen_flag.isdigit() and int(chosen_flag) in flag_menu:
+                flag = flag_menu[int(chosen_flag)]
+		if albummeta.album.albumstatus_set.filter(status=flag[0]).exists():
+		    albummeta.album.albumstatus_set.filter(status=flag[0]).delete()
+		    logger.info("%s flag removed from album %s" % (flag[0], albummeta.album.name))
+		else:
+		    albummeta.album.albumstatus_set.create(status=flag[0])
+		    logger.info("%s flag added to album %s" % (flag[0], albummeta.album.name))
+
+    def _extract_id3_tags(self, album_folder):
+        # - pass artist and album, or just let it run
+        # - for each album, extract:
+        #   - per song, common frames and their values
+        #   - per common frame, values and songs with each value
+        #   - any status flags from the database
+        # - draw menu:
+        #   - each frame, array of existing values and file count
+        #       - choose a frame to fix, displays list of value and filenames
+        #           - choose the value to apply to all, write-in, or skip
+        #           - applies change, shows results, redraw original menu
+        #   - each file + renaming based on ID3 tag
+        #   - each possible status + toggle
+        #   - skip album
+        files_per_val_per_frame = { frame_types[t]: {} for t in frame_types.keys() }
+        val_per_frame_per_file = {}
+        for dir, subdirs, files in os.walk(album_folder):
+            if dir != album_folder:
+                logger.debug("Recursed too var? %s != %s" %(dir, album_folder))
+                continue
+
+            for f in files:
+                filepath = os.path.join(dir, f)
+                try:
+                    e = easyid3.EasyID3(filepath)
+                    #m = mutagen.File(filepath)
+                    if e:
+                        val_per_frame_per_file[filepath] = {}
+                        logger.debug("   - scanning ID3 tag: %s" % f)
+                        for t in album_tags:
+                            # -- extraction
+                            vals = [None]
+                            if t in e:
+                                vals = e[t]
+                            if len(vals) > 0:
+                                val = vals[0]
+                                val_per_frame_per_file[filepath][t] = val
+                                if t not in files_per_val_per_frame:
+                                    files_per_val_per_frame[t] = {}
+                                if val not in files_per_val_per_frame[t]:
+                                    files_per_val_per_frame[t][val] = []
+                                files_per_val_per_frame[t][val].append(f)
+                except id3.ID3NoHeaderError:
+                    #logger.error(sys.exc_info()[1])
+                    pass #? we're not filtering at all
+        dist = { t: [ "%s (%s)" % (v, len(files_per_val_per_frame[t][v])) for v in files_per_val_per_frame[t] ] for t in files_per_val_per_frame }
+        id3_files = [ f for f in val_per_frame_per_file.keys() ]
+        id3_files.sort()
+        return (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file)
+
+    def normalize_id3_tags(self, albummeta):
+
+        while(True):
+
+            (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(albummeta.full_path)
+
+            '''
+            files_per_val_per_frame
+            {
+                frame:
+                {
+                    val: [file, file, file],
+                    val: [file, file, file]
+                },
+                frame:
+                {
+                    val: [file, file, file],
+                    val: [file, file, file]
+                }
+            }
+            {
+                frame: ["<val>: <count>","<val>: <count>"],
+                frame: ["<val>: <count>","<val>: <count>"]
+            }
+            '''
+
+            frame_menu = { i: t for i, t in enumerate(dist.keys(), 1) }
+            albummeta.printmeta()
+            for i in frame_menu.keys():
+                print(" (%s) %s: %s" % (i, frame_menu[i], ", ".join(dist[frame_menu[i]])))
+            print(" (q)uit")
+            chosen = raw_input("? ")
+
+            if chosen.lower() == 'q':
+                break
+            elif chosen.isdigit() and int(chosen) in frame_menu:
+                easyid_key = frame_menu[int(chosen)]
+                albummeta.printmeta()
+                print("Fixing %s:" % easyid_key)
+                # -- capture one output of the unordered dict and use it for both the question and answer lookup
+                frame_val_menu = { n: val for n, val in enumerate(files_per_val_per_frame[easyid_key].keys(), 1) }
+                frame_val = None
+                while not frame_val:
+                    for n in frame_val_menu:
+                        print("   (%s) %s" % (n, frame_val_menu[n]))
+                        for f in files_per_val_per_frame[easyid_key][frame_val_menu[n]]:
+                            print("     - %s" % f)
+                    print("   (w)rite in")
+                    print("   (s)kip")
+                    frame_val_choice = raw_input(" --> Choose: ")
+                    if str(frame_val_choice).lower() == 'w':
+                        frame_val = raw_input("           : ")
+                    elif str(frame_val_choice).lower() == 's':
+                        frame_val_choice = None
+                        break
+                    elif frame_val_choice.isdigit() and int(frame_val_choice) in frame_val_menu:
+                        frame_val = unicode(frame_val_menu[int(frame_val_choice)])
+                if frame_val:
+                    confirmed = False
+                    while not confirmed:
+                        confirmed_answer = raw_input(" Chosen: %s. Are you sure? (Y/n) " % frame_val)
+                        if confirmed_answer == '' or confirmed_answer.lower() == 'y':
+                            confirmed = True
+                        else:
+                            break
+                    if confirmed:
+                        for f in id3_files:
+                            try:
+                                e = easyid3.EasyID3(f)
+                                current_val = unicode(e[easyid_key]) if easyid_key in e else None
+                                if not current_val or current_val != frame_val:
+                                    e[easyid_key] = frame_val
+                                    logger.info("   - %s -> %s" % (easyid_key, frame_val))
+                                else:
+                                    logger.info("   - %s OK" % easyid_key)
+                                e.save()
+                            except id3.ID3NoHeaderError as n:
+                                logger.error(n)
+
+
+        # single_values = { t: files_per_val_per_frame[t] for t in files_per_val_per_frame if len(files_per_val_per_frame[t]) == 1 }
+        # for t in single_values:
+        #     logger.debug(" - %s: %s" % (t, single_values[t].keys()[0]))
+        # multiple_choices = { t: files_per_val_per_frame[t] for t in files_per_val_per_frame if len(files_per_val_per_frame[t]) > 1 }
+        # for n, t in enumerate(multiple_choices, 1):
+        #     easyid_key = frame_types[t]
+        #     print(" - %s" % albummeta)
+        #     print(" - %s/%s ID3 multiple choice (%s/%s):" % (n, len(multiple_choices), t, easyid_key))
+        #     # -- capture one output of the unordered dict and use it for both the question and answer lookup
+        #     choices = { n: val for n, val in enumerate(multiple_choices[t].keys(), 1) }
+        #     chosen_val = None
+        #     while not chosen_val:
+        #         for n in choices:
+        #             print("   - (%s) %s" % (n, choices[n]))
+        #             for f in multiple_choices[t][choices[n]]:
+        #                 print("     - %s" % f)
+        #         print("   - (s)kip")
+        #         chosen_val = raw_input(" --> Choose: ")
+        #         if str(chosen_val).lower() == 's':
+        #             chosen_val = None
+        #             break
+        #         if chosen_val.isdigit():
+        #             chosen_val = unicode(choices[int(chosen_val)])
+        #     if chosen_val:
+        #         for f in id3_files:
+        #             try:
+        #                 e = mutagen.easyid3.EasyID3(f)
+        #                 current_val = unicode(e[easyid_key]) if easyid_key in e else None
+        #                 if not current_val or current_val != chosen_val:
+        #                     e[easyid_key] = chosen_val
+        #                     logger.info("   - %s (%s) -> %s" % (t, easyid_key, chosen_val))
+        #                 else:
+        #                     logger.info("   - %s OK" % t)
+        #                 e.save()
+        #             except mutagen.id3.ID3NoHeaderError as n:
+        #                 logger.error(n)
 
     # - DEVICE
 
@@ -436,63 +740,44 @@ class FreshBeats(object):
             a.action = None
             a.save()
 
-    def pull_photos(self):
-
-        pull_pairs = zip(self.sources.split(','), self.targets.split(','))
-
-        for source, target in pull_pairs:
-
-            logger.info("Copying %s to %s" %(source, target))
-            source_uri = '%s@%s:%s' %(self.ssh_username, self.device_hostname, source)
-
-            copy_statement = ['scp', '-r', '-p', source_uri, target]
-            ps = subprocess.Popen(copy_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            (out,err,) = ps.communicate(None)
-
-            logger.info(out)
-
-            if err:
-                logger.error(err)
-
-            logger.debug("Copy code: %s" % ps.returncode)
-
     def copy_album_to_device(self, a):
 
         artist_folder = os.path.join(self.beats_target_folder, a.artist.name) #join(self.device_mount, self.beats_target_folder, a.artist)
 
-        logger.info("adding folder: \"%s\"" %(artist_folder.encode('utf-8')))
+        logger.info(" - adding folder: \"%s\"" %(artist_folder.encode('utf-8')))
 
         mkdir_statement = self._get_ssh_statement(r'mkdir -p \"%s\"' % artist_folder)
-        logger.info(mkdir_statement)
+        logger.debug(mkdir_statement)
 
         ps = subprocess.Popen(mkdir_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out,err,) = ps.communicate(None)
 
-        logger.info(out)
+        logger.debug(out)
 
         if err:
             logger.error(err)
 
         storage_path = self._get_storage_path(a)
-        logger.debug("storage path: %s" % storage_path.encode('utf-8'))
+        logger.debug(" - storage path: %s" % storage_path.encode('utf-8'))
 
         modified_artist_folder = artist_folder.replace(' ', r'\ ').replace("'", r'\'').replace("&", r'\&')
-        logger.debug("modified artist folder: %s" % modified_artist_folder.encode('utf-8'))
+        logger.debug(" - modified artist folder: %s" % modified_artist_folder.encode('utf-8'))
 
-        cp_statement = 'scp -r "%s" %s@%s:"%s/"' %(storage_path, self.ssh_username, self.device_hostname, modified_artist_folder)
-        logger.debug(cp_statement.encode('utf-8'))
+        identify_file_parameter = self._get_ssh_identity_file_parameter()
+        cp_statement = r'scp %s -r "%s" %s@%s:"%s/"' % (identify_file_parameter, storage_path, self.ssh_username, self.device_hostname, modified_artist_folder)
+        logger.debug(" - %s" % cp_statement.encode('utf-8'))
 
         ps = subprocess.Popen(shlex.split(cp_statement.encode('utf-8')), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out,err,) = ps.communicate(None)
 
-        logger.info(out)
+        logger.debug(out)
 
         err = err.replace("void endpwent()(3) is not implemented on Android\n", "")
 
         if err != "":
             raise Exception("'%s'" % err)
 
-        logger.debug("Add code: %s" % ps.returncode)
+        logger.debug(" - add code: %s" % ps.returncode)
 
         if ps.returncode == 0:
             ac = AlbumCheckout(album=a, checkout_at=timezone.now())
@@ -585,22 +870,24 @@ class FreshBeats(object):
 
     def _get_ssh_statement(self, command):
 
-        statement = ""
-
-        user = self._whoami()
-
-        ssh_key = ''
-
-        if user == 'www-data':
-            ssh_key = "-i %s" % self.ssh_key_path
-
-        if self.ssh_key_path:
-            statement = r'ssh %s -o StrictHostKeyChecking=no %s@%s "%s"' %(ssh_key, self.ssh_username, self.device_hostname, command)
-        else:
-            statement = 'ssh %s@%s %s' %(self.ssh_username, self.device_hostname, command)
+        identify_file_parameter = self._get_ssh_identity_file_parameter()
+        statement = r'ssh %s %s@%s "%s"' %(identify_file_parameter, self.ssh_username, self.device_hostname, command)
 
         # - removing encode('utf-8') here because we may be doubling up encoding on string literals passed in to this function
         return shlex.split(statement) # .encode('utf-8'))
+
+    def _get_ssh_identity_file_parameter(self):
+
+        user = self._whoami()
+
+        logger.debug("acting user: %s" % user)
+
+        ssh_key = ''
+
+        if user == self.web_user and self.ssh_key_path:
+            ssh_key = "-i %s -o StrictHostKeyChecking=no" % self.ssh_key_path
+
+        return ssh_key
 
     def _get_sha1sum(self, root, filename):
 
@@ -620,9 +907,9 @@ class FreshBeats(object):
     def _get_storage_path(self, album):
 
         if album.name == 'no album':
-            return join(self.music_base_path, self.music_folder, album.artist.name.encode('utf-8'))
+            return join(self.music_path, album.artist.name.encode('utf-8'))
 
-        return join(self.music_base_path, self.music_folder, album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
+        return join(self.music_path, album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
 
     def _pick_random_fill_albums(self):
 
@@ -730,21 +1017,22 @@ class FreshBeats(object):
 
 @click.command()
 @click.option('--ingest', '-i', is_flag=True, help='Ingest new music on disk.')
+@click.option('--artist_filter', '-t', 'artist_filter', default=None, help='Narrows actions to artist name given')
 @click.option('--sha1_scan', '-s', is_flag=True, help='Test existing songs for SHA1 match.')
 @click.option('--report', '-r', is_flag=True, help='Report on device status and copy plan.')
-@click.option('--validate', '-v', is_flag=True, help='Validates album copy plan.')
+@click.option('--validate_plan', '-v', is_flag=True, help='Validates album copy plan.')
 @click.option('--apply_plan', '-a', is_flag=True, help='Apply copy plan to device.')
 @click.option('--new_randoms', '-n', is_flag=True, help='Try to fit new random albums during "apply".')
-@click.option('--pictures', '-p', is_flag=True, help='Pull pictures from device.')
+@click.option('--purge', '-g', is_flag=True, help='Purge disk and database of not-found items.')
 @click.option('--free', '-f', is_flag=True, help='Show device free information.')
-def main(ingest, sha1_scan, report, validate_plan, apply_plan, new_randoms, pictures, free):
+def main(ingest, artist_filter, sha1_scan, report, validate_plan, apply_plan, new_randoms, purge, free):
 
     try:
 
         f = FreshBeats()
 
         if ingest:
-            f.update_db(sha1_scan=sha1_scan)
+            f.update_db(artist_filter=artist_filter, sha1_scan=sha1_scan, purge=purge)
 
         if validate_plan:
             f.validate_plan()
@@ -755,9 +1043,6 @@ def main(ingest, sha1_scan, report, validate_plan, apply_plan, new_randoms, pict
         if report:
             logger.info("Reporting!")
             f.plan_report()
-
-        if pictures:
-            f.pull_photos()
 
         if free:
             f.get_free_bytes()
