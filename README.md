@@ -1,116 +1,104 @@
-#freshbeats-pi
-###Own what you own. Keep it fresh.
+# freshbeats-pi
+### Own What You Own
 
-This project is two things:
+**Goals**
+* learn
+* tinker
+* get confused
 
-1. A web interface that controls search and playback of your music files - playback commands target a remote service, in this case, one running on a Raspberry Pi which is connected to a home theater system
-	a. The interface also provides a survey through which you can begin classifying (judging) your music
-2. A program that smartly rotates your music collection through your mobile device for your remote listening pleasure.
-	a. This program listens to the survey results obtained in part 1a of this description.
+**Components**
+* music playback API (services/beatplayer)
+* music file management utility (services/freshbeats)
+* socket IO server (services/switchboard)
+* web interface (webapp)
 
 ### STOP!
 
-This project is quite unfinished. Yes, if you have a magic touch, it will work. I use it regularly, but I created it, and I think it only obeys me (on occasion) because it owes me its life. Your best weapons will be your understanding of network file sharing, firewalls, linux package managers, and your undying devotion to become one with the music you've accumulated over the years.
+This project is quite unfinished. Yes, if you have a magic touch, it will work. I
+use it regularly, but I created it, and I think it only obeys me (on occasion)
+because it owes me its life.
 
-## Setup
+## Getting Started
 
-Admittedly, this project has some serious configuration complexity. The biggest challenge I've had is simply keeping an understanding of what is where.
+This project is:
 
-It basically looks like this:
+1. A web interface that provides
+  - search and playback on any networked device of music files available on any
+  network, provided the networks are networked
+  - light management and classification of said music files, including personal
+  review and ripping status
+  - an interface for the utility (below) to rotate said music files on your mobile
+  device
+2. A command-line utility that
+  - ingests information about a music collection from a filesystem
+  - smartly (using survey info collected through the website) rotates your music
+  collection through your mobile device
+  - identifies and helps to remediate IDv3 tagging inconsistencies
 
-<pre>
-Your browser (client)
-	|
-	| basic page requests
-	| polling player status (soon to be moved to the server)
-	| AJAX requests for the player			                       |o |                     | o|
-	|											                   |{}| home theater system |{}|
-	|											                   |{}|    |                |{}|
-	|			    			player commands                            |
-	V			 			player status queries                          |
-Django Web App -------------------------------------------------> <b>beater.py RPC server</b> (running on the pi)  
-(+Web App DB)						                                 ^
-   \		&                   write MP3s 	                        /
-	\	freshbeats.py service -----------------> mobile device     /
-	\ 			    ^       					                  /
-     \   			 \  	      				                 /
-	  \		 		  \		 					                /
-write playlist file	   \		                    read playlist file
-		\			update db 		                     read MP3s
-		 \  		 read MP3s 		                         /
-		  \  			  \			                        /
-		   \  			   \			                   /
-		 	V	        <b>CIFS "music" share</b> (holds your MP3s)
-	      <b>CIFS "working" share</b> (holds the playlist text file)
-</pre>
+### Collection Ingestion
 
-With all that, you really only need one machine to run the web application, your music folder shared on the network, an empty working folder shared on the network, and your Raspberry Pi (or some computer connected to speakers).
+**Requirements**
+* a running MySQL database instance accessible from this code
 
-Oh yeah, don't forget that undying devotion. (remember?)
+First, probably, you want to ingest information about your music collection into
+the database. You'll need a database and the utility `services/freshbeats/freshbeats.py`.
 
-### Development
+Go into `services/freshbeats/config` and copy `settings_example.cfg` to `settings.cfg`.
 
-Each of the three services ('beater' web app, mpplayer.py RPC server, and freshbeats.py) have two environment configuration files: 'dev' and 'prod'. The biggest difference between these environment setups are the paths to network shares. Generally, 'dev' expects that the service is running inside a Vagrant VM, and so will look for the mounts in /mounts. 'prod' expects that the service is running on a deployed machine, real or virtual, and will look in the traditional /mnt folder.
+In your new settings file, set `MUSIC_PATH` and have a look at the entries in `files`.
+These control what files the utility considers to be music files and what to skip.
+Feel free to change these.
 
-The 'rpi' Vagrant VM is available for testing, however it is not currently configured with audio outputs, so it's not very useful for actually testing BeatPlayer (mpplayer.py). Also, the chef-client provisioner hasn't been fully tested on it. I generally just use the actual Raspberry Pi for testing and don't bother powering up the VM - hence the commented IP address and inclusion of the Pi's hostname in the 'beater' web app's 'dev' settings file.
+The rest of the settings are irrelevant for ingestion.
 
-#### 'beater' web app
+Then:
 
-This is started via supervisor. Look in **/webapp/config/wsgi.py** for the environment setting. See [Supervisor](http://supervisord.org/).
+```
+./freshbeats.py --help
+```
 
-#### mpplayer.py (BeatPlayer) RPC server
+The only option other than `-i`, which you'll use in a minute to ingest your collection,
+is `--skip_verification`, which controls whether the script will check the files
+for consistent IDv3 tagging, differences in file count and size since the last
+ingestion, and mismatched SHA1 sums since the last ingestion. If this is your
+first ingestion, probably `--skip_verification`. This script is idempotent, so
+you can always come back and mess with your tags.
 
-This runs on the Pi and is managed via systemd. The configuration is written by the chef-client provisioner when it executes the beater::beatplayer recipe. Look in **/Vagrantfile** in the 'rpi' VM's chef.json.merge under [:beatplayer][:environment] for the environment setting. Chances are, the chef-client provisioner will not actually be used to provision the Pi, and so the steps in beater::beatplayer will need to be followed by hand. Note there are configuration steps to set up a WiFi USB dongle with DHCP.
+**Connecting to the database?** `freshbeats.py` directly uses Django models and the web app's
+Django settings. Next stop, `webapp/config/settings_env.py`. You'll notice the
+database connection is driven by environment variables. In the `webapp` folder,
+copy `.env.example` to `.env` and edit your new `.env` file to fill in the
+`FRESHBEATS_DATABASE_*` variables.
 
-#### freshbeats.py
+Also notice the two references to a music path: `web app .env's FRESHBEATS_MUSIC_PATH`
+and `freshbeats.py settings.cfg's MUSIC_PATH`. The web app value overrides the
+script value. One of them needs to be set.
 
-The environment for this service is actually hardcoded to 'dev' in the class's __init__, however the 'prod' environment configuration file is available.
+That's it, I think. Go back to `services/freshbeats` and run:
 
-For my development setup, there is an additional folder share available to the RPi so it can simply run beater.py from in-place development code, rather than deploying it after every change. Alternatively, you can simply scp the files to the Pi. It doesn't really matter where they go - I put services/beatplayer at /usr/share/freshbeats/services/beatplayer
+```
+$(cat ../../webapp/.env) && ./freshbeats.py -i -l
+```
 
-## Quik(-ish) Start
+I don't know how big your collection is. This might take a while.
 
-**First, edit /Vagrantfile to reflect your network, i.e. where your network shares are. There are two 'synced_folder' declarations in the 'web' VM block.**
+### Run the Web App
 
-Once Vagrantfile is correct, this will provision the 'web' VM:
+First, see "Connecting to the database?" above. Then,
 
-	$ vagrant up
+Containerized:
+```
+docker-compose up --build
+```
 
-Now ssh in and run FreshBeats to populate the database with your music:
+Uncontainerized:
+```
+cd webapp
+pip install -r requirements.txt
+./manage.py runserver
+```
 
-	$ vagrant ssh web
-	$ cd /vagrant/services/freshbeats
-	$ python freshbeats.py -u
-
-And finally, run the web app:
-
-	$ sudo supervisord -c /etc/supervisor/supervisord.conf
-
-On your RPi (assuming it is on the network, the shares are mounted, and the code is in place):
-
-	$ cd /where/the/code/lives
-	$ ./mpplayer.py -e [dev|prod] -a $(hostname)
-
-Visit:
-
-	http://localhost:8000
-
-## Get Some Prompt
-
-import sys, os, django
-sys.path.append('../../webapp')
-os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
-django.setup()
-from beater.models import *
-album = Album.manager.find(name='Rage Against the Machine')
-
-## State of Development
-
-Needed:
-
-* prevent delete for shopping albums (in DB but not on disk)
-
-# Appendix A: Provisioning
+### Stand Up beatplayer (remote playback)
 
 The Raspberry Pi module is expected to be running some flavor of Linux. This was tested with Arch ARM.
 
@@ -132,3 +120,124 @@ As the deployment user:
 	ANSIBLE_CONFIG=./ansible.cfg ansible-playbook site.yml
 
 NOTE: `hosts` should list the dev board hostname under `devboard`
+
+beatplayer runs on the Pi and is managed via systemd. The configuration is written by the chef-client provisioner when it executes the beater::beatplayer recipe.
+
+Look in **/Vagrantfile** in the 'rpi' VM's chef.json.merge under [:beatplayer][:environment] for the environment setting. Chances are, the chef-client provisioner will not actually be used to provision the Pi, and so the steps in beater::beatplayer will need to be followed by hand.
+
+There are also configuration steps to set up a WiFi USB dongle with DHCP.
+
+The environment for this service is actually hardcoded to 'dev' in the class's __init__, however the 'prod' environment configuration file is available.
+
+For my development setup, there is an additional folder share available to the RPi so it can simply run beater.py from in-place development code, rather than deploying it after every change. Alternatively, you can simply scp the files to the Pi. It doesn't really matter where they go - I put services/beatplayer at /usr/share/freshbeats/services/beatplayer
+
+On your RPi (assuming it is on the network, the shares are mounted, and the code is in place):
+
+	$ cd /where/the/code/lives
+	$ ./mpplayer.py -e [dev|prod] -a $(hostname)
+
+### Check-out Music on a Mobile Device
+
+(coming soon)
+
+### Fix Your IDv3 Tags
+
+(coming soon)
+
+### Update Your Collection
+
+(coming soon)
+
+## Architcture
+
+From a high-level, the web app and utility file are laid out in reverse CLI-to-API style.
+That is,rather than a command-line utility interacting with an API, this is a command-line
+utility being used as a module by a web application to perform the same tasks
+through a browser. This is largely due to the fact that a lot of what this does
+is command-line oriented.
+
+Playback deployment through the web app can look like this:
+
+```
+Client (your browser)
+  |                                         |o|  home   |o|
+  |                                         |0| theater |0|
+  |                                         |0|  system |0|
+  |                                                |
+  V                                                |
+Django Web App -------------------------> Pi (RPC server, beater.py)
+(+Web App DB)                                      |
+                                                   |
+                                                   |
+                                         file share (SMB/CIFS/whatever
+                                           the Pi OS will talk to)
+```
+
+Mobile device media management can look like this:
+
+```
+Mobile device (your phone)
+  |
+  |
+  | <-- SSH
+  |
+  |
+freshbeats.py utility
+```
+
+Note that this is a reference implementation. The web app and file share can
+(and does in my case) run on one machine. The Pi is any networked device with
+ports that can run Python. The "home theater system" can be headphones. Everything
+can run on one box.
+
+## Get Some Prompt
+
+import sys, os, django
+sys.path.append('../../webapp')
+os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
+django.setup()
+from beater.models import *
+album = Album.manager.find(name='Rage Against the Machine')
+
+## State of Development
+
+* python 3
+* Django 3.0
+* reliable playback w/ standard controls
+* unified search and playback UX
+* unified CLI
+  * everything from the UI at the prompt (playback, search, mobile)
+  * everything from freshbeats.py in the UI (ingestion)
+* remove unused devops
+* correct configuration & deployment
+  * dockerized database
+  * all config external (etcd? vault?)
+  * k8s templates?
+  * all-local dev mode
+  * Pi provisioning (terraform? ansible? fabric?)
+* little bits:
+  * healthz endpoints everywhere
+  * admin dashboard
+    * see beatplayer(s!), switchboard, devices + status
+    * manage devices
+  * record shop mode
+  * implement splice, using 'order' column, reassigning this value as needed and keeping the 'current' pointer
+  * keep better track of actual player status, make this a first order bit of state in the webapp
+  * (test this) prevent delete for shopping albums (in DB but not on disk)
+
+## Act of Development
+
+Each of the three services ('beater' web app, mpplayer.py RPC server, and freshbeats.py) have two environment configuration files: 'dev' and 'prod'. The biggest difference between these environment setups are the paths to network shares. Generally, 'dev' expects that the service is running inside a Vagrant VM, and so will look for the mounts in /mounts. 'prod' expects that the service is running on a deployed machine, real or virtual, and will look in the traditional /mnt folder.
+
+The 'rpi' Vagrant VM is available for testing, however it is not currently configured with audio outputs, so it's not very useful for actually testing BeatPlayer (mpplayer.py). Also, the chef-client provisioner hasn't been fully tested on it. I generally just use the actual Raspberry Pi for testing and don't bother powering up the VM - hence the commented IP address and inclusion of the Pi's hostname in the 'beater' web app's 'dev' settings file.
+
+# Appendix A: Tahobuddy CI
+
+```
+{
+  \"repository_name\": \"freshbeats-pi\",
+  \"local_path\": \"/path/to/freshbeats-pi\",
+  \"build_image\": \"tahobuilder_docker\",
+  \"build_cmd\": \"docker build -t freshbeats .\"
+}
+```
