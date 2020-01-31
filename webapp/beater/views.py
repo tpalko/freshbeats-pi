@@ -5,6 +5,7 @@ from django.http import HttpResponse, JsonResponse, QueryDict
 from django.db.models import Q
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
+import os
 import sys
 from .models import Album, Artist, Song, AlbumStatus# , Device
 import logging
@@ -287,7 +288,7 @@ def survey_post(request):
 @csrf_exempt
 def get_search_results(request):
     '''Search page: handle search'''
-    record_shop_mode = bool(request.POST.get('record_shop_mode'))
+    record_shop_mode = bool(int(request.POST.get('record_shop_mode')))
     search_string = request.POST.get('search')
     escaped_search_string = re.escape(search_string)
     highlight_replace = re.compile(escaped_search_string, re.IGNORECASE)
@@ -297,7 +298,10 @@ def get_search_results(request):
     artists = []
     songs = []
 
+    logger.info("record_shop_mode: {}, search_string: {}".format(record_shop_mode, search_string))
+
     if not record_shop_mode:
+
         albums = Album.objects.filter(name__icontains=search_string)
         albums = [render_to_string('_album.html', {
             'album': a,
@@ -310,7 +314,8 @@ def get_search_results(request):
         artists = Artist.objects.filter(name__icontains=search_string)
         artists = [render_to_string('_artist.html', {
             'artist': a,
-            'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)
+            'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name),
+            'albums': Album.objects.filter(artist_id=a.id)
         }) for a in artists]
 
     else:

@@ -49,14 +49,12 @@ $(document).on('submit', "form#new_artist_form", function(e) {
 let isRecordShopMode;
 
 function setRecordShopMode(recordShopMode = false) {
+
 	// isRecordShopMode = localStorage.getItem('isRecordShopMode') === 'true';
 	isRecordShopMode = recordShopMode;
 	$("#record_shop_mode").val(isRecordShopMode ? 1 : 0);
-	setIsRecordShopModeButtonText();
-}
-
-function setIsRecordShopModeButtonText() {
-	if (isRecordShopMode) {
+  console.log("isRecordShopMode:" + isRecordShopMode);
+  if (isRecordShopMode) {
 		$("button#record_shop_mode_btn")[0].innerText = 'Record Shop Mode';
 	} else {
 		$("button#record_shop_mode_btn")[0].innerText = 'Normal Search';
@@ -106,6 +104,7 @@ function perform_search() {
 				keys = keys.filter(key => key == 'artists');
 			}
 
+      // -- if we didn't find anything in a category, say so
 			$(keys.filter(key => data[key].length == 0))
 				.each(function(i, key) {
 					$("#search_results").append('<div>No ' + key + '</div>');

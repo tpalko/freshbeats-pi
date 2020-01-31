@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import os
 import sys
@@ -273,11 +273,11 @@ class FreshBeats(object):
         except Artist.DoesNotExist as does_not_exist_exc:
             artist = Artist(name=artist_name)
             artist.save()
-            logger.info(" - new artist saved: %s", artist.encode('utf-8'))
+            logger.info(" - new artist saved: %s", artist.name.encode('utf-8'))
             added = True
         return (artist, added)
 
-    def _save_album(self, artist, album_name):
+    def _save_album(self, artist, album_name, total_size):
         album = None
         added = False
         try:
@@ -295,7 +295,7 @@ class FreshBeats(object):
                 old_total_size=0,
                 rating=Album.UNRATED)
             album.save()
-            logger.info(" - new album saved: %s/%s", artist.encode('utf-8'), album_name.encode('utf-8'))
+            logger.info(" - new album saved: %s/%s", artist.name.encode('utf-8'), album_name.encode('utf-8'))
             added = True
 
         return (album, added)
@@ -333,18 +333,19 @@ class FreshBeats(object):
         for song in album.song_set.all():
             song.delete()
 
-    def update_db(self, artist_filter=None, sha1_scan=False, purge=False):
+    def update_db(self, artist_filter=None, sha1_scan=False, purge=False, skip_verification=False):
         ''' Read folders on disk and update database accordingly.'''
 
         try:
 
             parent_folder = self.music_path.rpartition('/')[1]
-	    quit = False
+            quit = False
+            skip_user_action = False
 
             for root, dirs, files in os.walk(self.music_path):
 
-		if quit:
-		    break
+                if quit:
+                    break
 
                 sub_path = root.replace(self.music_path, "")
 
@@ -398,22 +399,27 @@ class FreshBeats(object):
                     logger.debug(" - no music tracks, skipping")
                     continue
 
-                (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(root)
-
-                user_action = False
-                for t in dist:
-                    if len(dist[t]) > 1 or any([ v for v in dist[t] if v is None ]):
-                        user_action = True
-                        break
+                logger.debug(" - path parsed -> artist: %s, album: %s" % (artist_name, album_name))
 
                 total_size = sum(getsize(join(root, name)) for name in all_files)
                 audio_size = sum(getsize(join(root, name)) for name in music_files)
 
-                logger.debug(" - path parsed -> artist: %s, album: %s" % (artist_name, album_name))
-
                 (artist, artist_added) = self._save_artist(artist_name)
-                (album, album_added) = self._save_album(artist, album_name)
+                (album, album_added) = self._save_album(artist, album_name, total_size)
+
+                if skip_verification and not artist_added and not album_added:
+                    continue
+
                 flags = AlbumStatus.objects.filter(album=album)
+
+                (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(root)
+
+                user_action = False
+                if not skip_user_action:
+                    for t in dist:
+                        if len(dist[t]) > 1 or any([ v for v in dist[t] if v is None ]):
+                            user_action = True
+                            break
 
                 albummeta = Albummeta(full_path=root,
                     sub_path=sub_path,
@@ -434,12 +440,14 @@ class FreshBeats(object):
                 if user_action:
                     while(True):
                         albummeta.printmeta()
+                        print("Some discrepancies were detected in the MP3 file tags.")
                         print("What do you want to do?")
                         print("")
                         print("fix ID3 (t)ags")
                         print("    set (f)lags")
                         print("        (c)ontinue")
-			print("        (q)uit")
+                        print("        (s)kip all")
+                        print("        (q)uit")
                         print("")
                         chosen = raw_input("       ? ")
 
@@ -447,11 +455,14 @@ class FreshBeats(object):
                             self.normalize_id3_tags(albummeta)
                         elif str(chosen).lower() == "f":
                             self.set_flags(albummeta)
+                        elif str(chosen).lower() == "s":
+                            skip_user_action = True
+                            break
                         elif str(chosen).lower() == "c":
                             break
-			elif str(chosen).lower() == "q":
-			    quit = True
-			    break
+                        elif str(chosen).lower() == "q":
+                            quit = True
+                            break
 
                 if album_added or update_album_meta:
                     if update_album_meta:
@@ -1025,14 +1036,15 @@ class FreshBeats(object):
 @click.option('--new_randoms', '-n', is_flag=True, help='Try to fit new random albums during "apply".')
 @click.option('--purge', '-g', is_flag=True, help='Purge disk and database of not-found items.')
 @click.option('--free', '-f', is_flag=True, help='Show device free information.')
-def main(ingest, artist_filter, sha1_scan, report, validate_plan, apply_plan, new_randoms, purge, free):
+@click.option('--skip_verification', '-l', is_flag=True, help='Skip verification of database information with files on disk.')
+def main(ingest, artist_filter, sha1_scan, report, validate_plan, apply_plan, new_randoms, purge, free, skip_verification):
 
     try:
 
         f = FreshBeats()
 
         if ingest:
-            f.update_db(artist_filter=artist_filter, sha1_scan=sha1_scan, purge=purge)
+            f.update_db(artist_filter=artist_filter, sha1_scan=sha1_scan, purge=purge, skip_verification=skip_verification)
 
         if validate_plan:
             f.validate_plan()

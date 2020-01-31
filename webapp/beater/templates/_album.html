@@ -1,10 +1,11 @@
 <div class="row album">
 	<div class="col-md-9">
 		<strong>ALBUM:</strong> {{name_highlight|safe}} / {{album.artist}}
+    <a href="#" class="btn btn-primary command" endpoint="player" command="play" albumid="{{album.id}}">play now</a>
 	</div>
 	<div class="col-md-3">
-		<a href="{% url "album_command" command="play" albumid=album.id %}" class="btn btn-primary ajax">Play</a>
-		<a href="{% url "album_command" command="splice" albumid=album.id %}" class="btn btn-primary ajax">Splice</a>
-		<a href="{% url "album_command" command="enqueue" albumid=album.id %}" class="btn btn-primary ajax">Enqueue</a>
+    <a href="#" class="btn btn-primary command" endpoint="player" command="play" albumid="{{album.id}}" class="btn btn-primary ajax">play</a>
+    <a href="#" class="btn btn-primary command" endpoint="player" command="splice" albumid="{{album.id}}" class="btn btn-primary ajax">splice</a>
+    <a href="#" class="btn btn-primary command" endpoint="player" command="enqueue" albumid="{{album.id}}" class="btn btn-primary ajax">enqueue</a>
 	</div>
 </div>

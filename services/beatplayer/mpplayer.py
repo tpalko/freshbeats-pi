@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 class MPPlayer():
 
     ps = None
+    current_thread = None
     volume = None
 
     def __init__(self, env, *args, **kwargs):
@@ -119,12 +120,14 @@ class MPPlayer():
             self.ps = subprocess.Popen(command, stdin=subprocess.PIPE)#, stdout=self.f_outw, stderr=self.f_errw)
             played = True
 
+            logger.info("play command called..")
+
             if self.volume is None:
                 self.volume = self.default_volume
 
             self._issue_command("volume %s 1" %(self.volume))
 
-            self.popenAndCall(self.call_callback)#, command, force)
+            self.current_thread = self.popenAndCall(self.call_callback)#, command, force)
             # self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
 
             '''
@@ -158,7 +161,9 @@ class MPPlayer():
 
         def run_in_thread(on_exit):#, command, force):
             '''Thread target'''
+            logger.info("Waiting for self.ps..")
             self.ps.wait()
+            logger.info("ps is done, calling on_exit()")
             on_exit()
             return
 
@@ -195,9 +200,14 @@ class MPPlayer():
 
         self._issue_command("pt_step 1")
 
+    def healthz(self):
+
+        return {'ps': self.ps, 'current_thread': self.current_thread, 'volume': self.volume}
+
     def _issue_command(self, command):
 
         if self.ps is None:
+            logger.info("self.ps is None")
             raise Exception("Player process is not started.")
 
         logger.debug("issuing %s" % (command))

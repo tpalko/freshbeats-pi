@@ -13,13 +13,6 @@ RUN pip install -r freshbeats_requirements.txt
 
 EXPOSE 8000
 
-ENV FRESHBEATS_DATABASE_HOST=frankdb_mysql
-ENV FRESHBEATS_SWITCHBOARD_EXTERNAL_HOST=switchboard.freshbeats.palkosoftware.ddns.net
-ENV FRESHBEATS_SWITCHBOARD_INTERNAL_HOST=freshbeats_switchboard
-ENV FRESHBEATS_SWITCHBOARD_EXTERNAL_PORT=80
-ENV FRESHBEATS_SWITCHBOARD_INTERNAL_PORT=3333
-ENV FRESHBEATS_MUSIC_PATH=/music
-
 VOLUME /music
 VOLUME /ssh
 
@@ -29,3 +22,4 @@ COPY ./services/freshbeats ./services/freshbeats
 WORKDIR /usr/src/app/webapp
 
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+#CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000"]

@@ -11,6 +11,8 @@ services:
     #   - "8030:8000"
     environment:
      - PYTHONUNBUFFERED=1
+    env_file:
+      - webapp/.env
     restart: "always"
     external_links:
       - frankdb_mysql

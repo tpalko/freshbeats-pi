@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 logger.debug("Setting path for RPi: %s" % settings.BEATPLAYER_SERVER)
 beatplayer_proxy = xmlrpclib.ServerProxy(settings.BEATPLAYER_SERVER)
+health_response = beatplayer_proxy.healthz()
+logger.info(json.dumps(health_response))
 
 PLAYER_STATE_STOPPED = 'stopped'
 PLAYER_STATE_PLAYING = 'playing'
@@ -54,14 +56,14 @@ player_state = PLAYER_STATE_STOPPED
 
 def player(request, command, albumid=None, songid=None):
 
-    problem = None
-    player_info = None
+    #problem = None
+    #player_info = None
 
     #command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
     #albumid = request.POST.get('albumid', None)
     #songid = request.POST.get('songid', None)
 
-    logger.debug("Got command: %s" % command)
+    #logger.debug("Got command: %s" % command)
 
     _handle_command(command, albumid, songid, force_play=True)
 
@@ -72,11 +74,16 @@ def command(request, type):
     response = {'result': {}, 'success': False, 'message': ""}
 
     try:
-
+        # -- type 'album' may be orphaned.. only referenced once in templates, included in one view, whose url is commented
         if type == "album":
             return _album_command(request)
         elif type == "player":
-            return _player_command(request)
+
+            command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
+            albumid = request.POST.get('albumid', None)
+            songid = request.POST.get('songid', None)
+
+            return _handle_command(command, albumid=albumid, songid=songid)
 
         response['success'] = True
 
@@ -100,6 +107,7 @@ def player_complete(request):
     The natural return at the end of a song also worked, because at that point the process was dead, so it didn't need to be forced.
     '''
 
+    logger.info("player_complete called")
     response = {'result': {}, 'success': False, 'message': ""}
 
     try:
@@ -107,7 +115,8 @@ def player_complete(request):
         logger.debug("Player state: %s" % player_state)
 
         if player_state == PLAYER_STATE_PLAYING:
-            _handle_command("next")
+            logger.info("Currently playing.. getting next..")
+            _handle_command("player_complete")
 
         response['success'] = True
 
@@ -145,18 +154,18 @@ def player_status_and_state(request):
 
     return HttpResponse(json.dumps({'success': True}))
 
-    def _album_command(request):
+def _album_command(request):
 
-        album = Album.objects.get(pk=request.POST.get('albumid'))
-        command = request.POST.get('command')
+    album = Album.objects.get(pk=request.POST.get('albumid'))
+    command = request.POST.get('command')
 
-        if command == "keep":
+    if command == "keep":
 
-            album.action = Album.DONOTHING
-            album.save()
-            response['albumid'] = album.id
+        album.action = Album.DONOTHING
+        album.save()
+        response['albumid'] = album.id
 
-def _handle_command(command, albumid=None, songid=None, force_play=False):
+def _handle_command(command, albumid=None, songid=None, force_play=True):
 
     global player_state
     global playlist
@@ -167,8 +176,22 @@ def _handle_command(command, albumid=None, songid=None, force_play=False):
 
     next_song = None
     next_playlistsong = None
+    send_kill = False
 
-    if command == "surprise":
+    if command == "player_complete":
+
+        player_state = PLAYER_STATE_PLAYING
+
+        if playlist:
+            logger.info("Got 'next', running playlist..")
+            next_playlistsong = _get_next_playlistsong()
+        elif shuffle:
+            logger.info("Got 'next', not running playlist, but shuffling..")
+            next_song = _get_next_song()
+        else:
+            logger.info("Got 'next', but not running playlist - what do to?")
+
+    elif command == "surprise":
 
         shuffle = True
         playlist = False
@@ -176,16 +199,28 @@ def _handle_command(command, albumid=None, songid=None, force_play=False):
 
     elif command == "playlist":
 
-        shuffle = False
-        playlist = True
-        next_playlistsong = _get_next_playlistsong()
+        if not playlist:
+            playlist = True
+
+        if player_state == PLAYER_STATE_PLAYING:
+            logger.info("Already playing playlist..")
+        elif player_state == PLAYER_STATE_PAUSED:
+            player_state = PLAYER_STATE_PLAYING
+            beatplayer_proxy.pause()
+        elif player_state == PLAYER_STATE_STOPPED:
+            player_state = PLAYER_STATE_PLAYING
+            new_playlistsong = _get_current_song()
 
     elif command == "next":
 
-        if playlist:
-            next_playlistsong = _get_next_playlistsong()
-        elif shuffle:
-            next_song = _get_next_song()
+        if player_state != PLAYER_STATE_STOPPED:
+            beatplayer_proxy.stop()
+        else:
+            if playlist:
+                next_playlistsong = _get_next_playlistsong()
+            else:
+                next_song = _get_next_song()
+
 
     elif command == "shuffle":
 
@@ -196,10 +231,27 @@ def _handle_command(command, albumid=None, songid=None, force_play=False):
         if songid is not None:
             logger.debug("Fetching song %s" % songid)
             next_song = Song.objects.get(pk=songid)
-        elif playlist:
-            next_playlistsong = PlaylistSong.objects.filter(is_current=True).first()
-        elif shuffle:
-            next_song = _get_next_song()
+        elif albumid is not None:
+            logger.debug("Fetching album %s" % albumid)
+            album = Album.objects.get(pk=albumid)
+            first_song = None
+            for song in album.song_set.all().order_by('name'):
+                playlistsong = PlaylistSong(song=song)
+                playlistsong.save()
+                if not first_song:
+                    first_song = playlistsong
+                    next_playlistsong = first_song
+        elif player_state == PLAYER_STATE_PLAYING:
+            # -- no op
+            logger.info("already playing..")
+        elif player_state == PLAYER_STATE_PAUSED:
+            player_state = PLAYER_STATE_PLAYING
+            beatplayer_proxy.pause()
+        elif player_state == PLAYER_STATE_STOPPED:
+            player_state = PLAYER_STATE_PLAYING
+            new_playlistsong = _get_current_song()
+        # elif shuffle:
+        #     next_song = _get_next_song()
 
     elif command == "enqueue":
 
@@ -233,10 +285,10 @@ def _handle_command(command, albumid=None, songid=None, force_play=False):
         beatplayer_proxy.pause()
 
     elif command == "stop":
-        if player_state == PLAYER_STATE_STOPPED:
-            player_state = PLAYER_STATE_PLAYING
-        else:
-            player_state = PLAYER_STATE_STOPPED
+        # if player_state == PLAYER_STATE_STOPPED:
+        #     player_state = PLAYER_STATE_PLAYING
+        # else:
+        player_state = PLAYER_STATE_STOPPED
 
         beatplayer_proxy.stop()
 
@@ -260,14 +312,15 @@ def _handle_command(command, albumid=None, songid=None, force_play=False):
     logger.debug("handled command %s" % command)
     _show_player_state()
 
+    return HttpResponse(json.dumps({'success': True}))
+
 def _play(song, force_play=False):
 
     global player_state
 
-    played = beatplayer_proxy.play(_get_song_filepath(song), "http://%s:%s/player_complete/" % (settings.BEATER_HOSTNAME, settings.BEATER_PORT), force_play)
+    played = beatplayer_proxy.play(_get_song_filepath(song), "http://%s:%s/player_complete/" % (settings.FRESHBEATS_EXTERNAL_HOST, settings.FRESHBEATS_EXTERNAL_PORT), force_play)
     player_state = PLAYER_STATE_PLAYING
     return played
-
 
 def _show_player_status(song):
 
@@ -294,6 +347,10 @@ def _show_player_state():
         'mute': "on" if mute else "off"
     }))
 
+
+def _get_current_song():
+    current_playlistsong = PlaylistSong.objects.filter(is_current=True).first()
+    return current_playlistsong
 
 def _get_next_song():
     '''Returns a randomly chosen song'''

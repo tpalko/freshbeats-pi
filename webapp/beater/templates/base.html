@@ -24,27 +24,27 @@
 				<div class="col-md-1">
 					<h2>Hy!asdf</h2>
 				</div>
-				<div class="col-md-6">
-					<a class="btn btn-info" href="{% url "search" %}">search</a>
-					<a class="btn btn-info" href="{% url "mobile" %}">mobile</a>
-					<a class="btn btn-info" href="{% url "manage" %}">manage</a>
-					<a class="btn btn-info" href="{% url "report" %}">report</a>
-					<a class="btn btn-info" href="{% url "survey" %}">survey</a>
-					<a class="command btn btn-primary" endpoint="player" command="surprise" href="#">surprise me</a>
-					<a class="command btn btn-primary" endpoint="player" command="playlist" href="#">playlist</a>
-					<a class="command btn btn-default" endpoint="player" command="shuffle" href="#">shuffle is off</a>
-				</div>
 				<div class="col-md-4">
-					<a class="btn btn-warning command" endpoint="player" href="#" command="pause">pause</a>
-					<a class="btn btn-danger command" endpoint="player" href="#" command="stop">stop</a>
-					<a class="btn btn-success command" endpoint="player" href="#" command="play">play</a>
-					<a class="btn btn-warning command" endpoint="player" href="#" command="next">next</a>
-					<a class="btn btn-default command" endpoint="player" href="#" command="mute">mute is off</a>
+          <h3>
+  					<a class="" href="{% url "search" %}">search</a>
+  					<a class="" href="{% url "mobile" %}">devices</a>
+  					<a class="" href="{% url "manage" %}">collection</a>
+  					<a class="" href="{% url "report" %}">report</a>
+  					<a class="" href="{% url "survey" %}">survey</a>
+          </h3>
 				</div>
-				<div class="col-md-1">
-					<div id="player_info"></div>
+				<div class="col-md-7">
+          <a class="btn btn-primary command" endpoint="player" command="surprise" href="#">surprise me</a>
+					<a class="btn btn-primary command" endpoint="player" command="playlist" href="#">playlist</a>
+					<a class="btn btn-default command" endpoint="player" command="shuffle" href="#">shuffle is off</a>
+					<a class="btn btn-warning command" endpoint="player" command="pause" href="#">pause</a>
+					<a class="btn btn-danger command" endpoint="player" command="stop" href="#">stop</a>
+					<a class="btn btn-success command" endpoint="player" command="play" href="#">play</a>
+					<a class="btn btn-warning command" endpoint="player" command="next" href="#">next</a>
+					<a class="btn btn-default command" endpoint="player" command="mute" href="#">mute is off</a>
+          <div id="player_info"></div>
 				</div>
-			</div>
+      </div>
 
 			<div class="row" style="height:0em; margin-bottom: 0em;">
 				<div class="col-md-12" id="errors"></div>

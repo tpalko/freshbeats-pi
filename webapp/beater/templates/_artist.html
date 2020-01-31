@@ -1,19 +1,38 @@
 <div class="row album">
-	<div class="col-md-12">
-		<strong>ARTIST:</strong> {{name_highlight|safe}}
+	<div class="col-md-6">
+		<strong>ARTIST</strong> <h3>{{name_highlight|safe}}</h3>
 		<div id="artist_{{artist.id}}_album_container">
+      Albums:
 			{% for album in albums %}
-				{{album}}
+      <div class="row album">
+        <div class="col-md-6">
+		      <h5>{{album}}</h5>
+        </div>
+        <div class="col-md-6">
+          <a href="#" class="btn btn-primary command" endpoint="player" command="play" albumid="{{album.id}}" class="btn btn-primary ajax">play</a>
+          <a href="#" class="btn btn-primary command" endpoint="player" command="splice" albumid="{{album.id}}" class="btn btn-primary ajax">splice</a>
+          <a href="#" class="btn btn-primary command" endpoint="player" command="enqueue" albumid="{{album.id}}" class="btn btn-primary ajax">enqueue</a>
+        </div>
+      </div>
 			{% endfor %}
 		</div>
-		<form id="new_album_form" method="POST" action='{% url "new_album" artist.id %}'>
+  </div>
+  <div class="col-md-6">
+    <a href="#" class="btn btn-primary command" endpoint="player" command="play" artistid="{{artist.id}}" class="btn btn-primary ajax">play</a>
+    <a href="#" class="btn btn-primary command" endpoint="player" command="splice" artistid="{{artist.id}}" class="btn btn-primary ajax">splice</a>
+    <a href="#" class="btn btn-primary command" endpoint="player" command="enqueue" artistid="{{artist.id}}" class="btn btn-primary ajax">enqueue</a>
+  </div>
+</div>
+<div class="row">
+  <div class="col-md-6">
+		<form id="artist_{{artist.id}}_new_album_form" method="POST" action='{% url "new_album" artist.id %}'>
 			Add Album: <input
-										id="album_name"
+										id="artist_{{artist.id}}_album_name"
 										class="blurpost"
 										data-callback="onAlbumAdd"
 										type="text"
 										name="album_name"
-										value="" />			
+										value="" />
 		</form>
 	</div>
 </div>
