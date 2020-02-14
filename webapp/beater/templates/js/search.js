@@ -112,8 +112,12 @@ function perform_search() {
 
 			$(keys.filter( key => data[key].length > 0))
 				.each(function(i, key) {
-					$("#search_results").append(data[key]);
+					$("#search_results").append("<div class='result_type_header_container'><h1 class='result_type_header'>" + key + "</h1></div>" + data[key]);
 				});
+      
+        $(".result_type_header").each((i, h) => {
+          type_headers[h.innerText] = { el: h, top: h.offsetTop };
+        });
 		}
 	});
 }

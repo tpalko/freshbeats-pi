@@ -1,0 +1,11 @@
+version: "3.3"
+services:
+  beatplayer:
+    image: frankendeb:5000/beatplayer:latest
+    container_name: freshbeats_beatplayer
+    restart: "always"
+    volumes:
+      - /mnt/music:/mnt/music
+    ports:
+      - 9000:9000
+    env_file: .env 

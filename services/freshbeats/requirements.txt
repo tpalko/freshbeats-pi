@@ -1,6 +1,6 @@
-django==1.9
-mysql-python
+django==1.11
 click
 subprocess32
 pytz
 mutagen
+ConfigParser

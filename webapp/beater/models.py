@@ -19,6 +19,7 @@ class AlbumManager(models.Manager):
 class Artist(models.Model):
 
     name = models.CharField(max_length=255)
+    musicbrainz_artistid = models.CharField(max_length=36, null=True)
     followed = models.BooleanField(default=False, null=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -66,6 +67,11 @@ class Album(models.Model):
     artist = models.ForeignKey(Artist, null=True, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     tracks = models.IntegerField(default=0)
+    date = models.CharField(max_length=50, null=True)
+    musicbrainz_albumid = models.CharField(max_length=36, null=True)    
+    musicbrainz_trmid = models.CharField(max_length=36, null=True)
+    genre = models.CharField(max_length=50, null=True)
+    organization = models.CharField(max_length=100, null=True)
     audio_size = models.BigIntegerField(default=0)
     total_size = models.BigIntegerField(default=0)
     old_total_size = models.BigIntegerField(null=True)
@@ -148,6 +154,9 @@ class Song(models.Model):
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     sha1sum = models.CharField(max_length=40, null=True)
+    tracknumber = models.IntegerField(null=True)
+    title = models.CharField(max_length=255, null=True)
+    musicbrainz_trackid = models.CharField(max_length=36, null=True)
 
     class Meta:
         ordering = ('name',)
@@ -165,5 +174,39 @@ class AlbumCheckout(models.Model):
 class PlaylistSong(models.Model):
     song = models.ForeignKey(Song, on_delete=models.CASCADE)
     is_current = models.BooleanField(null=False, default=False)
-    played = models.BooleanField(null=False, default=False)
+    queue_number = models.IntegerField(null=False, default=1)
+    play_count = models.IntegerField(null=False, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class Player(models.Model):
+    PLAYER_STATE_STOPPED = 'stopped'
+    PLAYER_STATE_PLAYING = 'playing'
+    PLAYER_STATE_PAUSED = 'paused'
+
+    PLAYLIST_MODE_ON = 'on'
+    PLAYLIST_MODE_OFF = 'off'
+
+    CURSOR_MODE_NEXT = 'next'
+    CURSOR_MODE_STATIC = 'static'
+    
+    PLAYER_STATE_CHOICES = (
+        (PLAYER_STATE_STOPPED, 'Stopped'),
+        (PLAYER_STATE_PLAYING, 'Playing'),
+        (PLAYER_STATE_PAUSED, 'Paused')
+    )
+    
+    PLAYLIST_MODE_CHOICES = (
+        (PLAYLIST_MODE_ON, 'On'),
+        (PLAYLIST_MODE_OFF, 'Off')
+    )
+    
+    CURSOR_MODE_CHOICES = (
+        (CURSOR_MODE_NEXT, 'Next'),
+        (CURSOR_MODE_STATIC, 'Static')
+    )
+
+    mute_state = models.BooleanField(null=False, default=False)
+    shuffle_state = models.BooleanField(null=False, default=False)
+    playlist_mode = models.CharField(max_length=3, choices=PLAYLIST_MODE_CHOICES, default=PLAYLIST_MODE_ON, null=False)
+    state = models.CharField(max_length=7, choices=PLAYER_STATE_CHOICES, default=PLAYER_STATE_STOPPED, null=False)
+    cursor_mode = models.CharField(max_length=6, choices=CURSOR_MODE_CHOICES, default=CURSOR_MODE_NEXT, null=False)

@@ -1,10 +1,10 @@
 <div class="row song">
-	<div class="col-md-9">
-		<strong>SONG:</strong> {{name_highlight|safe}} / {{song.album.name}} / {{song.album.artist.name}}
+	<div class="col-md-3 credit text-right">
+		<strong>SONG:</strong> <h4>{{name_highlight|safe}}</h4> on <span class="album">{{song.album.name}}</span> by <span class="artist">{{song.album.artist.name}}</span>
 	</div>
-	<div class="col-md-3">
-		<a class="btn btn-default">Play</a>
-		<a class="btn btn-default">Splice</a>
-		<a class="btn btn-default">Enqueue</a>
+	<div class="col-md-2">
+    <a href="#" class="btn btn-primary btn-sm command ajax" endpoint="player" command="play" songid="{{song.id}}">play</a>
+    <a href="#" class="btn btn-primary btn-sm command ajax" endpoint="player" command="splice" songid="{{song.id}}">splice</a>
+    <a href="#" class="btn btn-primary btn-sm command ajax" endpoint="player" command="enqueue" songid="{{song.id}}">enqueue</a>
 	</div>
 </div>

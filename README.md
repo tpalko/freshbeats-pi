@@ -201,7 +201,6 @@ album = Album.manager.find(name='Rage Against the Machine')
 
 ## State of Development
 
-* python 3
 * Django 3.0
 * reliable playback w/ standard controls
 * unified search and playback UX
@@ -224,7 +223,16 @@ album = Album.manager.find(name='Rage Against the Machine')
   * implement splice, using 'order' column, reassigning this value as needed and keeping the 'current' pointer
   * keep better track of actual player status, make this a first order bit of state in the webapp
   * (test this) prevent delete for shopping albums (in DB but not on disk)
-
+  * 'next artist' skip 
+  * implement separate 'back' and 'start over' controls 
+  * next (and general controls) need to be more snappy 
+  * controls:
+    * fix mute/pause state, e.g. no-op if not playing, reset if mpplayer restarts or loses process, update UI according to actual process status 
+    * pause should toggle color as mute/shuffle do, play should color when playing, maybe some keep color but show toggled status some other way
+    * remove playlist button / ties  
+  * proper playlist CRUD 
+  * get rid of global player, load from db 
+  
 ## Act of Development
 
 Each of the three services ('beater' web app, mpplayer.py RPC server, and freshbeats.py) have two environment configuration files: 'dev' and 'prod'. The biggest difference between these environment setups are the paths to network shares. Generally, 'dev' expects that the service is running inside a Vagrant VM, and so will look for the mounts in /mounts. 'prod' expects that the service is running on a deployed machine, real or virtual, and will look in the traditional /mnt folder.

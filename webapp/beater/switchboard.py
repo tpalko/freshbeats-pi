@@ -14,7 +14,8 @@ def _publish_event(event, payload):
         defLogger.info("_publish_event called (complete %s).." % j['complete'])
     logger.debug("publishing %s: %s" % (event, payload))
     headers = {"content-type": "application/json"}
-    requests.post('http://%s:%s/pushevent/%s' % (
+    response = requests.post('http://%s:%s/pushevent/%s' % (
         settings.SWITCHBOARD_SERVER_INTERNAL_HOST,
         settings.SWITCHBOARD_SERVER_INTERNAL_PORT,
         event), headers=headers, data=payload)
+    logger.debug(response)

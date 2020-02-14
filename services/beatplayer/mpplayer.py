@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/env python
 
 import os
 import socket
@@ -6,11 +6,18 @@ import sys
 import traceback
 import subprocess
 import time
-from SimpleXMLRPCServer import SimpleXMLRPCServer
+import json
+try: #3
+    from xmlrpc.server import SimpleXMLRPCServer
+except: #2
+    from SimpleXMLRPCServer import SimpleXMLRPCServer
 import logging
 from optparse import OptionParser
 import requests
-from ConfigParser import ConfigParser
+try: #3
+    from configparser import ConfigParser
+except: #2
+    from ConfigParser import ConfigParser
 import threading
 
 logging.basicConfig(level=logging.DEBUG)
@@ -25,11 +32,11 @@ class MPPlayer():
 
     def __init__(self, env, *args, **kwargs):
 
-        # self.f_outw = file("mplayer.out", "wb")
-        # self.f_errw = file("mplayer.err", "wb")
+        self.f_outw = open("mplayer.out", "wb")
+        self.f_errw = open("mplayer.err", "wb")
 
-        self.f_outr = file("mplayer.out", "rb")
-        self.f_errr = file("mplayer.err", "rb")
+        self.f_outr = open("mplayer.out", "rb")
+        self.f_errr = open("mplayer.err", "rb")
 
         config_file = os.path.join(os.path.dirname(__file__), "./config/settings_%s.cfg" %(env))
 
@@ -40,7 +47,7 @@ class MPPlayer():
         config.read(config_file)
 
         for s in config.sections():
-            self.__dict__ = dict(self.__dict__.items() + {i[0]: i[1] for i in config.items(s)}.items())
+            self.__dict__ = dict(list(self.__dict__.items()) + list({i[0]: i[1] for i in config.items(s)}.items()))
 
         self.is_muted = False
 
@@ -50,12 +57,19 @@ class MPPlayer():
     self.callback = uri
     '''
 
-    def call_callback(self):
+    def call_callback(self, exit_code=0, message=''):
+        logger.debug(message)
+        callback_response = {'success': exit_code == 0, 'message': message}
         logger.debug("POST to %s" % self.callback)
-        requests.post(self.callback)
+        requests.post(self.callback, data=callback_response)
 
     def get_music_folder(self):
         return self.music_folder
+
+    def logs(self):
+        self.f_outr.seek(0)
+        lines = list(self.f_outr)
+        return lines
 
     def get_player_info(self):
 
@@ -87,8 +101,9 @@ class MPPlayer():
         try:
 
             if not os.path.exists(filepath):
-                logger.error("The file %s is not accessible." % filepath)
-                self.call_callback()
+                msg = "The file %s is not accessible." % filepath
+                logger.error(msg)
+                self.call_callback(1, msg)
                 return played
 
             # do_shell=True
@@ -117,7 +132,7 @@ class MPPlayer():
                         logger.debug("Running process.. returning")
                         return
 
-            self.ps = subprocess.Popen(command, stdin=subprocess.PIPE)#, stdout=self.f_outw, stderr=self.f_errw)
+            self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
             played = True
 
             logger.info("play command called..")
@@ -146,7 +161,7 @@ class MPPlayer():
         except Exception as e:
 
             logger.error(sys.exc_info())
-            traceback.print_tb(sys.exc_info()[2])
+            traceback.print_tb(sys.exc_info()[2])            
 
         logger.debug("Returning from play call")
         return played
@@ -162,9 +177,13 @@ class MPPlayer():
         def run_in_thread(on_exit):#, command, force):
             '''Thread target'''
             logger.info("Waiting for self.ps..")
-            self.ps.wait()
+            #wait_result = self.ps.wait()
+            (out, err) = self.ps.communicate(None)
+            #logger.info(wait_result)
+            logger.info(out)
+            logger.info(err)
             logger.info("ps is done, calling on_exit()")
-            on_exit()
+            on_exit(1, out if out else err)
             return
 
         thread = threading.Thread(target=run_in_thread, args=(on_exit,)) #, command, force))
@@ -189,7 +208,7 @@ class MPPlayer():
             logger.debug("changed mute to %s" % (self.is_muted))
 
             self._issue_command("mute %s" % ("1" if self.is_muted else "0"))
-            self._issue_command("volume %s 1" % (self.volume))
+            #self._issue_command("volume %s 1" % (self.volume))
 
         except Exception as e:
 
@@ -202,7 +221,14 @@ class MPPlayer():
 
     def healthz(self):
 
-        return {'ps': self.ps, 'current_thread': self.current_thread, 'volume': self.volume}
+        response = None
+
+        try:
+            response = {'ps': self.ps is not None, 'current_thread': self.current_thread is not None, 'volume': self.volume}
+        except:
+            response = str(sys.exc_info()[1])
+
+        return response
 
     def _issue_command(self, command):
 

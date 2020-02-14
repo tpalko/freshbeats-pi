@@ -326,7 +326,7 @@ def get_search_results(request):
         artists = sorted(artists, key=lambda a: a.name.replace(starts_with_regex.search(a.name).group(0), search_string))
         artists = [_get_artist_search_row(a, search_string) for a in artists]
 
-    return JsonResponse({'artists': artists, 'albums': albums, 'songs': songs})
+    return JsonResponse({'artists': "".join(artists), 'albums': "".join(albums), 'songs': "".join(songs)})
 
 
 def _get_artist_search_row(artist, search_string=''):

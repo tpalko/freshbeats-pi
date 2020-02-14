@@ -2,6 +2,14 @@ h1, h2, h3, h4, h5, h6 {
 	margin: 0;
 }
 
+a {
+  text-decoration: none;
+}
+
+.btn-warning, .btn-danger {
+  color: black;
+}
+
 .title {
 	background-color: #633;
 	color: #3cf;
@@ -12,6 +20,60 @@ h1, h2, h3, h4, h5, h6 {
 	margin: 0;
 }
 
+.result_type_header_container {
+  height: 39px;
+}
+
+.result_name_container {
+  height: 80px;
+}
+
+.sticky {
+  position: fixed;
+  top: 92px;
+}
+
+.result_type {
+  top: 92px;
+}
+
+.result_name {
+  top: 131px;
+}
+
+.playlist {
+  max-height: 100px;
+  overflow-y: scroll;
+}
+
+.playlist strong {
+  color: white;
+}
+
+.stickyheader {
+  position: fixed;
+  top: 0px;
+  width: 100%;
+  z-index: 99;
+}
+
+.content {
+  margin-top: 2em;
+}
+
+.stickyheader + .content {}
+
+#errors{
+  text-align: center;
+  //background-color: #fcc;
+  color: #f00;
+  //padding: 1em;
+}
+
+.row{
+  // margin-bottom: 15px;
+}
+
 #remainder_albums {
 	table-layout: fixed;
 }
@@ -20,16 +82,32 @@ h1, h2, h3, h4, h5, h6 {
 	word-wrap: break-word;
 }
 
-#errors{
 
-	text-align: center;
-	//background-color: #fcc;
-	color: #f00;
-	//padding: 1em;
+.row.album, .row.song {
+  margin-bottom: 1em;
 }
 
-.row{
-	// margin-bottom: 15px;
+.btn-artist, .btn-album {
+  border: solid 1px black;
+  background-color: #f33;
+  color: white;
+  font-weight: bold;
+}
+
+.credit {
+  color: #999;
+}
+
+h3, h4 {
+  color: #999;
+}
+
+strong {
+  color: #666;
+}
+
+span.album, span.artist {
+  color: #f30cd3;
 }
 
 .highlight {

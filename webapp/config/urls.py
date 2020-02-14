@@ -20,7 +20,7 @@ from django.conf import settings
 from beater import views
 from beater import beatplayer
 from beater import freshbeats_client
-
+ 
 urlpatterns = [
     url(r'^$', views.home, name='home'),
     url(r'^search/$', views.search, name='search'),
@@ -31,12 +31,12 @@ urlpatterns = [
     url(r'^survey/$', views.survey, name='survey'),
 
     url(r'^command/(?P<type>[a-zA-Z]+)/$', beatplayer.command, name='command'),
-    url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer.player, name='album_command'),
-    url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer.player, name='song_command'),
-    url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer.player, name='player'),
+    # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer.player, name='album_command'),
+    # url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer.player, name='song_command'),
+    # url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer.player, name='player'),
     url(r'^player_complete/$', beatplayer.player_complete, name='player_complete'),
     url(r'^player_status_and_state/$', beatplayer.player_status_and_state, name='player_status_and_state'),
-
+    url(r'^playlist/$', beatplayer.playlist, name='playlist'),
     url(r'^apply_plan/$', freshbeats_client.apply_plan, name='apply_plan'),
     url(r'^validate_plan/$', freshbeats_client.validate_plan, name='validate_plan'),
     url(r'^plan_report/$', freshbeats_client.plan_report, name='plan_report'),
@@ -61,6 +61,18 @@ urlpatterns = [
     url(r'^survey_post/$', views.survey_post, name='survey_post'),
     url(r'^get_search_results/$', views.get_search_results, name='get_search_results'),
 
-    url(r'^admin/', admin.site.urls),
+    url(r'^admin/', admin.site.urls),    
     #static(r'^%s/(?P<album_id>[0-9]+)/$' % settings.MEDIA_URL, views.album_art, document_root=settings.MEDIA_ROOT)
-]
+] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+# -- adding static(STATIC_URL) enables app static files with gunicorn, but debug_toolbar static files are not found 
+
+# -- runserver finds app and debug_toolbar static files without the static(STATIC_URL), debug True or False and no DIRS or FINDERS 
+# -- gunicorn finds no static files in this state 
+# -- adding static(STATIC_URL) allows gunicorn to find app static files, but not debug_toolbar 
+
+if settings.DEBUG:
+    print("IS DEBUG")
+    import debug_toolbar 
+    urlpatterns = [
+        url(r'^__debug__/', include(debug_toolbar.urls)),
+    ] + urlpatterns

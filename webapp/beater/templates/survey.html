@@ -14,7 +14,7 @@
 		<div class="col-md-12">
 
 			<table class="table table-striped">
-				
+
 				<tr>
 					<td class="col-md-2">
 						<h3>{{album_count}} left</h3>
@@ -23,10 +23,10 @@
 						<br />
 						<em>{{album.current_albumcheckout.checkout_at}}</em>
 					</td>
-					<td class="col-md-6">	
-						
+					<td class="col-md-6">
+
 						<table class="table table-striped">
-						{% for song in album.song_set.all %}								
+						{% for song in album.song_set.all %}
 							<tr>
 								<td width="90%">
 									{{song.name}}
@@ -35,11 +35,11 @@
 									<a href="#" class="btn btn-primary command" endpoint="player" command="play" songid="{{song.id}}">play now</a>
 								</td>
 							</tr>
-							
+
 						{% endfor %}
 					</table>
 
-					</td>							
+					</td>
 					<td class="col-md-4">
 						<form id="surveyalbum_{{album.id}}" method="post" action="{% url "survey_post" %}">
 							<input type="hidden" name="albumid" value="{{album.id}}" />
@@ -66,7 +66,7 @@
 					</td>
 				</tr>
 
-			
+
 
 			</table>
 		</div>

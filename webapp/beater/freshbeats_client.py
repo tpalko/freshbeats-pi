@@ -8,7 +8,7 @@ import traceback
 import json
 import threading
 import time
-from cStringIO import StringIO
+import io
 from .switchboard import _publish_event
 
 sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
@@ -41,7 +41,7 @@ def update_db(request):
 def _call_freshbeats(function_name, *args, **kwargs):
 
     try:
-        log_capture_string = StringIO()
+        log_capture_string = io.StringIO()
 
         ch = logging.StreamHandler(log_capture_string)
 
@@ -61,7 +61,7 @@ def _call_freshbeats(function_name, *args, **kwargs):
         _publish_event('device_output', json.dumps({'function_name': function_name, 'complete': True, 'out': log_capture_string.getvalue()}))
 
         logger.removeHandler(ch)
-        
+
     except:
         logger.error(sys.exc_info()[1])
         traceback.print_tb(sys.exc_info()[2])

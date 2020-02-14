@@ -1,4 +1,4 @@
-{% load staticfiles %}
+{% load static %}
 
 <html>
 
@@ -20,37 +20,45 @@
 
 		<div class="container-fluid">
 
-			<div class="row title">
-				<div class="col-md-1">
-					<h2>Hy!asdf</h2>
-				</div>
-				<div class="col-md-4">
-          <h3>
-  					<a class="" href="{% url "search" %}">search</a>
-  					<a class="" href="{% url "mobile" %}">devices</a>
-  					<a class="" href="{% url "manage" %}">collection</a>
-  					<a class="" href="{% url "report" %}">report</a>
-  					<a class="" href="{% url "survey" %}">survey</a>
-          </h3>
-				</div>
-				<div class="col-md-7">
-          <a class="btn btn-primary command" endpoint="player" command="surprise" href="#">surprise me</a>
-					<a class="btn btn-primary command" endpoint="player" command="playlist" href="#">playlist</a>
-					<a class="btn btn-default command" endpoint="player" command="shuffle" href="#">shuffle is off</a>
-					<a class="btn btn-warning command" endpoint="player" command="pause" href="#">pause</a>
-					<a class="btn btn-danger command" endpoint="player" command="stop" href="#">stop</a>
-					<a class="btn btn-success command" endpoint="player" command="play" href="#">play</a>
-					<a class="btn btn-warning command" endpoint="player" command="next" href="#">next</a>
-					<a class="btn btn-default command" endpoint="player" command="mute" href="#">mute is off</a>
-          <div id="player_info"></div>
-				</div>
+      <div class="stickyheader">
+  			<div class="row title">
+  				<div class="col-md-1">
+  					<h2>Hy!asdf</h2>
+  				</div>
+  				<div class="col-md-3">
+            <h3>
+    					<a class="" href="{% url "search" %}">search</a>
+    					<a class="" href="{% url "mobile" %}">devices</a>
+    					<a class="" href="{% url "manage" %}">collection</a>
+    					<a class="" href="{% url "report" %}">report</a>
+    					<a class="" href="{% url "survey" %}">survey</a>
+            </h3>
+  				</div>
+  				<div class="col-md-5">
+            <a class="btn btn-default command" endpoint="player" command="surprise" href="#">surprise me</a>
+  					<a class="btn btn-default command" endpoint="player" command="playlist" href="#">playlist</a>
+  					<a class="btn btn-default command" endpoint="player" command="toggle_shuffle" href="#">shuffle is off</a>
+            <a class="btn btn-default command" endpoint="player" command="mute" href="#">mute is off</a>
+  					<a class="btn btn-warning command" endpoint="player" command="pause" href="#">pause</a>
+  					<a class="btn btn-danger command" endpoint="player" command="stop" href="#">stop</a>
+  					<a class="btn btn-default command" endpoint="player" command="play" href="#">play</a>
+  					<a class="btn btn-warning command" endpoint="player" command="next" href="#">next</a>
+            <a class="btn btn-warning command" endpoint="player" command="next_artist" href="#">next artist</a>
+            <div class="row" id="player_status">
+            </div>
+  				</div>
+          <div class="col-md-3">
+            <div class="playlist"></div>
+          </div>
+        </div>
       </div>
-
-			<div class="row" style="height:0em; margin-bottom: 0em;">
-				<div class="col-md-12" id="errors"></div>
-			</div>
-
-			{% block content %}{% endblock %}
+      
+      <div class="content">
+        <div class="row errors" style="height:1em; margin-bottom: 0em;">
+  				<div class="col-md-12" id="errors"></div>
+  			</div>
+  			{% block content %}{% endblock %}
+      </div>
 
 		</div>
 
@@ -58,6 +66,23 @@
 		<script type="text/javascript" src="{% static "socket.io.slim.js" %}"></script>
 
 		<script type="text/javascript">
+    
+      var type_headers = {};
+      
+      $(document).ready(function(){
+        
+        window.onscroll = function (){
+          $(Object.keys(type_headers)).each(function(i,k){
+            var h = type_headers[k];
+            if (window.pageYOffset + 92 > h.top) {
+              $(h.el).addClass("sticky").addClass("result_type");              
+            } else {
+              $(h.el).removeClass("sticky").removeClass("result_type");
+            }
+          })
+        }
+      });
+      
 
 			var spinner_opts = {
 				  lines: 5 // The number of lines to draw
@@ -149,7 +174,7 @@
 
 				// -- make the update call
 				// -- swap the original thing back in (over the form)
-				// -- call the callback with the response data 
+				// -- call the callback with the response data
 				$.ajax({
 					url: $(form).attr('action'),
 					data: $(form).serialize(),
@@ -307,15 +332,15 @@
 
 				var url = command_url.replace(/null/, endpoint);
 
-				$.ajax({
+        console.debug(url);
 
+				$.ajax({
 					url: url,
 					data: { command: command, albumid: albumid, songid: songid },
 					type: "POST",
 					datatype: "json",
 					success: function(data, textStatus, jqXHR){
 						var callback = $(clickable).attr('callback');
-
 						if(callback != undefined){
 							fn = window[callback];
 							fn(JSON.parse(data));
@@ -343,9 +368,15 @@
 
 				return false;
 			});
+      
+      function realignPage() {
+        $(".content")[0].style.marginTop = $($(".stickyheader")[0]).height();
+      }
 
 			$(document).ready(function(){
-
+        
+        realignPage();
+        
 				tabs = $("#tabs").tabs({
 					load: function(event, ui){
 						//console.log("here");
@@ -363,11 +394,20 @@
 					active: 0
 				});
 
-				$.ajax({
-					url: '{% url "player_status_and_state" %}',
-					type: 'GET',
-					success: function(data, textStatus, jqXHR){}
-				});
+        setInterval(function(){
+  				$.ajax({
+  					url: '{% url "player_status_and_state" %}',
+  					type: 'GET',
+  					success: function(data, textStatus, jqXHR){}
+  				});
+        }, 5000);
+        
+        $.ajax({
+          url: '{% url "playlist" %}',
+          type: 'GET',
+          success: function(data, textStatus, jqXHR){}
+        });
+
 			});
 
 			{% include 'js/common/socketio_client.js' %}
