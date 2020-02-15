@@ -1,6 +1,9 @@
 FROM python:3
 
-RUN apt-get -y update && apt-get -y upgrade
+RUN apt-get -y update \
+  && apt-get -y upgrade \
+  && apt-get -y install mplayer \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/beatplayer 
 
@@ -13,8 +16,5 @@ COPY . .
 VOLUME /mnt/music 
 EXPOSE 9000
 
-ARG ENV
-ENV ENV ${ENV}
-
 #CMD ["python", "mpplayer.py", "-e", $ENV, "-a", "0.0.0.0", "-p", "9000"]
-CMD python mpplayer.py -e ${ENV} -a 0.0.0.0 -p 9000
+CMD python mpplayer.py -a 0.0.0.0 -p 9000

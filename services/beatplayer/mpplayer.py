@@ -30,7 +30,7 @@ class MPPlayer():
     current_thread = None
     volume = None
 
-    def __init__(self, env, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
 
         self.f_outw = open("mplayer.out", "wb")
         self.f_errw = open("mplayer.err", "wb")
@@ -38,16 +38,8 @@ class MPPlayer():
         self.f_outr = open("mplayer.out", "rb")
         self.f_errr = open("mplayer.err", "rb")
 
-        config_file = os.path.join(os.path.dirname(__file__), "./config/settings_%s.cfg" %(env))
-
-        if not os.path.exists(config_file):
-            raise Exception("Config file '%s' not found" % (config_file))
-
-        config = ConfigParser()
-        config.read(config_file)
-
-        for s in config.sections():
-            self.__dict__ = dict(list(self.__dict__.items()) + list({i[0]: i[1] for i in config.items(s)}.items()))
+        self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER')
+        self.default_volume = os.getenv('BEATPLAYER_DEFAULT_VOLUME')
 
         self.is_muted = False
 
@@ -246,7 +238,6 @@ if __name__ == "__main__":
     parser = OptionParser(usage='usage: %prog [options]')
 
     logger.debug("Adding options..")
-    parser.add_option("-e", "--environment", dest="environment", default='dev', help="environment (dev/prod)")
     parser.add_option("-a", "--address", dest="address", default='127.0.0.1', help="IP address on which to listen")
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
 
@@ -254,7 +245,7 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
 
     logger.debug("Creating MPPlayer..")
-    m = MPPlayer(env=options.environment)
+    m = MPPlayer()
 
     logger.debug("Creating XML RPC server..")
     s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
