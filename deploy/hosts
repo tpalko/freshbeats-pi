@@ -1,7 +1,0 @@
-[bootstrap]
-
-[playback_device]
-raspberrypi ansible_connection=ssh ansible_ssh_user=deploy
-
-[webservers]
-frankendeb ansible_connection=ssh ansible_ssh_user=deploy

@@ -1,6 +1,0 @@
-- hosts: webservers
-  tasks:
-    - import_role:
-        name: freshbeats
-      tags:
-        - freshbeats
