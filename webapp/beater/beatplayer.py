@@ -18,6 +18,7 @@ import json
 import random
 import socket
 import requests
+from datetime import datetime, timedelta
 import threading
 import re
 import time
@@ -26,21 +27,6 @@ from .switchboard import _publish_event
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-logger.debug("Setting path for RPi: %s" % settings.BEATPLAYER_SERVER)
-beatplayer_proxy = client.ServerProxy(settings.BEATPLAYER_SERVER)
-health_attempts = 0
-health_response = None
-while not health_response:
-    try:
-        health_response = beatplayer_proxy.healthz()
-    except:
-        logger.warn("beatplayer not alive..")
-        logger.warn(sys.exc_info()[1])
-    health_attempts = health_attempts + 1
-    if health_response:
-        health_response['attempts'] = health_attempts
-logger.info(json.dumps(health_response, indent=2))
 
 class PlaylistBacking():
     pass 
@@ -68,49 +54,97 @@ class Playlist():
     Playlist maintains a queue and a cursor.
     '''
 
-    current_playlistsong = None
-    max_queue_number = 0
-
     def __init__(self, *args, **kwargs):
-        self.current_playlistsong = PlaylistSong.objects.filter(is_current=True).first()
-        self.max_queue_number = PlaylistSong.objects.all().order_by('queue_number').reverse().first().queue_number        
+        if not self.get_current_playlistsong():
+            self.set_current_playlistsong(PlaylistSong.objects.all().order_by('queue_number').first())
 
     def __str__(self):
         playlistsongs = PlaylistSong.objects.all().order_by('queue_number');
         return render_to_string("_playlist.html", {'playlistsongs': playlistsongs})
+    
+    def play_count_filter(self, playlistsongs):
+        if len(playlistsongs) > 0:
+            play_count_array = [ s.play_count for s in playlistsongs ]
+            avg = sum(play_count_array) / len(play_count_array)
+            logger.debug("average play count: %s" % avg)
+            return playlistsongs.filter(play_count__lte=avg)
+        return playlistsongs 
+        
+    def age_filter(self, playlistsongs):
+        if len(playlistsongs) > 0:
+            now = datetime.now()                
+            age_array = [ 0 if not s.last_played_at else (now - s.last_played_at).seconds for s in playlistsongs ]
+            avg = sum(age_array) / len(age_array)
+            logger.debug("average age in seconds: %s" % avg)
+            return playlistsongs.filter(Q(last_played_at__lte=(now - timedelta(seconds=avg)))|Q(last_played_at__isnull=True))
+        return playlistsongs 
         
     def advance_cursor(self, shuffle=False):
 
-        if self.current_playlistsong is not None:
-            self.current_playlistsong.is_current = False
-            self.current_playlistsong.save()
+        cursor_set = False 
+        new_playlistsong = None 
         
         if shuffle:
-            valid_playlistsongs = PlaylistSong.objects.filter(queue_number__ne=self.current_playlistsong.queue_number)
-            self.current_playlistsong = random.choice(valid_playlistsongs)
-        elif self.current_playlistsong.queue_number < self.max_queue_number:
-            self.current_playlistsong = self._get_remaining_playlistsongs().order_by('queue_number').first()
+            valid_playlistsongs = PlaylistSong.objects.all()
+            current_playlistsong = self.get_current_playlistsong()
+            if current_playlistsong:
+                valid_playlistsongs = PlaylistSong.objects.filter(~Q(queue_number=current_playlistsong.queue_number))
+            logger.debug("%s valid playlistsongs" % len(valid_playlistsongs))
+            new_playlistsong = random.choice(self.age_filter(self.play_count_filter(valid_playlistsongs)))
+            if not new_playlistsong:
+                new_playlistsong = random.choice(valid_playlistsongs)
         else:
-            self.current_playlistsong = PlaylistSong.objects.order_by('queue_number').first()
+            new_playlistsong = self._get_remaining_playlistsongs().order_by('queue_number').first()
         
-        self.current_playlistsong.is_current = True
-        self.current_playlistsong.save()
+        if new_playlistsong:
+            self.set_current_playlistsong(new_playlistsong)
+            cursor_set = True 
+        
+        return cursor_set
+    
+    def back_up_cursor(self):
+        cursor_set = False 
+        new_playlistsong = self._get_previous_playlistsongs().order_by('-queue_number').first()
+        if new_playlistsong:
+            self.set_current_playlistsong(new_playlistsong)
+            cursor_set = True         
+        return cursor_set
+        
+    def set_current_playlistsong(self, playlistsong):
+        current_playlistsong = self.get_current_playlistsong()
+        if current_playlistsong:
+            current_playlistsong.is_current = False
+            current_playlistsong.save()
+        playlistsong.is_current = True
+        playlistsong.save()
         
     def get_current_playlistsong(self):
-        return self.current_playlistsong
+        return PlaylistSong.objects.filter(is_current=True).first()
     
+    def _get_previous_playlistsongs(self):
+        current_playlistsong = self.get_current_playlistsong()
+        if current_playlistsong:
+            return PlaylistSong.objects.filter(queue_number__lt=current_playlistsong.queue_number)
+        else:
+            return PlaylistSong.objects.all()
+            
     def _get_remaining_playlistsongs(self):
-        return PlaylistSong.objects.filter(queue_number__gt=self.current_playlistsong.queue_number)
+        current_playlistsong = self.get_current_playlistsong()
+        if current_playlistsong:
+            return PlaylistSong.objects.filter(queue_number__gt=current_playlistsong.queue_number)
+        else:
+            return PlaylistSong.objects.all()
         
     def increment_current_playlistsong_play_count(self):
-        if self.current_playlistsong:
-            self.current_playlistsong.play_count = self.current_playlistsong.play_count + 1
-            self.current_playlistsong.save()
+        current_playlistsong = self.get_current_playlistsong()
+        if current_playlistsong:
+            current_playlistsong.play_count = current_playlistsong.play_count + 1
+            current_playlistsong.last_played_at = datetime.now()
+            current_playlistsong.save()
 
     def add_song_to_playlist(self, song, queue_number=None):
         if not queue_number:
-            self.max_queue_number = self.max_queue_number + 1
-            queue_number = self.max_queue_number
+            queue_number = PlaylistSong.objects.all().order_by('-queue_number').first().queue_number + 1
         new_playlistsong = PlaylistSong(song=song, queue_number=queue_number)
         new_playlistsong.save()
 
@@ -129,71 +163,156 @@ class Playlist():
         for playlistsong in next_playlistsongs:
             playlistsong.queue_number = playlistsong.queue_number + bump_count
             playlistsong.save()        
-        self.max_queue_number = self.max_queue_number + bump_count
         
     def splice_song(self, song):
         self._bump_remaining_playlistsongs(1)
-        self.add_song_to_playlist(song, self.current_playlistsong.queue_number + 1)
+        current_playlistsong = self.get_current_playlistsong()
+        self.add_song_to_playlist(song, current_playlistsong.queue_number + 1)
 
     def splice_album(self, album):        
         song_count = album.song_set.count()
         self._bump_remaining_playlistsongs(song_count)
         # -- splice in the album as the next queue numbers 
+        current_playlistsong = self.get_current_playlistsong()
         for i, song in enumerate(album.song_set.all(), 1):
-            self.add_song_to_playlist(song, self.current_playlistsong.queue_number + i)
+            self.add_song_to_playlist(song, current_playlistsong.queue_number + i)
 
     def splice_artist(self, artist):
         song_count = sum([ album.song_set.count() for album in artist.album_set.all() ])
         self._bump_remaining_playlistsongs(song_count)
         bump = 0
+        current_playlistsong = self.get_current_playlistsong()
         for i, album in enumerate(artist.album_set.all(), 1):
             for j, song, in enumerate(album.song_set.all(), 1):
                 bump = bump + 1
-                self.add_song_to_playlist(song, self.current_playlistsong.queue_number + bump)
-                
+                self.add_song_to_playlist(song, current_playlistsong.queue_number + bump)
+
+BEATPLAYER_STATUS_UP = 'up'
+BEATPLAYER_STATUS_DOWN = 'down'
+
+class Beatplayer():
+    
+    client = None 
+    beater_url = None 
+    status = BEATPLAYER_STATUS_DOWN
+    last_status = None 
+    volume = None 
+    registered = False 
+    
+    def __init__(self, *args, **kwargs):
+        logger.info("Creating beatplayer client at %s" % args[0])
+        self.beater_url = args[0]
+        self.client = client.ServerProxy(self.beater_url)
+        
+    def register(self, callback_url):
+        def register_client():
+            logger.debug("Attempting to register with %s" % self.beater_url)
+            attempts = 0
+            while not self.registered:
+                try:
+                    attempts += 1
+                    response = self.client.register_client(callback_url)
+                    if response['success']:
+                        self.registered = True
+                        _show_beatplayer_status()
+                        logger.info("Application subscribed to beatplayer! (%s attempts)" % attempts)                        
+                        break
+                    else:
+                        if response['message'].find("already registered") > 0:
+                            break
+                except:
+                    logger.error("Error registering with %s: %s" % (self.beater_url, str(sys.exc_info()[1])))
+                wait = attempts*3 if attempts < 200 else 600
+                logger.error("waiting %s.." % wait)
+                time.sleep(wait)
+            if self.registered:
+                t = threading.Thread(target=fresh_check)
+                t.start()
+        def fresh_check():
+            misses = 0
+            while self.registered:
+                if self.last_status is None:
+                    misses += 1
+                    logger.warn("No last status: %s/3" % misses)
+                    if misses > 2:
+                        break 
+                elif self.last_status < datetime.now() - timedelta(seconds=15):
+                    break
+                elif self.last_status < datetime.now() - timedelta(seconds=7):
+                    self.status = BEATPLAYER_STATUS_DOWN
+                    logger.warn("Stale status - beatplayer is %s" % self.status)
+                    _show_beatplayer_status()
+                time.sleep(5)
+            logger.warn("Self-deregistering..")
+            self.registered = False          
+            _show_beatplayer_status()           
+            t = threading.Thread(target=register_client)
+            t.start()
+                    
+        t = threading.Thread(target=register_client)
+        t.start()
+            
 class PlayerObj():
     '''
     Player implements standard playback actions with a Playlist and additional logic and state.
     '''
     
-    mute_state = False
-    shuffle_state = False
-    playlist_mode = Player.PLAYLIST_MODE_ON
-    playlist = None
+    mute = False
+    shuffle = False
+    repeat_song = False 
+    
     state = Player.PLAYER_STATE_STOPPED
-    song = None
     cursor_mode = Player.CURSOR_MODE_NEXT
-
+    
+    playlist = None
+    beatplayer = None 
+    beatplayer_proxy = None 
+    
     def __init__(self, *args, **kwargs):
-        # self._load()
-        self.playlist = Playlist()
-        self.song = self.playlist.get_current_playlistsong().song
+        if 'init' not in kwargs or kwargs['init']:
+            self._load()
+            self.playlist = Playlist()
+        
+        logger.debug("Setting path for RPi: %s" % settings.BEATPLAYER_URL)
+        self.beatplayer = Beatplayer(settings.BEATPLAYER_URL)
+        #self.beatplayer_status()
 
-    def get_status(self):
-        pass
-
-    def _beatplayer_play(self, song):
+    def get_current_song(self):
+        return self.playlist.get_current_playlistsong().song
+        
+    def _beatplayer_play(self):
+        song = self.playlist.get_current_playlistsong().song
         force_play = True
-        response = beatplayer_proxy.play(_get_song_filepath(song), "http://%s:%s/player_complete/" % (settings.FRESHBEATS_EXTERNAL_HOST, settings.FRESHBEATS_EXTERNAL_PORT), force_play)
-        if response:
+        beatplayer_music_folder = self.beatplayer.client.get_music_folder()
+        song_filepath = "%s/%s/%s/%s" % (beatplayer_music_folder, song.album.artist.name, song.album.name, song.name)
+        callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
+        logger.info("calling beatplayer. song: %s callback: %s" % (song_filepath, callback))
+        response = self.beatplayer.client.play(song_filepath, callback, force_play)
+        if response['success']:
             self.playlist.increment_current_playlistsong_play_count()
+        return response 
         
     def _beatplayer_stop(self):
-        beatplayer_proxy.stop()
+        return self.beatplayer.client.stop()
     
     def _beatplayer_mute(self):
-        beatplayer_proxy.mute()
+        return self.beatplayer.client.mute()
         
     def _beatplayer_pause(self):
-        beatplayer_proxy.pause()
+        return self.beatplayer.client.pause()
+    
+    def _beatplayer_volume_down(self):
+        return self.beatplayer.client.volume_down()
+    
+    def _beatplayer_volume_up(self):
+        return self.beatplayer.client.volume_up()
     
     def _load(self):
         players = Player.objects.all()
         if len(players) > 0:
             player = players[0]
-            self.mute_state = player.mute_state
-            self.shuffle_state = player.shuffle_state
-            self.playlist_mode = player.playlist_mode
+            self.mute = player.mute
+            self.shuffle = player.shuffle
             self.state = player.state
             self.cursor_mode = player.cursor_mode
             
@@ -202,9 +321,8 @@ class PlayerObj():
         players = Player.objects.all()
         if len(players) > 0:
             player = players[0]        
-        player.mute_state = self.mute_state
-        player.shuffle_state = self.shuffle_state
-        player.playlist_mode = self.playlist_mode
+        player.mute = self.mute
+        player.shuffle = self.shuffle
         player.state = self.state
         player.cursor_mode = self.cursor_mode
         player.save()
@@ -212,77 +330,145 @@ class PlayerObj():
     def call(self, command, **kwargs):
         
         logger.debug("player call, command: %s" % command)
+        player_vals = { k: self.__dict__[k] for k in self.__dict__.keys() if type(self.__dict__[k]).__name__ in ['str','bool'] }
+        logger.debug(player_vals)
         logger.debug(kwargs)
             
         f = self.__getattribute__(command)
-        f(**kwargs)
+        response = f(**{ k: kwargs[k] for k in kwargs if kwargs[k] })
+        logger.debug(response)
+        if response and not response['success'] and response['message']:
+            _publish_event('message', json.dumps(response))
 
         self._save()
         _show_player_status()
-        _publish_event('playlist_update', json.dumps(str(self.playlist)))
+        
+    def clear_state(self, state=None):
+        self.state = Player.PLAYER_STATE_STOPPED
+        self.mute = False         
     
-    def complete(self, success=True, message=''):        
-        if success and self.state != Player.PLAYER_STATE_STOPPED:
-            if self.cursor_mode == Player.CURSOR_MODE_NEXT:
-                self.playlist.advance_cursor(shuffle=self.shuffle_state)
-                self.song = self.playlist.get_current_playlistsong().song
-            self._beatplayer_play(self.song)
-            self.playlist_mode = Player.PLAYLIST_MODE_ON
-            self.state = Player.PLAYER_STATE_PLAYING
+    def complete(self, success=True, message=''):   
+        response = {'success': False, 'message': ''}
         if not success:
             self.state = Player.PLAYER_STATE_STOPPED
-            _publish_event('message', json.dumps({'message': message}))
+            response['message'] = message 
+        else:
+            if self.state != Player.PLAYER_STATE_STOPPED:
+                if self.cursor_mode == Player.CURSOR_MODE_NEXT:
+                    cursor_set = self.playlist.advance_cursor(shuffle=self.shuffle)
+                else:
+                    self.cursor_mode = Player.CURSOR_MODE_NEXT
+                response = self._beatplayer_play()
+                if response['success']:
+                    self.state = Player.PLAYER_STATE_PLAYING
+            else:
+                response['success'] = True 
+        return response 
+        
+    def toggle_shuffle(self, **kwargs):
+        self.shuffle = not self.shuffle
     
-    def toggle_shuffle(self):
-        self.shuffle_state = not self.shuffle_state
+    def toggle_mute(self, **kwargs):
+        response = self._beatplayer_mute()
+        if response['success']:
+            self.mute = not self.mute
+        return response 
     
-    def mute(self):
-        self._beatplayer_mute()
-        self.mute_state = not self.mute_state
-
-    def pause(self):
-        if self.state == Player.PLAYER_STATE_PAUSED:
-            self._beatplayer_pause()
-            self.state = Player.PLAYER_STATE_PLAYING
-        elif self.state == Player.PLAYER_STATE_PLAYING:
-            self._beatplayer_pause()
-            self.state = Player.PLAYER_STATE_PAUSED
+    def toggle_repeat_song(self, **kwargs):
+        self.repeat_song = not self.repeat_song 
     
-    def stop(self):
+    def previous(self, **kwargs):
+        response = None 
+        self.playlist.back_up_cursor()
         if self.state != Player.PLAYER_STATE_STOPPED:
-            self.state = Player.PLAYER_STATE_STOPPED
-            self._beatplayer_stop()
+            self.cursor_mode = Player.CURSOR_MODE_STATIC
+            response = self._beatplayer_stop()
+        return response 
+    
+    def restart(self, **kwargs):
+        response = None 
+        if self.state != Player.PLAYER_STATE_STOPPED:
+            self.cursor_mode = Player.CURSOR_MODE_STATIC
+            response = self._beatplayer_stop()
+        return response 
+    
+    def volume_down(self, **kwargs):
+        response = self._beatplayer_volume_down()
+        self.set_beatplayer_volume(volume=response['data']['volume'])
+        return response
+        
+    def volume_up(self, **kwargs):
+        response = self._beatplayer_volume_up()
+        self.set_beatplayer_volume(volume=response['data']['volume'])
+        return response
+    
+    def set_beatplayer_volume(self, **kwargs):
+        self.beatplayer.volume = kwargs['volume'] if 'volume' in kwargs else self.beatplayer.volume
+
+    def pause(self, **kwargs):
+        response = None 
+        if self.state == Player.PLAYER_STATE_PAUSED:
+            response = self._beatplayer_pause()
+            if response['success']:
+                self.state = Player.PLAYER_STATE_PLAYING
+        elif self.state == Player.PLAYER_STATE_PLAYING:
+            response = self._beatplayer_pause()
+            if response['success']:
+                self.state = Player.PLAYER_STATE_PAUSED
+        return response 
+    
+    def stop(self, **kwargs):
+        response = None 
+        if self.state != Player.PLAYER_STATE_STOPPED:
+            response = self._beatplayer_stop()
+            if response['success'] or 'Broken pipe' in response['message'] or 'no beatplayer process' in response['message']:
+                self.state = Player.PLAYER_STATE_STOPPED
+        return response
             
     def play(self, **kwargs):
         song = None 
         album = None 
         artist = None 
+        response = None
         if 'songid' in kwargs and kwargs['songid'] is not None:  
             songid = kwargs['songid']
             song = Song.objects.get(pk=songid)
-            self._play_song(song)
+            response = self._play_song(song)
         elif 'albumid' in kwargs and kwargs['albumid'] is not None:
             albumid = kwargs['albumid']
             album = Album.objects.get(pk=albumid)
-            self._play_album(album)
+            response = self._play_album(album)
         elif 'artistid' in kwargs and kwargs['artistid'] is not None:
             artistid = kwargs['artistid']
             artist = Artist.objects.get(pk=artistid)
-            self._play_artist(artist)
+            response = self._play_artist(artist)
         else:
-            if self.state == Player.PLAYER_STATE_STOPPED and self.song:
-                self._beatplayer_play(self.song)
+            if self.state == Player.PLAYER_STATE_STOPPED:
+                response = self._beatplayer_play()
             elif self.state == Player.PLAYER_STATE_PAUSED:
-                self._beatplayer_pause()
-            self.state = Player.PLAYER_STATE_PLAYING
+                response = self._beatplayer_pause()
+            if response and response['success']:
+                self.state = Player.PLAYER_STATE_PLAYING
+        return response
     
-    def splice(self, song=None, album=None, artist=None):
-        if song:
-            self.splice_song(song)
-        elif album:
-            self.splice_album(album)
-        elif artist:
-            self.splice_artist(artist)
+    def splice(self, **kwargs):
+        song = None 
+        album = None 
+        artist = None 
+        response = None
+        if 'songid' in kwargs and kwargs['songid'] is not None:  
+            songid = kwargs['songid']
+            song = Song.objects.get(pk=songid)
+            response = self.splice_song(song)
+        elif 'albumid' in kwargs and kwargs['albumid'] is not None:
+            albumid = kwargs['albumid']
+            album = Album.objects.get(pk=albumid)
+            response = self.splice_album(album)
+        elif 'artistid' in kwargs and kwargs['artistid'] is not None:
+            artistid = kwargs['artistid']
+            artist = Artist.objects.get(pk=artistid)
+            response = self.splice_artist(artist)
+        return response
     
     def enqueue(self, song=None, album=None, artist=None):
         if song:
@@ -298,39 +484,45 @@ class PlayerObj():
     # -- play_album can't do that, so we splice it
     def _play_song(self, song):
         # -- instead of splice, this should work with a 'side playlist'
-        self.shuffle_state = False 
+        response = None 
+        self.shuffle = False 
         self.splice_song(song)
         if self.state != Player.PLAYER_STATE_STOPPED:
-            self._beatplayer_stop()
+            response = self._beatplayer_stop()
         else:
-            self.playlist.advance_cursor(shuffle=self.shuffle_state)
-            self.song = self.playlist.get_current_playlistsong().song 
-            self._beatplayer_play(self.song)
-            self.state = Player.PLAYER_STATE_PLAYING
+            cursor_set = self.playlist.advance_cursor(shuffle=self.shuffle)
+            response = self._beatplayer_play()
+            if response['success']:
+                self.state = Player.PLAYER_STATE_PLAYING
+        return response 
         
     def _play_album(self, album):
         # -- instead of splice, this should work with a 'side playlist'
-        self.shuffle_state = False 
+        response = None 
+        self.shuffle = False 
         self.splice_album(album)
         if self.state != Player.PLAYER_STATE_STOPPED:
-            self._beatplayer_stop()
+            response = self._beatplayer_stop()
         else:
-            self.playlist.advance_cursor(shuffle=self.shuffle_state)
-            self.song = self.playlist.get_current_playlistsong().song
-            self._beatplayer_play(self.song)            
-            self.state = Player.PLAYER_STATE_PLAYING
+            cursor_set = self.playlist.advance_cursor(shuffle=self.shuffle)
+            response = self._beatplayer_play()            
+            if response['success']:
+                self.state = Player.PLAYER_STATE_PLAYING
+        return response 
 
     def _play_artist(self, artist):
         # -- instead of splice, this should work with a 'side playlist'
-        self.shuffle_state = False 
+        response = None 
+        self.shuffle = False 
         self.splice_artist(artist)
         if self.state != Player.PLAYER_STATE_STOPPED:
-            self._beatplayer_stop()
+            response = self._beatplayer_stop()
         else:
-            self.playlist.advance_cursor(shuffle=self.shuffle_state)
-            self.song = self.playlist.get_current_playlistsong().song
-            self._beatplayer_play(self.song)            
-            self.state = Player.PLAYER_STATE_PLAYING
+            cursor_set = self.playlist.advance_cursor(shuffle=self.shuffle)
+            response = self._beatplayer_play()            
+            if response['success']:
+                self.state = Player.PLAYER_STATE_PLAYING
+        return response 
             
     def add_song(self, song):
         self.playlist.add_song_to_playlist(song)
@@ -350,57 +542,49 @@ class PlayerObj():
     def splice_artist(self, artist):
         self.playlist.splice_artist(artist)
 
-    def next(self):
+    def next(self, **kwargs):
+        response = None 
         if self.state != Player.PLAYER_STATE_STOPPED:
-            self._beatplayer_stop()
+            response = self._beatplayer_stop()
         else:
-            self.playlist.advance_cursor(shuffle=self.shuffle_state)
-            self.song = self.playlist.get_current_playlistsong().song
-            self.playlist_mode = Player.PLAYLIST_MODE_ON
+            cursor_set = self.playlist.advance_cursor(shuffle=self.shuffle)
+        return response 
     
-    def next_artist(self):
-        current_artist = self.song.album.artist.id 
-        while self.song.album.artist.id == current_artist:
-            self.playlist.advance_cursor(shuffle=self.shuffle_state)
-            self.song = self.playlist.get_current_playlistsong().song
-        if self.state != Player.PLAYER_STATE_STOPPED:
+    def next_artist(self, **kwargs):
+        song = self.playlist.get_current_playlistsong().song
+        current_artist = song.album.artist.id 
+        while song.album.artist.id == current_artist:
+            cursor_set = self.playlist.advance_cursor(shuffle=self.shuffle)
+            song = self.playlist.get_current_playlistsong().song
+        if self.state != Player.PLAYER_STATE_STOPPED:            
             self.cursor_mode = Player.CURSOR_MODE_STATIC
             self._beatplayer_stop()
 
-# -- this probably needs to be commented before makemigrations
-player = PlayerObj()
-_publish_event('playlist_update', json.dumps(str(player.playlist)))
-
-'''
-             | shuffle off                 | shuffle on         |
--------------------------------------------------------------
-playlist off | no play                    | any song             |
-playlist on  | playlist after current     | playlist unplayed |
-
-'''
-
-#pi_callback = "http://%s:%s/player_complete" % (settings.BEATER_HOSTNAME, settings.BEATER_PORT)
-#logger.debug("Setting callback for RPi: %s" % pi_callback)
-#beatplayer_proxy.set_callback(pi_callback)
-
-# def player(request, command, albumid=None, songid=None):
-#
-#     #problem = None
-#     #player_info = None
-#
-#     #command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
-#     #albumid = request.POST.get('albumid', None)
-#     #songid = request.POST.get('songid', None)
-#
-#     #logger.debug("Got command: %s" % command)
-#
-#     _handle_command(command, albumid, songid, force_play=True)
+# TODO: this needs to be reimplemented
+# -- beatplayer up first, webapp calls on start to register, beatplayer pings on short cycle, webapp checks age of last ping for status 
+# -- webapp up first, exponential backoff call to beatplayer to register with some high max, refresh backoff on page requests 
+beatplayer = Beatplayer(settings.BEATPLAYER_URL)
+beatplayer.register("http://%s:%s/health_response/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT))
 
 @csrf_exempt
-def playlist(request):
-    global player 
-    _publish_event('playlist_update', json.dumps(str(player.playlist)))
-    return HttpResponse(json.dumps({'success': True}))
+def health_response(request):
+    health = json.loads(request.body.decode())['data']
+    player = PlayerObj()
+    if 'ps' in health and health['ps']['pid'] < 0:
+        player.call("clear_state")
+    
+    global beatplayer 
+    logger.debug("Health response received: beatplayer status: %s -> %s" % (beatplayer.status, BEATPLAYER_STATUS_UP))
+    if beatplayer.status != BEATPLAYER_STATUS_UP:
+        beatplayer.status = BEATPLAYER_STATUS_UP
+        _show_beatplayer_status()
+    beatplayer.last_status = datetime.now()
+    
+    player.call('set_beatplayer_volume', volume=health['volume'])  
+    #health['current_command']
+
+    return JsonResponse({'success': True})
+
 
 @csrf_exempt
 def command(request, type):
@@ -418,7 +602,8 @@ def command(request, type):
             command = request.POST.get('command', None) # surprise, playlist, next, shuffle, enqueue_album, play/enqueue_song, pause, stop, mute, keep
             albumid = request.POST.get('albumid', None)
             songid = request.POST.get('songid', None)
-            return _handle_command(command, albumid=albumid, songid=songid)
+            artistid = request.POST.get('artistid', None)
+            return _handle_command(command, albumid=albumid, songid=songid, artistid=artistid)
             
         response['success'] = True
 
@@ -428,7 +613,7 @@ def command(request, type):
         traceback.print_tb(sys.exc_info()[2])
         _publish_event('alert', json.dumps(response))
 
-    return HttpResponse(json.dumps({'success': True}))
+    return JsonResponse({'success': True})
 
 
 @csrf_exempt
@@ -457,15 +642,15 @@ def player_complete(request):
         traceback.print_tb(sys.exc_info()[2])
         _publish_event('alert', json.dumps(response))
 
-    return HttpResponse(json.dumps(response))
+    return JsonResponse(response)
 
 @csrf_exempt
-def player_status_and_state(request):
-
+def beatplayer_status(request):
+    
     response = {'result': {}, 'success': False, 'message': ""}
 
     try:
-        _show_player_status()
+        _show_beatplayer_status()        
         response['success'] = True
     except:
         response['message'] = str(sys.exc_info()[1])
@@ -473,7 +658,23 @@ def player_status_and_state(request):
         traceback.print_tb(sys.exc_info()[2])
         _publish_event('error', json.dumps(response))
 
-    return HttpResponse(json.dumps({'success': True}))
+    return JsonResponse({'success': True})
+
+@csrf_exempt
+def player_status_and_state(request):
+
+    response = {'result': {}, 'success': False, 'message': ""}
+
+    try:
+        _show_player_status()        
+        response['success'] = True
+    except:
+        response['message'] = str(sys.exc_info()[1])
+        logger.error(response['message'])
+        traceback.print_tb(sys.exc_info()[2])
+        _publish_event('error', json.dumps(response))
+
+    return JsonResponse({'success': True})
 
 def _album_command(request):
 
@@ -487,9 +688,6 @@ def _album_command(request):
         response['albumid'] = album.id
 
 def _handle_command(command, **kwargs): #albumid=None, songid=None, artistid=None, success=True, message='', force_play=True):
-
-    global player
-
     '''
     how do we want playback to behave?
         keep a playlist with a cursor (current)
@@ -545,61 +743,21 @@ def _handle_command(command, **kwargs): #albumid=None, songid=None, artistid=Non
             - auto play on next
             - auto advance
     '''
-    
-        
-    if command == 'complete':
-        player.call(command, success=kwargs['success']=='True', message=kwargs['message'])
-    else:
-        player.call(command, **kwargs)
-    # if command == "player_complete":
-    #     player.complete()
-    # elif command == "next":
-    #     player.next()
-    # elif command == "shuffle":
-    #     player.toggle_shuffle()
-    # elif command == "play":
-    #     if song:
-    #         player.play_song(song)
-    #     elif album:
-    #         player.play_album(album)
-    #     else:
-    #         player.play()
-    # elif command == "enqueue":
-    #     if song:
-    #         self.playlist.add_song(song)
-    #     elif album:
-    #         self.playlist.add_album(album)
-    # elif command == "pause":
-    #     player.pause()
-    # elif command == "stop":
-    #     player.stop()
-    # elif command == "mute":
-    #     player.mute()
-    
-    return HttpResponse(json.dumps({'success': True}))
+    player = PlayerObj()
+    player.call(command, **kwargs)
+    return JsonResponse({'success': True})
 
+
+def _show_beatplayer_status():
+    global beatplayer 
+    _publish_event('beatplayer_status', json.dumps({'status': beatplayer.status, 'registered': beatplayer.registered}))
 
 def _show_player_status():
-    global player
-    _publish_event('player_status', json.dumps({'player': {'shuffle': player.shuffle_state, 'mute': player.mute_state}, 'current_song': render_to_string('_current_song.html', {'song': player.song})}))
-
-def _get_song_filepath(song):
-
-    beatplayer_music_folder = None
-
-    if not beatplayer_music_folder:
-        try:
-            logger.debug("Calling to get music folder..")
-            beatplayer_music_folder = beatplayer_proxy.get_music_folder()
-            logger.debug("Music folder found: %s" % beatplayer_music_folder)
-        except:
-            logger.error("Music folder NOT found")
-
-    if beatplayer_music_folder is None:
-        raise Exception("beatplayer is not responding")
-
-    return "%s/%s/%s/%s" % (beatplayer_music_folder, song.album.artist.name, song.album.name, song.name)
-
+    player = PlayerObj()
+    player_vals = { k: player.__dict__[k] for k in player.__dict__.keys() if type(player.__dict__[k]).__name__ in ['str','bool','int'] }
+    current_song_html = render_to_string('_current_song.html', {'song': player.get_current_song()})
+    playlist = str(player.playlist)
+    _publish_event('player_status', json.dumps({'player': player_vals, 'current_song': current_song_html, 'playlist': playlist}))
 
 '''
 def _init_playlist():

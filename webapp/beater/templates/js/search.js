@@ -85,7 +85,8 @@ $(document).ready(() => {
 
 function perform_search() {
 
-	if(!isRecordShopMode && $("input#search").val().length < 3){
+  var input_limit = $("#input_limit").val();
+	if(!isRecordShopMode && $("input#search").val().length < input_limit){
 		return;
 	}
 

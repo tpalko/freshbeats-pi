@@ -1,4 +1,6 @@
 music
+*.env
+local
 .vagrant
 .DS_Store
 ._.DS_Store
@@ -14,3 +16,4 @@ venv/**/*
 services/freshbeats/config/settings.cfg
 webapp/config/settings_env.py
 webapp/src
+webapp/beater/static/icons-1.0.0-alpha2

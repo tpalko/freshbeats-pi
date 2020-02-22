@@ -70,6 +70,9 @@ database connection is driven by environment variables. In the `webapp` folder,
 copy `.env.example` to `.env` and edit your new `.env` file to fill in the
 `FRESHBEATS_DATABASE_*` variables.
 
+* single-node mode 
+* containerized 
+
 Also notice the two references to a music path: `web app .env's FRESHBEATS_MUSIC_PATH`
 and `freshbeats.py settings.cfg's MUSIC_PATH`. The web app value overrides the
 script value. One of them needs to be set.
@@ -202,36 +205,45 @@ album = Album.manager.find(name='Rage Against the Machine')
 ## State of Development
 
 * Django 3.0
-* reliable playback w/ standard controls
-* unified search and playback UX
-* unified CLI
-  * everything from the UI at the prompt (playback, search, mobile)
-  * everything from freshbeats.py in the UI (ingestion)
-* remove unused devops
-* correct configuration & deployment
-  * dockerized database
-  * all config external (etcd? vault?)
-  * k8s templates?
-  * all-local dev mode
-  * Pi provisioning (terraform? ansible? fabric?)
-* little bits:
-  * healthz endpoints everywhere
+* architectural wrinkles
+  - reliable state management within each component (web app, UI, beatplayer, switchboard)
+    - fix mute/pause state, e.g. no-op if not playing, reset if mpplayer restarts or loses process, update UI according to actual process status 
+    - pause should toggle color as mute/shuffle do, play should color when playing, maybe some keep color but show toggled status some other way
+  - reliable awareness of state between components 
+    - healthz endpoints everywhere
+  - reliable error handling and messaging to the user and in logs 
+  - uptime resiliency 
+  - dockerized (minimum: full scripted/ansible/whatever, bonus: k8s-ready)
+  - flexible configuration 
+  - testable components / single-node mode 
+  - reference the 12 factor app, haha 
+* features 
+  * unified search and playback UX
+  * unified CLI/UI, central API 
+    * everything from the UI at the prompt (playback, search, mobile)
+    * everything from freshbeats.py in the UI (ingestion)
   * admin dashboard
     * see beatplayer(s!), switchboard, devices + status
     * manage devices
-  * record shop mode
-  * implement splice, using 'order' column, reassigning this value as needed and keeping the 'current' pointer
-  * keep better track of actual player status, make this a first order bit of state in the webapp
+  * record shop search mode
   * (test this) prevent delete for shopping albums (in DB but not on disk)
-  * 'next artist' skip 
   * implement separate 'back' and 'start over' controls 
-  * next (and general controls) need to be more snappy 
-  * controls:
-    * fix mute/pause state, e.g. no-op if not playing, reset if mpplayer restarts or loses process, update UI according to actual process status 
-    * pause should toggle color as mute/shuffle do, play should color when playing, maybe some keep color but show toggled status some other way
-    * remove playlist button / ties  
-  * proper playlist CRUD 
-  * get rid of global player, load from db 
+  * snappy UI controls
+  * full playlist CRUD 
+  * multiple playlists
+  * keyboard controls
+  * track log of played songs, so 'previous' actually gets previous 
+  * tagging 
+  * beatplayer gets four registrations if it goes down and comes back up 
+* extra: 
+  - remove devops cruft 
+  - renaming / file organization 
+    - beatplayer (services)         -> beater (API)
+    - beater (webapp)               -> freshbeats (Django project)
+    - freshbeats (services)         -> fresh (CLI) 
+    - beatplayer (webapp module)    -> (no change, player views, controls and state, and beater state)
+      - PlayerObj, Beater, Playlist -> separate python modules
+    
   
 ## Act of Development
 

@@ -113,4 +113,8 @@ io.sockets.on('connection', function (socket) {
   */
 
   socket.emit('connect_response', { message: 'Socket.IO connection made' });
+  
+  setInterval(function() {
+    io.sockets.emit('health_response', {})
+  }, 5000);
 });

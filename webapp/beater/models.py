@@ -177,15 +177,21 @@ class PlaylistSong(models.Model):
     queue_number = models.IntegerField(null=False, default=1)
     play_count = models.IntegerField(null=False, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    last_played_at = models.DateTimeField(null=True)
 
 class Player(models.Model):
     PLAYER_STATE_STOPPED = 'stopped'
     PLAYER_STATE_PLAYING = 'playing'
     PLAYER_STATE_PAUSED = 'paused'
 
-    PLAYLIST_MODE_ON = 'on'
-    PLAYLIST_MODE_OFF = 'off'
-
+    # -- typically, to 'next' during 'playing' state, we simply call 'stop' 
+    # -- and rely on the callback to advance the cursor 
+    # -- but if we need to cue a position prior to calling 'stop'
+    # -- because it's not a simple 'next'
+    # -- we tell it to not advance on the callback 
+    # -- alternatively, we could pass some flag to 'stop'
+    # -- which would be returned in the callback 
+    # -- but I prefer to leave the player out of it
     CURSOR_MODE_NEXT = 'next'
     CURSOR_MODE_STATIC = 'static'
     
@@ -195,18 +201,12 @@ class Player(models.Model):
         (PLAYER_STATE_PAUSED, 'Paused')
     )
     
-    PLAYLIST_MODE_CHOICES = (
-        (PLAYLIST_MODE_ON, 'On'),
-        (PLAYLIST_MODE_OFF, 'Off')
-    )
-    
     CURSOR_MODE_CHOICES = (
         (CURSOR_MODE_NEXT, 'Next'),
         (CURSOR_MODE_STATIC, 'Static')
     )
 
-    mute_state = models.BooleanField(null=False, default=False)
-    shuffle_state = models.BooleanField(null=False, default=False)
-    playlist_mode = models.CharField(max_length=3, choices=PLAYLIST_MODE_CHOICES, default=PLAYLIST_MODE_ON, null=False)
+    mute = models.BooleanField(null=False, default=False)
+    shuffle = models.BooleanField(null=False, default=False)
     state = models.CharField(max_length=7, choices=PLAYER_STATE_CHOICES, default=PLAYER_STATE_STOPPED, null=False)
     cursor_mode = models.CharField(max_length=6, choices=CURSOR_MODE_CHOICES, default=CURSOR_MODE_NEXT, null=False)

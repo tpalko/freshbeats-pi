@@ -1,4 +1,28 @@
+{% load static %}
+
 socket = io.connect("http://{{socketio_host}}:{{socketio_port}}");
+
+var switchboard_status = 'down';
+var switchboard_freshness = undefined;
+
+setInterval(function(){
+  now = new Date();
+  if (switchboard_freshness == undefined) {
+  } else if (now - switchboard_freshness > 7000) {
+    if (switchboard_status == 'up') {
+      switchboard_status = 'down';
+      $("#switchboard_status").removeClass('btn-success').addClass('btn-warning').find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';;
+    }
+  }
+}, 5000);
+
+socket.on('health_response', function(data) {
+  if (switchboard_status == 'down') {
+    switchboard_status = 'up';
+    $("#switchboard_status").removeClass("btn-warning").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';;
+  }
+  switchboard_freshness = new Date();
+});
 
 socket.on('connect_response', function(data) {
   console.log(data);
@@ -9,25 +33,48 @@ socket.on('player_status', function(player_status){
   $("#player_status").html(player_status.current_song);
   
   if (player_status.player.shuffle) {
-    $("a[command='toggle_shuffle']").text("shuffle on").removeClass('btn-default').addClass('btn-warning');  
+    $("a[command='toggle_shuffle']").removeClass('btn-default').addClass('btn-warning');  
   } else {
-    $("a[command='toggle_shuffle']").text("shuffle off").removeClass('btn-warning').addClass('btn-default');  
+    $("a[command='toggle_shuffle']").removeClass('btn-warning').addClass('btn-default');  
   }
   
   if (player_status.player.mute) {
-    $("a[command='mute']").text("mute on").removeClass('btn-default').addClass('btn-warning');  
+    $("a[command='toggle_mute']").removeClass('btn-default').addClass('btn-warning');
   } else {
-    $("a[command='mute']").text("mute off").removeClass('btn-warning').addClass('btn-default');  
+    $("a[command='toggle_mute']").removeClass('btn-warning').addClass('btn-default');
   }
+  
+  if (player_status.player.state == 'paused') {
+    $("a[command='pause']").removeClass('btn-default').addClass('btn-warning');
+    $("a[command='play']").removeClass('btn-default').addClass('btn-success');
+  } else if (player_status.player.state == 'playing') {
+    $("a[command='pause']").removeClass('btn-warning').addClass('btn-default');
+    $("a[command='play']").removeClass('btn-default').addClass('btn-success');
+  } else {
+    $("a[command='pause']").removeClass('btn-warning').addClass('btn-default');
+    $("a[command='play']").removeClass('btn-success').addClass('btn-default');
+  }
+  
+  $(".playlist").html(player_status.playlist);
+  $(".playlist")[0].scroll(0, $(".playlist").find(".playlistsong.current")[0].offsetTop - 43);
   
   realignPage();  
 });
 
-socket.on('playlist_update', function(playlist){
-  $(".playlist").html(playlist);
-  $(".playlist")[0].scroll(0, $(".playlist").find(".playlistsong.current")[0].offsetTop - 43);
+socket.on('beatplayer_status', function(beatplayer_status) {
+  //console.log(beatplayer_status)
+  //$("#volume_display").html(player_status.player.beatplayer_volume + "%");
   
-  realignPage();
+  if (beatplayer_status.status == 'up') {
+    $("#beatplayer_status").removeClass("btn-warning").removeClass("btn-danger").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';
+  } else {
+    if (beatplayer_status.registered) {
+        $("#beatplayer_status").removeClass("btn-success").removeClass("btn-danger").addClass("btn-warning").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
+    } else {
+        $("#beatplayer_status").removeClass("btn-success").removeClass("btn-warning").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';        
+    }
+    
+  }
 });
 
 socket.on('alert', function(data){

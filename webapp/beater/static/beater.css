@@ -74,6 +74,14 @@ a {
   // margin-bottom: 15px;
 }
 
+.row.status {
+  margin-top: 1em;
+}
+.row.status .btn {
+  color: black;
+  font-weight: bold;  
+}
+
 #remainder_albums {
 	table-layout: fixed;
 }

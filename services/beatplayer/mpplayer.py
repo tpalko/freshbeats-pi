@@ -6,6 +6,7 @@ import sys
 import traceback
 import subprocess
 import time
+from datetime import datetime 
 import json
 try: #3
     from xmlrpc.server import SimpleXMLRPCServer
@@ -23,12 +24,16 @@ import threading
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
+urllib_logger.setLevel(level=logging.WARN)
 
 class MPPlayer():
 
     ps = None
     current_thread = None
     volume = None
+    current_command = None 
+    clients = {}
 
     def __init__(self, *args, **kwargs):
 
@@ -38,30 +43,24 @@ class MPPlayer():
         self.f_outr = open("mplayer.out", "rb")
         self.f_errr = open("mplayer.err", "rb")
 
-        self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER')
+        self.music_folder = '/mnt/music'
         self.default_volume = os.getenv('BEATPLAYER_DEFAULT_VOLUME')
+        
+        logger.info("music folder: %s" % self.musicwaiting _folder)
+        logger.info("default volume: %s" % self.default_volume)
 
         self.is_muted = False
 
-    '''
-    def set_callback(self, uri):
-    logger.debug("Callback set: %s" % uri)
-    self.callback = uri
-    '''
-
-    def call_callback(self, exit_code=0, message=''):
-        logger.debug(message)
-        callback_response = {'success': exit_code == 0, 'message': message}
-        logger.debug("POST to %s" % self.callback)
-        requests.post(self.callback, data=callback_response)
 
     def get_music_folder(self):
         return self.music_folder
+
 
     def logs(self):
         self.f_outr.seek(0)
         lines = list(self.f_outr)
         return lines
+
 
     def get_player_info(self):
 
@@ -83,20 +82,23 @@ class MPPlayer():
             logger.error(sys.exc_info())
             traceback.print_tb(sys.exc_info()[2])
 
-    def play(self, filepath, uri, force=False):#, match=None):
 
+    def play(self, filepath, callback_url, force=False):#, match=None):
+        
+        response = {'success': False, 'message': '', 'data': {}}
+        
         logger.debug("Playing %s (%sforcing)" %(filepath, "" if force else "not "))
-
-        played = False
-        self.callback = uri
-
+        
+        def call_callback(returncode=0, out='', err=''):
+            callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err}
+            requests.post(callback_url, data=callback_response)
+            self.current_command = None 
+            
         try:
 
             if not os.path.exists(filepath):
-                msg = "The file %s is not accessible." % filepath
-                logger.error(msg)
-                self.call_callback(1, msg)
-                return played
+                #call_callback(1, msg)
+                raise Exception("The file path %s does not exist" % filepath)
 
             # do_shell=True
             # shuffle = "-shuffle" if 'shuffle' in options and options['shuffle'] else ""
@@ -111,7 +113,7 @@ class MPPlayer():
                 dead = self.ps.poll() == 0
 
                 if dead:
-                    logger.debug("No running process")
+                    logger.debug("No running process in the way, continuing..")
                 else:
                     if force:
                         logger.debug("Forcing play, so killing existing process..")
@@ -121,20 +123,44 @@ class MPPlayer():
                         except:
                             pass
                     else:
-                        logger.debug("Running process.. returning")
-                        return
+                        response['message'] = "Running process, not forcing.. returning"
+            
+            self.current_command = command 
+            #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
+            self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
 
-            self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
-            played = True
-
-            logger.info("play command called..")
+            logger.info("mplayer command called..")
 
             if self.volume is None:
-                self.volume = self.default_volume
+                self.volume = int(self.default_volume)
+                volume_response = self._issue_command("volume %s 1" %(self.volume))
+                if not volume_response['success']:
+                    if not response['message'] or response['message'] == '':
+                        response['message'] = volume_response['message']
+            
+            def run_in_thread():#, command, force):
+                '''Thread target'''
+                out = None 
+                err = None 
+                logger.info("Waiting for self.ps..")
+                returncode = self.ps.wait()
+                #(out, err) = self.ps.communicate(None)
+                #returncode = self.ps.returncode
+                logger.info("returncode: %s" % returncode)
+                # logger.info(out)
+                # logger.info(err)
+                # logger.info("ps is done, calling on_exit()")
+                # logger.info("ps.stdout:")
+                # logger.info(self.ps.stdout)
+                # logger.info("ps.stderr:")
+                # logger.info(self.ps.stderr)
+                call_callback(returncode=returncode, out=out, err=err)
+                return
 
-            self._issue_command("volume %s 1" %(self.volume))
-
-            self.current_thread = self.popenAndCall(self.call_callback)#, command, force)
+            self.current_thread = threading.Thread(target=run_in_thread) #, command, force))
+            self.current_thread.start()
+            
+            #self.current_thread = self.popenAndCall(call_callback)#, command, force)
             # self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
 
             '''
@@ -150,86 +176,154 @@ class MPPlayer():
              Track: 3
              Genre: Unknown
             '''
+            
+            response['success'] = True 
+            
         except Exception as e:
 
-            logger.error(sys.exc_info())
+            logger.error(sys.exc_info()[0])
+            logger.error(sys.exc_info()[1])
             traceback.print_tb(sys.exc_info()[2])            
+            response['message'] = str(sys.exc_info()[1])
 
         logger.debug("Returning from play call")
-        return played
-
-    def popenAndCall(self, on_exit):#, command, force):
-        """
-        Runs the given args in a subprocess.Popen, and then calls the function
-        on_exit when the subprocess completes.
-        on_exit is a callable object, and command is a list/tuple of args that
-        would give to subprocess.Popen.
-        """
-
-        def run_in_thread(on_exit):#, command, force):
-            '''Thread target'''
-            logger.info("Waiting for self.ps..")
-            #wait_result = self.ps.wait()
-            (out, err) = self.ps.communicate(None)
-            #logger.info(wait_result)
-            logger.info(out)
-            logger.info(err)
-            logger.info("ps is done, calling on_exit()")
-            on_exit(1, out if out else err)
-            return
-
-        thread = threading.Thread(target=run_in_thread, args=(on_exit,)) #, command, force))
-        thread.start()
-
-        return thread
-
-    def pause(self):
-
-        self._issue_command("pause")
-
-    def stop(self):
-
-        self._issue_command("stop")
-
-    def mute(self):
-
-        try:
-
-            self.is_muted = False if self.is_muted else True
-
-            logger.debug("changed mute to %s" % (self.is_muted))
-
-            self._issue_command("mute %s" % ("1" if self.is_muted else "0"))
-            #self._issue_command("volume %s 1" % (self.volume))
-
-        except Exception as e:
-
-            logger.error(sys.exc_info())
-            traceback.print_tb(sys.exc_info()[2])
-
-    def next(self):
-
-        self._issue_command("pt_step 1")
-
-    def healthz(self):
-
-        response = None
-
-        try:
-            response = {'ps': self.ps is not None, 'current_thread': self.current_thread is not None, 'volume': self.volume}
-        except:
-            response = str(sys.exc_info()[1])
-
+        
         return response
 
+    # def popenAndCall(self, on_exit):#, command, force):
+    #     """
+    #     Runs the given args in a subprocess.Popen, and then calls the function
+    #     on_exit when the subprocess completes.
+    #     on_exit is a callable object, and command is a list/tuple of args that
+    #     would give to subprocess.Popen.
+    #     """
+    # 
+    #     def run_in_thread(on_exit):#, command, force):
+    #         '''Thread target'''
+    #         logger.info("Waiting for self.ps..")
+    #         wait_result = self.ps.wait()
+    #         #(out, err) = self.ps.communicate(None)
+    #         logger.info(wait_result)
+    #         # logger.info(out)
+    #         # logger.info(err)
+    #         logger.info("ps is done, calling on_exit()")
+    #         on_exit(wait_result)
+    #         return
+    # 
+    #     thread = threading.Thread(target=run_in_thread, args=(on_exit,)) #, command, force))
+    #     thread.start()
+    # 
+    #     return thread
+
+    def pause(self):
+        return self._issue_command("pause")
+
+    def stop(self):
+        return self._issue_command("stop")
+
+    def mute(self):
+        self.is_muted = False if self.is_muted else True
+        return self._issue_command("mute %s" % ("1" if self.is_muted else "0"))
+
+    def volume_down(self):
+        if self.volume >= 5:
+            self.volume -= 5
+        else:
+            self.volume = 0
+        response = self._issue_command("volume %s 1" % self.volume)
+        response['data']['volume'] = self.volume
+        return response
+    
+    def volume_up(self):
+        if self.volume <= (100 - 5):
+            self.volume += 5
+        else:
+            self.volume = 100
+        response = self._issue_command("volume %s 1" % self.volume)
+        response['data']['volume'] = self.volume
+        return response
+        
+    # def next(self):
+    # 
+    #     response = {'success': False, 'message': ''}
+    #     try:
+    #         self._issue_command("pt_step 1")
+    #         response['success'] = True 
+    #     except:
+    #         response['message'] = sys.exc_info()[1]
+    # 
+    #     return response 
+
+    def _get_health(self):
+        data = {'data': {'volume': self.volume, 'current_command': self.current_command}}
+        try:
+            returncode = -1
+            pid = -1
+            if self.ps:
+                returncode = self.ps.poll()
+                if returncode is None:
+                    pid = self.ps.pid
+            data['data']['ps'] = {'returncode': returncode, 'pid': pid}
+        except:
+            logger.error(response['message'])
+            traceback.print_tb(sys.exc_info()[2])
+        return data
+    
+    def register_client(self, callback_url):
+        response = {'success': False, 'message': '', 'data': {}}
+        try:            
+            def ping_client():
+                while True:  
+                    try:                  
+                        health_data = self._get_health()
+                        logger.debug(health_data)
+                        callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(health_data))
+                        if not callback_response or not callback_response.json()['success']:
+                            raise 
+                    except:
+                        logger.warn("Failed to post callback URL %s, de-registering the client" % callback_url)
+                        del self.clients[callback_url]
+                        break
+                    time.sleep(5)
+                logger.warn("Exiting ping loop for %s" % callback_url)
+            if callback_url not in self.clients:
+                self.clients[callback_url] = datetime.now()
+                t = threading.Thread(target=ping_client)
+                t.start()
+                response['success'] = True 
+                logger.info("Registered client %s" % callback_url)
+            else:
+                raise Exception("Client %s already registered (%s)" % (callback_url, (datetime.now() - self.clients[callback_url]).total_seconds()))            
+        except:
+            response['message'] = str(sys.exc_info()[1])
+            logger.error("Error attempting to register client:")
+            logger.error(response['message'])
+        return response 
+        
+
     def _issue_command(self, command):
-
-        if self.ps is None:
-            logger.info("self.ps is None")
-            raise Exception("Player process is not started.")
-
-        logger.debug("issuing %s" % (command))
-        self.ps.stdin.write("%s\n" % (command))
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            if self.ps:
+                self.ps.stdin.write("%s\n" % (command))
+                response['success'] = True
+            # if self.ps:
+            #     if self.ps.poll() is None:
+            #         # -- process running 
+            #         self.ps.stdin.write("%s\n" % (command))
+            #         response['success'] = True
+            #     else:
+            #         # -- process returned
+            #         response['message'] = "no beatplayer process: not running (returncode=%s)" % self.ps.poll()
+            # else:
+            #     response['message'] = "no beatplayer process: doesn't exist"
+        except:
+            response['message'] = str(sys.exc_info()[1])
+            logger.error(response['message'])
+            logger.error(sys.exc_info()[0])
+            traceback.print_tb(sys.exc_info()[2])
+            
+        return response 
 
 
 if __name__ == "__main__":
