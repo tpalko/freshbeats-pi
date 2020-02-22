@@ -47,7 +47,7 @@ class MPPlayer():
         self.default_volume = os.getenv('BEATPLAYER_DEFAULT_VOLUME')
         self.player_path = os.getenv('PLAYER_PATH')
         
-        logger.info("music folder: %s" % self.musicwaiting _folder)
+        logger.info("music folder: %s" % self.music_folder)
         logger.info("default volume: %s" % self.default_volume)
 
         self.is_muted = False
