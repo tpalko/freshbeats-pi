@@ -27,6 +27,40 @@ logger = logging.getLogger(__name__)
 urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
 urllib_logger.setLevel(level=logging.WARN)
 
+class BaseClient():
+    pass 
+
+class MPlayerClient(BaseClient):
+    
+    def play(self, path):
+        pass 
+    
+    def stop(self):
+        pass 
+    
+    def pause(self):
+        pass
+
+class MPVClient(BaseClient):
+    
+    paused = False 
+    s = None 
+    
+    def __init__(self, *args, **kwargs):
+        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.s.connect('/tmp/mpv.sock')
+        
+    def play(self, path):
+        pass 
+    
+    def stop(self):
+        command = { 'command': [ "stop" ] }
+        self.s.sendall(command)
+    
+    def pause(self):
+        command = { 'command': [ "set_property", pause, not self.paused ] }
+        self.s.sendall(command)
+
 class MPPlayer():
 
     ps = None
@@ -103,9 +137,10 @@ class MPPlayer():
 
             # do_shell=True
             # shuffle = "-shuffle" if 'shuffle' in options and options['shuffle'] else ""
-            command_line = "%s -ao alsa -slave -quiet" % self.player_path
+            #command_line = "%s -ao alsa -slave -quiet" % self.player_path
+            command_line = "%s --quiet --input-unix-socket=/tmp/mpv.sock --idle" % self.player_path
             command = command_line.split(' ')
-            command.append("%s" % filepath)
+            command.append(filepath)
 
             logger.debug(' '.join(command))
 
