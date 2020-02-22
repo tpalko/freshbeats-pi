@@ -92,7 +92,7 @@ class MPPlayer():
         
         def call_callback(returncode=0, out='', err=''):
             callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err}
-            requests.post(callback_url, data=callback_response)
+            requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
             self.current_command = None 
             
         try:
