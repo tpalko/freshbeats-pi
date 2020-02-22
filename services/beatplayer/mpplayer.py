@@ -45,6 +45,7 @@ class MPPlayer():
 
         self.music_folder = '/mnt/music'
         self.default_volume = os.getenv('BEATPLAYER_DEFAULT_VOLUME')
+        self.player_path = os.getenv('PLAYER_PATH')
         
         logger.info("music folder: %s" % self.musicwaiting _folder)
         logger.info("default volume: %s" % self.default_volume)
@@ -102,7 +103,8 @@ class MPPlayer():
 
             # do_shell=True
             # shuffle = "-shuffle" if 'shuffle' in options and options['shuffle'] else ""
-            command = "mplayer -ao alsa -slave -quiet".split(' ')
+            command_line = "%s -ao alsa -slave -quiet" % self.player_path
+            command = command_line.split(' ')
             command.append("%s" % filepath)
 
             logger.debug(' '.join(command))
