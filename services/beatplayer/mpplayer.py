@@ -96,7 +96,7 @@ class BaseClient():
     def can_play(self):
         result = False 
         try:
-            ps = subprocess.Popen([self.player_path, "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ps = subprocess.Popen(["which", self.player_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             result = ps.wait() == 0
         except:
             logger.error(str(sys.exc_info()[1]))
@@ -281,7 +281,7 @@ class MPPlayer():
         logger.info("  - %s chosen" % self.player.__class__.__name__)
         
         if not self.player:
-            raise Excption("No suitable player exists")   
+            raise Exception("No suitable player exists")   
         
         logger.info("music folder: %s" % self.music_folder)
 
