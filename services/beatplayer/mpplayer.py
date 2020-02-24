@@ -107,7 +107,8 @@ class BaseClient():
         return response 
         
     def healthz(self):
-        data = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'mute': self.mute, 'current_command': self.current_command}
+        response = {'success': False, 'message': '', 'data': {}}
+        response['data'] = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'mute': self.mute, 'current_command': self.current_command}
         try:
             returncode = -1
             pid = -1
@@ -115,12 +116,14 @@ class BaseClient():
                 returncode = self.ps.poll()
                 if returncode is None:
                     pid = self.ps.pid
-            data['data']['ps']['returncode'] = returncode 
-            data['data']['ps']['pid'] = pid
+            response['data']['ps']['returncode'] = returncode 
+            response['data']['ps']['pid'] = pid
+            response['success'] = True
         except:
+            response['message'] = str(sys.exc_info()[1])
             logger.error(response['message'])
             traceback.print_tb(sys.exc_info()[2])
-        return data
+        return response
         
     def can_play(self):
         result = False 
