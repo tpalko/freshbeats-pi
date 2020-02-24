@@ -1,5 +1,7 @@
 #!/bin/bash 
 
-docker build -t beatplayer . \
- && docker tag beatplayer:latest frankendeb:5000/beatplayer:latest \
- && docker push frankendeb:5000/beatplayer:latest
+CPUARCH=$(uname -m)
+
+docker build -t beatplayer:${CPUARCH} . \
+ && docker tag beatplayer:${CPUARCH} frankendeb:5000/beatplayer:${CPUARCH} \
+ && docker push frankendeb:5000/beatplayer:${CPUARCH}
