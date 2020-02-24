@@ -32,6 +32,7 @@ class BaseClient():
     __metaclass__ = ABCMeta
     ps = None 
     volume = None 
+    paused = False 
     current_command = None 
     
     def __init__(self, *args, **kwargs):
@@ -47,13 +48,28 @@ class BaseClient():
     def _issue_command(self, command):
         response = {'success': False, 'message': '', 'data': {}}
         try:
-            if self.ps and self.ps.poll() is None:
-                self.ps.stdin.write("%s\n" % (command))
-            else:
+            if not self.ps or self.ps.poll() is not None:
                 #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
                 self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
                 self.current_command = command 
-            response['success'] = True
+                response['success'] = True 
+            else:
+                response['message'] = "A process is running (%s)" % self.ps.pid
+        except:
+            response['message'] = str(sys.exc_info()[1])
+            logger.error(response['message'])
+            logger.error(sys.exc_info()[0])
+            traceback.print_tb(sys.exc_info()[2])
+        return response 
+    
+    def _send_to_process(self, command):
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            if self.ps and self.ps.poll() is None:
+                self.ps.stdin.write("%s\n" % (command))
+                response['success'] = True
+            else:
+                response['message'] = "No process is running"
         except:
             response['message'] = str(sys.exc_info()[1])
             logger.error(response['message'])
@@ -114,27 +130,26 @@ class MPlayerClient(BaseClient):
         command = command_line.split(' ')
         command.append(filepath)
         self._issue_command(command)
-        
     
     def pause(self):
-        return self._issue_command("pause")
+        return self._send_to_process("pause")
 
     def stop(self):
-        return self._issue_command("stop")
+        return self._send_to_process("stop")
 
     def mute(self):
         self.is_muted = False if self.is_muted else True
-        return self._issue_command("mute %s" % ("1" if self.is_muted else "0"))
+        return self._send_to_process("mute %s" % ("1" if self.is_muted else "0"))
     
     def set_volume(self):
-        self._issue_command("volume %s 1" % self.volume)
+        return self._send_to_process("volume %s 1" % self.volume)
         
     def volume_down(self):
         if self.volume >= 5:
             self.volume -= 5
         else:
             self.volume = 0
-        response = self._issue_command("volume %s 1" % self.volume)
+        response = self._send_to_process("volume %s 1" % self.volume)
         response['data']['volume'] = self.volume
         return response
     
@@ -143,7 +158,7 @@ class MPlayerClient(BaseClient):
             self.volume += 5
         else:
             self.volume = 100
-        response = self._issue_command("volume %s 1" % self.volume)
+        response = self._send_to_process("volume %s 1" % self.volume)
         response['data']['volume'] = self.volume
         return response
     
@@ -168,42 +183,38 @@ class MPVClient(BaseClient):
     '''
     
     player_path = "mpv"
-    paused = False 
-    s = None 
-    volume = None 
     
     def __init__(self, *args, **kwargs):
-        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         super().__init__(*args, **kwargs)
         
     def play(self, filepath):
-        command_line = "%s --quiet --input-unix-socket=/tmp/mpv.sock" % self.player_path
+        command_line = "%s --input-unix-socket=/tmp/mpv.sock" % self.player_path
         command = command_line.split(' ')
         command.append(filepath)
         logger.debug(' '.join(command))
-        self.current_command = command 
-        self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.s.connect('/tmp/mpv.sock')
-        logger.info("mplayer command called..")
+        return self._issue_command(command)
+    
+    def _send(self, command):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect("/tmp/mpv.sock")
+        return s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
     
     def set_volume(self):
         command = { 'command': [ "set_property", "volume", self.volume ] }
-        response = self.s.sendall(command)
-        logger.info(response)
+        return self._send(command)
         
     def stop(self):
         command = { 'command': [ "stop" ] }
-        response = self.s.sendall(command)
-        logger.info(response)
+        return self._send(command)
     
     def pause(self):
-        command = { 'command': [ "set_property", pause, not self.paused ] }
-        response = self.s.sendall(command)
-        logger.info(response)
-        if response['error'] == 'success':
+        command = { 'command': [ "set_property", "pause", "yes" if not self.paused else "no" ] }
+        response = self._send(command)
+        if response and response.isnumeric() and int(response) > 0:
             self.paused = not self.paused 
         else:
-            logger.error("pause failed")
+            logger.error("pause failed, response: %s" % response)
+        return response 
     
     def mute(self):
         return False
@@ -220,9 +231,12 @@ class MPPlayer():
     api_clients = {}
     player_clients = [MPVClient, MPlayerClient]
     player = None 
+    server = False 
 
     def __init__(self, *args, **kwargs):
-
+        
+        self.server = kwargs['server'] if 'server' in kwargs else False 
+        
         self.f_outw = open("mplayer.out", "wb")
         self.f_errw = open("mplayer.err", "wb")
 
@@ -231,11 +245,20 @@ class MPPlayer():
 
         self.music_folder = '/mnt/music'
         
+        logger.info("Choosing player..")
+        preferred_player = kwargs['player'] if 'player' in kwargs else None 
         for p in self.player_clients:
             i = p()
+            player_name = i.__class__.__name__
             if i.can_play():
+                logger.info("  - %s can play" % player_name)
                 self.player = i
-                break             
+                if preferred_player and player_name == preferred_player:                    
+                    break 
+            else:
+                logger.info("  - %s cannot play" % player_name)
+        
+        logger.info("  - %s chosen" % self.player.__class__.__name__)
         
         if not self.player:
             raise Excption("No suitable player exists")   
@@ -303,7 +326,22 @@ class MPPlayer():
     #         logger.error(sys.exc_info())
     #         traceback.print_tb(sys.exc_info()[2])
 
-    def play(self, filepath, callback_url, force=False):#, match=None):
+    def stop(self):
+        return self.player.stop()
+    
+    def pause(self):
+        return self.player.pause()
+    
+    def volume_up(self):
+        return self.player.volume_up()
+    
+    def volume_down(self):
+        return self.player.volume_down()
+
+    def mute(self):
+        return self.player.mute()
+        
+    def play(self, filepath, callback_url=None, force=False):#, match=None):
         
         response = {'success': False, 'message': '', 'data': {}}
         logger.debug("Playing %s (%sforcing)" %(filepath, "" if force else "not "))
@@ -311,55 +349,32 @@ class MPPlayer():
         try:
 
             if not os.path.exists(filepath):
-                #call_callback(1, msg)
                 raise Exception("The file path %s does not exist" % filepath)
             
-            if self.ps:
-                # - a number means returned (exit code), None means still running 
-                dead = self.ps.poll() is not None 
-                if dead:
-                    logger.debug("No running process in the way, continuing..")
-                else:
-                    if force:
-                        logger.debug("Forcing play, so killing existing process..")
-                        try:
-                            self.ps.kill()
-                            del self.ps
-                        except:
-                            logger.error("Error killing process and deleting subprocess")
-                            logger.error(str(sys.exc_info()[1]))
-                    else:
-                        response['message'] = "Running process, not forcing.. returning"
-            
             self.player.play(filepath)
-            self.player.set_volume()
+            #self.player.set_volume()
             
-            def call_callback(returncode=0, out='', err=''):
-                callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err}
-                requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
-                self.player.current_command = None 
-                
-            def run_in_thread():#, command, force):
+            def run_in_thread(callback_url):#, command, force):
                 '''Thread target'''
-                out = None 
-                err = None 
                 logger.info("Waiting for self.ps..")
-                returncode = self.ps.wait()
-                #(out, err) = self.ps.communicate(None)
-                #returncode = self.ps.returncode
+                while self.player.ps.poll() is None:
+                    logger.info(self.player.ps.stdout.readline().rstrip('\n'))
+                returncode = self.player.ps.wait()
+                (out, err) = self.player.ps.communicate(None)
                 logger.info("returncode: %s" % returncode)
-                # logger.info(out)
-                # logger.info(err)
-                # logger.info("ps is done, calling on_exit()")
-                # logger.info("ps.stdout:")
-                # logger.info(self.ps.stdout)
-                # logger.info("ps.stderr:")
-                # logger.info(self.ps.stderr)
-                call_callback(returncode=returncode, out=out, err=err)
+                logger.info(out)
+                logger.info(err)
+                if callback_url:
+                    callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err}
+                    requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
+                self.player.current_command = None 
                 return
 
-            self.current_thread = threading.Thread(target=run_in_thread) #, command, force))
+            self.current_thread = threading.Thread(target=run_in_thread, args=(callback_url,)) #, command, force))
             self.current_thread.start()
+            
+            if not self.server:
+                self.current_thread.join()
             
             #self.current_thread = self.popenAndCall(call_callback)#, command, force)
             # self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
@@ -424,29 +439,36 @@ if __name__ == "__main__":
     logger.debug("Adding options..")
     parser.add_option("-a", "--address", dest="address", default='127.0.0.1', help="IP address on which to listen")
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
-    parser.add_option("-t", "--smoke-test", action="store_false", dest="smoke_test", help="Smoke test")
+    parser.add_option("-t", "--smoke-test", action="store_true", dest="smoke_test", help="Smoke test")
+    parser.add_option("-f", "--filepath", dest="filepath", help="Play file")
+    parser.add_option("-e", "--player-executable", dest="executable", help="The executable program to play file")
 
     logger.debug("Parsing args..")
     (options, args) = parser.parse_args()
 
     logger.debug("Creating MPPlayer..")
-    m = MPPlayer()
+    
+    if options.filepath:
+        try:
+            m = MPPlayer(player=options.executable)
+            result = m.play(options.filepath)
+        except:
+            logger.error(str(sys.exc_info()[1]))
+    elif options.smoke_test:
+        try:
+            m = MPPlayer()
+            m.play(os.path.basename(sys.argv[0]))
+        except:
+            logger.error(str(sys.exc_info()[1])) 
+    else:
+        logger.debug("Creating XML RPC server..")
+        s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
 
-    logger.debug("Creating XML RPC server..")
-    s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
+        logger.debug("Registering MPPlayer with XML RPC server..")
+        m = MPPlayer(server=True)
+        s.register_instance(m)
 
-    logger.debug("Registering MPPlayer with XML RPC server..")
-    s.register_instance(m)
+        logger.info("Serving forever on %s:%s.." % (options.address, options.port))
+        s.serve_forever()  # not
 
-    if options.smoke_test:
-      try:
-        m.play()
-      except:
-        logger.error("smoke test results:")
-        logger.error(str(sys.exc_info()[1])) 
-      sys.exit(0)
-
-    logger.info("Serving forever on %s:%s.." % (options.address, options.port))
-    s.serve_forever()  # not
-
-    logger.debug("Served.")
+        logger.debug("Served.")
