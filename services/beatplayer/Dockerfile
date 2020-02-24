@@ -14,5 +14,7 @@ COPY . .
 VOLUME /mnt/music 
 EXPOSE 9000
 
+ENV XDG_RUNTIME_DIR=/tmp
+
 #CMD ["python", "mpplayer.py", "-e", $ENV, "-a", "0.0.0.0", "-p", "9000"]
 CMD python3 mpplayer.py -a 0.0.0.0 -p 9000

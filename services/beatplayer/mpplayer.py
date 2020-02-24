@@ -315,7 +315,8 @@ class MPPlayer():
                 logger.info("Registered client %s" % callback_url)
                 response['success'] = True 
             else:
-                response['message'] = "Client %s already registered (%s)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
+                response['message'] = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
+                response['data']['retry'] = False 
         except:
             response['message'] = str(sys.exc_info()[1])
             logger.error("Error attempting to register client:")
