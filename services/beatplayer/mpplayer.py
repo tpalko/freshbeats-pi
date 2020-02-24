@@ -195,9 +195,24 @@ class MPVClient(BaseClient):
         return self._issue_command(command)
     
     def _send(self, command):
+        response = None 
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect("/tmp/mpv.sock")
-        return s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
+        attempts = 0
+        exists = True
+        while not os.path.exists("/tmp/mpv.sock"):
+            logger.warn("/tmp/mpv.sock does not exist.. waiting 2..")
+            attempts += 1
+            if attempts > 30:
+                exists = False 
+                break
+            time.sleep(2)
+            exists = True 
+        if exists:
+            s.connect("/tmp/mpv.sock")
+            response = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
+        else:
+            logger.error("/tmp/mpv.sock never existed, command (%s) never sent" % command)
+        return response 
     
     def set_volume(self):
         command = { 'command': [ "set_property", "volume", self.volume ] }
