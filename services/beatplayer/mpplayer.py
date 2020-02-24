@@ -94,8 +94,13 @@ class BaseClient():
         return data
         
     def can_play(self):
-        ps = subprocess.Popen([self.player_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return ps.wait() == 0
+        result = False 
+        try:
+            ps = subprocess.Popen([self.player_path, "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = ps.wait() == 0
+        except:
+            logger.error(str(sys.exc_info()[1]))
+        return result
         
     @abstractmethod
     def play(self, filepath):
