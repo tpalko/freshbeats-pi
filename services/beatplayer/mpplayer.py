@@ -71,7 +71,7 @@ class BaseClient():
                 if returncode is None:
                     pid = self.ps.pid
             data['data']['ps']['returncode'] = returncode 
-            data['data'['ps']['pid'] = pid
+            data['data']['ps']['pid'] = pid
         except:
             logger.error(response['message'])
             traceback.print_tb(sys.exc_info()[2])
@@ -204,6 +204,15 @@ class MPVClient(BaseClient):
             self.paused = not self.paused 
         else:
             logger.error("pause failed")
+    
+    def mute(self):
+        return False
+    
+    def volume_down(self):
+        return False
+    
+    def volume_up(self):
+        return False
 
 class MPPlayer():
     
@@ -231,11 +240,7 @@ class MPPlayer():
         if not self.player:
             raise Excption("No suitable player exists")   
         
-        self.default_volume = os.getenv('BEATPLAYER_DEFAULT_VOLUME')
-        self.player_path = os.getenv('PLAYER_PATH')        
-        
         logger.info("music folder: %s" % self.music_folder)
-        logger.info("default volume: %s" % self.default_volume)
 
         self.is_muted = False
     
@@ -410,18 +415,6 @@ class MPPlayer():
     #     thread.start()
     # 
     #     return thread
-
-    
-        
-    
-
-
-    
-    
-        
-
-    
-
 
 if __name__ == "__main__":
 
