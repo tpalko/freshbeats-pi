@@ -291,16 +291,20 @@ class MPPlayer():
         response = {'success': False, 'message': '', 'data': {}}
         try:            
             def ping_client():
+                fails = 0
                 while True:  
                     try:                  
-                        player_health = self.healthz()
+                        player_health = self.player.healthz()
                         logger.debug(player_health)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
+                        logger.info(callback_response)
                         if not callback_response or not callback_response.json()['success']:
-                            raise 
+                            raise Exception("No response or not response.success")
                     except:
+                        logger.error(str(sys.exc_info()[1]))
+                    if fails > 5:
                         logger.warn("Failed to post callback URL %s, de-registering the client" % callback_url)
-                        del self.api_clients[callback_url]
+                        del self.api_clients[callback_url]                   
                         break
                     time.sleep(5)
                 logger.warn("Exiting ping loop for %s" % callback_url)
