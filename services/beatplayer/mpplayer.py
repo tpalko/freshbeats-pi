@@ -313,9 +313,11 @@ class MPPlayer():
                 t = threading.Thread(target=ping_client)
                 t.start()
                 logger.info("Registered client %s" % callback_url)
+                response['data']['registered'] = True 
                 response['success'] = True 
             else:
                 response['message'] = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
+                response['data']['registered'] = True 
                 response['data']['retry'] = False 
         except:
             response['message'] = str(sys.exc_info()[1])
