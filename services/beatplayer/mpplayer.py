@@ -33,7 +33,7 @@ class BaseClient():
     ps = None 
     volume = None 
     paused = False
-    mute = False  
+    muted = False  
     current_command = None 
     
     def __init__(self, *args, **kwargs):
@@ -108,7 +108,7 @@ class BaseClient():
         
     def healthz(self):
         response = {'success': False, 'message': '', 'data': {}}
-        response['data'] = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'mute': self.mute, 'current_command': self.current_command}
+        response['data'] = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'muted': self.muted, 'current_command': self.current_command}
         try:
             returncode = -1
             pid = -1
@@ -175,8 +175,8 @@ class MPlayerClient(BaseClient):
         return self._send_to_process("stop")
 
     def mute(self):
-        self.mute = False if self.mute else True
-        return self._send_to_process("mute %s" % ("1" if self.mute else "0"))
+        self.muted = False if self.muted else True
+        return self._send_to_process("mute %s" % ("1" if self.muted else "0"))
     
     def set_volume(self):
         return self._send_to_process("volume %s 1" % self.volume)
@@ -241,8 +241,8 @@ class MPVClient(BaseClient):
         return self._send_to_socket(command)
     
     def mute(self):
-        self.mute = not self.mute
-        command = { 'command': [ "set_property", "mute", "yes" if self.mute else "no" ] }
+        self.muted = not self.muted
+        command = { 'command': [ "set_property", "mute", "yes" if self.muted else "no" ] }
         return self._send_to_socket(command)
     
     def volume_down(self):
@@ -298,7 +298,7 @@ class MPPlayer():
         
         logger.info("music folder: %s" % self.music_folder)
 
-        self.mute = False
+        self.muted = False
     
     def register_client(self, callback_url):
         response = {'success': False, 'message': '', 'data': {}}
