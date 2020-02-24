@@ -296,8 +296,8 @@ class MPPlayer():
                     try:                  
                         player_health = self.player.healthz()
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
-                        logger.info(callback_response)
                         if not callback_response or not callback_response.json()['success']:
+                            logger.info(callback_response)
                             raise Exception("No response or not response.success")
                     except:
                         logger.error(str(sys.exc_info()[1]))
