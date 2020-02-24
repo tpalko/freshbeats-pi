@@ -476,7 +476,7 @@ if __name__ == "__main__":
             logger.error(str(sys.exc_info()[1]))
     elif options.smoke_test:
         try:
-            m = MPPlayer()
+            m = MPPlayer(player=options.executable)
             m.play(os.path.basename(sys.argv[0]))
         except:
             logger.error(str(sys.exc_info()[1])) 
@@ -485,7 +485,7 @@ if __name__ == "__main__":
         s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
 
         logger.debug("Registering MPPlayer with XML RPC server..")
-        m = MPPlayer(server=True)
+        m = MPPlayer(server=True, player=options.executable)
         s.register_instance(m)
 
         logger.info("Serving forever on %s:%s.." % (options.address, options.port))
