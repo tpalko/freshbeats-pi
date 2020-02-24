@@ -431,6 +431,7 @@ if __name__ == "__main__":
     logger.debug("Adding options..")
     parser.add_option("-a", "--address", dest="address", default='127.0.0.1', help="IP address on which to listen")
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
+    parser.add_option("-t", "--smoke-test", action="store_false", dest="smoke_test", help="Smoke test")
 
     logger.debug("Parsing args..")
     (options, args) = parser.parse_args()
@@ -443,6 +444,14 @@ if __name__ == "__main__":
 
     logger.debug("Registering MPPlayer with XML RPC server..")
     s.register_instance(m)
+
+    if options.smoke_test:
+      try:
+        m.play()
+      except:
+        logger.error("smoke test results:")
+        logger.error(str(sys.exc_info()[1])) 
+      sys.exit(0)
 
     logger.info("Serving forever on %s:%s.." % (options.address, options.port))
     s.serve_forever()  # not
