@@ -32,7 +32,8 @@ class BaseClient():
     __metaclass__ = ABCMeta
     ps = None 
     volume = None 
-    paused = False 
+    paused = False
+    mute = False  
     current_command = None 
     
     def __init__(self, *args, **kwargs):
@@ -54,7 +55,7 @@ class BaseClient():
                 self.current_command = command 
                 response['success'] = True 
             else:
-                response['message'] = "A process is running (%s)" % self.ps.pid
+                response['message'] = "A process is running (%s), no action" % self.ps.pid
         except:
             response['message'] = str(sys.exc_info()[1])
             logger.error(response['message'])
@@ -76,9 +77,37 @@ class BaseClient():
             logger.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
+    
+    def _send_to_socket(self, command):
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            attempts = 0
+            exists = True
+            while not os.path.exists("/tmp/mpv.sock"):
+                logger.warn("/tmp/mpv.sock does not exist.. waiting 2..")
+                attempts += 1
+                if attempts > 30:
+                    exists = False 
+                    break
+                time.sleep(2)
+                exists = True 
+            if exists:
+                s.connect("/tmp/mpv.sock")
+                byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
+                response['success'] = True 
+                response['data']['bytes_read'] = byte_count
+            else:
+                response['message'] = "/tmp/mpv.sock never existed, command (%s) never sent" % command
+        except:
+            response['message'] = str(sys.exc_info()[1])
+            logger.error(response['message'])
+            logger.error(sys.exc_info()[0])
+            traceback.print_tb(sys.exc_info()[2])
+        return response 
         
     def healthz(self):
-        data = {'data': {'ps': {}, 'volume': self.volume, 'current_command': self.current_command}}
+        data = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'mute': self.mute, 'current_command': self.current_command}
         try:
             returncode = -1
             pid = -1
@@ -134,7 +163,7 @@ class MPlayerClient(BaseClient):
         command_line = "%s -ao alsa -slave -quiet" % self.player_path
         command = command_line.split(' ')
         command.append(filepath)
-        self._issue_command(command)
+        return self._issue_command(command)
     
     def pause(self):
         return self._send_to_process("pause")
@@ -143,8 +172,8 @@ class MPlayerClient(BaseClient):
         return self._send_to_process("stop")
 
     def mute(self):
-        self.is_muted = False if self.is_muted else True
-        return self._send_to_process("mute %s" % ("1" if self.is_muted else "0"))
+        self.mute = False if self.mute else True
+        return self._send_to_process("mute %s" % ("1" if self.mute else "0"))
     
     def set_volume(self):
         return self._send_to_process("volume %s 1" % self.volume)
@@ -154,18 +183,14 @@ class MPlayerClient(BaseClient):
             self.volume -= 5
         else:
             self.volume = 0
-        response = self._send_to_process("volume %s 1" % self.volume)
-        response['data']['volume'] = self.volume
-        return response
-    
+        return self.set_volume()
+        
     def volume_up(self):
         if self.volume <= (100 - 5):
             self.volume += 5
         else:
             self.volume = 100
-        response = self._send_to_process("volume %s 1" % self.volume)
-        response['data']['volume'] = self.volume
-        return response
+        return self.set_volume()
     
     # def next(self):
     # 
@@ -198,56 +223,41 @@ class MPVClient(BaseClient):
         command.append(filepath)
         logger.debug(' '.join(command))
         return self._issue_command(command)
-    
-    def _send(self, command):
-        response = None 
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        attempts = 0
-        exists = True
-        while not os.path.exists("/tmp/mpv.sock"):
-            logger.warn("/tmp/mpv.sock does not exist.. waiting 2..")
-            attempts += 1
-            if attempts > 30:
-                exists = False 
-                break
-            time.sleep(2)
-            exists = True 
-        if exists:
-            s.connect("/tmp/mpv.sock")
-            response = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
-        else:
-            logger.error("/tmp/mpv.sock never existed, command (%s) never sent" % command)
-        return response 
-    
+        
     def set_volume(self):
         command = { 'command': [ "set_property", "volume", self.volume ] }
-        return self._send(command)
+        return self._send_to_socket(command)
         
     def stop(self):
         command = { 'command': [ "stop" ] }
-        return self._send(command)
+        return self._send_to_socket(command)
     
     def pause(self):
-        command = { 'command': [ "set_property", "pause", "yes" if not self.paused else "no" ] }
-        response = self._send(command)
-        if response and response.isnumeric() and int(response) > 0:
-            self.paused = not self.paused 
-        else:
-            logger.error("pause failed, response: %s" % response)
-        return response 
+        self.paused = not self.paused 
+        command = { 'command': [ "set_property", "pause", "yes" if self.paused else "no" ] }
+        return self._send_to_socket(command)
     
     def mute(self):
-        return False
+        self.mute = not self.mute
+        command = { 'command': [ "set_property", "mute", "yes" if self.mute else "no" ] }
+        return self._send_to_socket(command)
     
     def volume_down(self):
-        return False
+        if self.volume >= 5:
+            self.volume -= 5
+        else:
+            self.volume = 0
+        return self.set_volume()
     
     def volume_up(self):
-        return False
+        if self.volume <= (100 - 5):
+            self.volume += 5
+        else:
+            self.volume = 100
+        return self.set_volume()
 
 class MPPlayer():
     
-    current_thread = None
     api_clients = {}
     player_clients = [MPVClient, MPlayerClient]
     player = None 
@@ -285,7 +295,7 @@ class MPPlayer():
         
         logger.info("music folder: %s" % self.music_folder)
 
-        self.is_muted = False
+        self.mute = False
     
     def register_client(self, callback_url):
         response = {'success': False, 'message': '', 'data': {}}
@@ -354,56 +364,86 @@ class MPPlayer():
     #         traceback.print_tb(sys.exc_info()[2])
 
     def stop(self):
-        return self.player.stop()
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            response = self.player.stop()
+        except:
+            response['message'] = str(sys.exc_info()[1])
+        return response
     
     def pause(self):
-        return self.player.pause()
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            response = self.player.pause()
+        except:
+            response['message'] = str(sys.exc_info()[1])
+        return response
     
     def volume_up(self):
-        return self.player.volume_up()
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            response = self.player.volume_up()
+        except:
+            response['message'] = str(sys.exc_info()[1])
+        return response 
     
     def volume_down(self):
-        return self.player.volume_down()
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            response = self.player.volume_down()
+        except:
+            response['message'] = str(sys.exc_info()[1])
+        return response 
 
     def mute(self):
-        return self.player.mute()
+        response = {'success': False, 'message': '', 'data': {}}
+        try:
+            response = self.player.mute()
+        except:
+            response['message'] = str(sys.exc_info()[1])
+        return response
         
-    def play(self, filepath, callback_url=None, force=False):#, match=None):
+    def play(self, filepath, callback_url=None): #, force=False):#, match=None):
         
         response = {'success': False, 'message': '', 'data': {}}
-        logger.debug("Playing %s (%sforcing)" %(filepath, "" if force else "not "))
+        logger.debug("Playing %s" % filepath)
             
         try:
 
             if not os.path.exists(filepath):
                 raise Exception("The file path %s does not exist" % filepath)
             
-            self.player.play(filepath)
+            response = self.player.play(filepath)
             #self.player.set_volume()
             
             def run_in_thread(callback_url):#, command, force):
                 '''Thread target'''
                 logger.info("Waiting for self.ps..")
                 while self.player.ps.poll() is None:
-                    logger.info(self.player.ps.stdout.readline().rstrip('\n'))
+                    int_resp = {'success': True, 'message': '', 'data': {'complete': False}} 
+                    int_resp['message'] = self.player.ps.stdout.readline().rstrip('\n')
+                    if callback_url:
+                        requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
+                    logger.info(int_resp['message'])
+                    time.sleep(2)
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
                 logger.info("returncode: %s" % returncode)
                 logger.info(out)
                 logger.info(err)
                 if callback_url:
-                    callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err}
+                    callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err, 'data': {'complete': True}}
                     requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
                 self.player.current_command = None 
                 return
 
-            self.current_thread = threading.Thread(target=run_in_thread, args=(callback_url,)) #, command, force))
-            self.current_thread.start()
+            t = threading.Thread(target=run_in_thread, args=(callback_url,)) #, command, force))
+            t.start()
             
             if not self.server:
-                self.current_thread.join()
+                t.join()
             
-            #self.current_thread = self.popenAndCall(call_callback)#, command, force)
+            #t = self.popenAndCall(call_callback)#, command, force)
             # self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
 
             '''
