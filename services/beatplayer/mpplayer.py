@@ -193,7 +193,7 @@ class MPVClient(BaseClient):
         super().__init__(*args, **kwargs)
         
     def play(self, filepath):
-        command_line = "%s --input-unix-socket=/tmp/mpv.sock" % self.player_path
+        command_line = "%s --no-video --input-unix-socket=/tmp/mpv.sock" % self.player_path
         command = command_line.split(' ')
         command.append(filepath)
         logger.debug(' '.join(command))
