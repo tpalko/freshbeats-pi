@@ -174,7 +174,6 @@ class MPVClient(BaseClient):
     
     def __init__(self, *args, **kwargs):
         self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.s.connect('/tmp/mpv.sock')
         super().__init__(*args, **kwargs)
         
     def play(self, filepath):
@@ -184,6 +183,7 @@ class MPVClient(BaseClient):
         logger.debug(' '.join(command))
         self.current_command = command 
         self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.s.connect('/tmp/mpv.sock')
         logger.info("mplayer command called..")
     
     def set_volume(self):
