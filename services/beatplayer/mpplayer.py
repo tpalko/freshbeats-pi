@@ -37,7 +37,7 @@ class BaseClient():
     current_command = None 
     
     def __init__(self, *args, **kwargs):
-        self.volume = os.getenv('BEATPLAYER_DEFAULT_VOLUME')
+        self.volume = int(os.getenv('BEATPLAYER_DEFAULT_VOLUME'))
         for k in kwargs:
             val = kwargs[k]
             # -- handling comma-separated strings as lists 
@@ -135,6 +135,22 @@ class BaseClient():
         return result
         
     @abstractmethod
+    def volume_down(self):
+        if self.volume >= 5:
+            self.volume -= 5
+        else:
+            self.volume = 0
+        return self.set_volume()
+        
+    @abstractmethod
+    def volume_up(self):
+        if self.volume <= (100 - 5):
+            self.volume += 5
+        else:
+            self.volume = 100
+        return self.set_volume()
+        
+    @abstractmethod
     def play(self, filepath):
         pass
     
@@ -149,15 +165,7 @@ class BaseClient():
     @abstractmethod
     def mute(self):
         pass 
-    
-    @abstractmethod
-    def volume_up(self):
-        pass
-    
-    @abstractmethod
-    def volume_down(self):
-        pass
-
+        
 class MPlayerClient(BaseClient):
     
     player_path = "mplayer"
@@ -180,20 +188,6 @@ class MPlayerClient(BaseClient):
     
     def set_volume(self):
         return self._send_to_process("volume %s 1" % self.volume)
-        
-    def volume_down(self):
-        if self.volume >= 5:
-            self.volume -= 5
-        else:
-            self.volume = 0
-        return self.set_volume()
-        
-    def volume_up(self):
-        if self.volume <= (100 - 5):
-            self.volume += 5
-        else:
-            self.volume = 100
-        return self.set_volume()
     
     # def next(self):
     # 
@@ -221,7 +215,7 @@ class MPVClient(BaseClient):
         super().__init__(*args, **kwargs)
         
     def play(self, filepath):
-        command_line = "%s --no-video --input-unix-socket=/tmp/mpv.sock" % self.player_path
+        command_line = "%s --no-video --input-ipc-server=/tmp/mpv.sock" % self.player_path
         command = command_line.split(' ')
         command.append(filepath)
         logger.debug(' '.join(command))
@@ -245,20 +239,6 @@ class MPVClient(BaseClient):
         command = { 'command': [ "set_property", "mute", "yes" if self.muted else "no" ] }
         return self._send_to_socket(command)
     
-    def volume_down(self):
-        if self.volume >= 5:
-            self.volume -= 5
-        else:
-            self.volume = 0
-        return self.set_volume()
-    
-    def volume_up(self):
-        if self.volume <= (100 - 5):
-            self.volume += 5
-        else:
-            self.volume = 100
-        return self.set_volume()
-
 class MPPlayer():
     
     api_clients = {}
