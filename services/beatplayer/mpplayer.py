@@ -96,7 +96,6 @@ class BaseClient():
                 byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                 response['success'] = True 
                 response['data']['bytes_read'] = byte_count
-                break 
             else:
                 response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
         except:
@@ -493,23 +492,24 @@ if __name__ == "__main__":
     parser.add_option("-f", "--filepath", dest="filepath", help="Play file")
     parser.add_option("-e", "--player-executable", dest="executable", help="The executable program to play file")
 
-    logger.debug("Parsing args..")
     (options, args) = parser.parse_args()
+    
+    logger.debug(options)
 
     logger.debug("Creating MPPlayer..")
     
-    if options.filepath:
+    if options.smoke_test:
+        try:
+            m = MPPlayer(player=options.executable)
+            m.play(options.filepath if options.filepath else os.path.basename(sys.argv[0]))
+        except:
+            logger.error(str(sys.exc_info()[1])) 
+    elif options.filepath:
         try:
             m = MPPlayer(player=options.executable)
             result = m.play(options.filepath)
         except:
             logger.error(str(sys.exc_info()[1]))
-    elif options.smoke_test:
-        try:
-            m = MPPlayer(player=options.executable)
-            m.play(os.path.basename(sys.argv[0]))
-        except:
-            logger.error(str(sys.exc_info()[1])) 
     else:
         logger.debug("Creating XML RPC server..")
         s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
