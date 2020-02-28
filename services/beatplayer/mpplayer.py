@@ -266,12 +266,12 @@ class MPPlayer():
             if i.can_play():
                 logger.info("  - %s can play" % player_name)
                 self.player = i
-                if preferred_player and player_name == preferred_player:                    
+                if preferred_player and i.player_path == preferred_player:
                     break 
             else:
                 logger.info("  - %s cannot play" % player_name)
         
-        logger.info("  - %s chosen" % self.player.__class__.__name__)
+        logger.info("  - %s chosen (%s)" % (self.player.__class__.__name__, self.player.player_path))
         
         if not self.player:
             raise Exception("No suitable player exists")   
