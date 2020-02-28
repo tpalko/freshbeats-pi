@@ -83,22 +83,22 @@ class BaseClient():
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             attempts = 0
-            exists = True
             while not os.path.exists("/tmp/mpv.sock"):
-                logger.warn("/tmp/mpv.sock does not exist.. waiting 2..")
-                attempts += 1
-                if attempts > 30:
-                    exists = False 
+                if attempts > 15:
+                    logger.warn("tried 15 times over 30 seconds to find /tmp/mpv.sock, quitting")
                     break
-                time.sleep(2)
-                exists = True 
-            if exists:
+                else:
+                    logger.warn("/tmp/mpv.sock does not exist.. waiting 2..")
+                    attempts += 1
+                    time.sleep(2)
+            if os.path.exists("/tmp/mpv.sock"):
                 s.connect("/tmp/mpv.sock")
                 byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                 response['success'] = True 
                 response['data']['bytes_read'] = byte_count
+                break 
             else:
-                response['message'] = "/tmp/mpv.sock never existed, command (%s) never sent" % command
+                response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
         except:
             response['message'] = str(sys.exc_info()[1])
             logger.error(response['message'])
