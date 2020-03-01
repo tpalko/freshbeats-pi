@@ -1,6 +1,9 @@
 from __future__ import unicode_literals
 from django.db import models
+import logging 
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # class Device(models.Manager):
 #
@@ -9,6 +12,18 @@ from django.db import models
 #     created_at = models.DateTimeField(auto_now_add=True)
 #     updated_at = models.DateTimeField(auto_now=True)
 
+class CacheManager(models.Manager):
+    
+    stale = False 
+    
+    def get_queryset(self):
+        logger.debug(self)
+        return super(CacheManager, self).get_queryset()
+    
+    def create(self, **kwargs):
+        self.stale = True
+        logger.debug("creating") 
+        super(CacheManager, self).create(**kwargs)
 
 class AlbumManager(models.Manager):
 
@@ -178,6 +193,7 @@ class PlaylistSong(models.Model):
     play_count = models.IntegerField(null=False, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     last_played_at = models.DateTimeField(null=True)
+    #objects = CacheManager()
 
 class Player(models.Model):
     PLAYER_STATE_STOPPED = 'stopped'

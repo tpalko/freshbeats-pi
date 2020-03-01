@@ -44,6 +44,11 @@
                 <div id="volume_display"></div>
               </div>
             </div>
+            <div class="row status">
+              <div class="col-md-12">
+                <div id="player_output"></div>
+              </div>
+            </div>
   				</div>
   				<div class="col-md-5">
             <!-- cursor-fill or columns-gutters could also work for shuffle -->
@@ -345,6 +350,7 @@
 				var albumid = $(this).attr("albumid");
 				var songid = $(this).attr("songid");
         var artistid = $(this).attr("artistid");
+        var playlistsongid = $(this).attr("playlistsongid");
 
 				var url = command_url.replace(/null/, endpoint);
 
@@ -352,7 +358,7 @@
 
 				$.ajax({
 					url: url,
-					data: { command: command, albumid: albumid, songid: songid, artistid: artistid },
+					data: { command: command, albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
 					type: "POST",
 					datatype: "json",
 					success: function(data, textStatus, jqXHR){

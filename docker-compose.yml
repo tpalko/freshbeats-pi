@@ -7,6 +7,7 @@ services:
       # args:
       #   - gitcommithash=05c10666dcb5829f574881f6ab1b2cbdd05f8ec8
     container_name: freshbeats_app
+    env_file: webapp/containerized.env
     # ports:
     #   - "8030:8000"
     environment:

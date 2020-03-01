@@ -61,7 +61,6 @@ function rootHandler(req, res) {
 
 // take inbound generic event requests from django app and pass on to client
 function pushEventHandler(req, res, next) {
-
   //console.log(req.params.event);
   //console.log(req.body);
   io.sockets.emit(req.params.event, req.body);
@@ -85,11 +84,17 @@ function pushEventHandler(req, res, next) {
   */
 }
 
+function healthz(req, res, next) {
+  res.send(200, 'OK');
+  next();
+}
+
 server.use(restify.plugins.queryParser());
 server.use(restify.plugins.bodyParser());
 
 //server.get('/', rootHandler);
 server.post('/pushevent/:event', pushEventHandler);
+server.get('/healthz', healthz)
 
 server.listen(3333, function(){
   console.log('%s listening at %s', server.name, server.url);

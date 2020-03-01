@@ -77,6 +77,10 @@ socket.on('beatplayer_status', function(beatplayer_status) {
   }
 });
 
+socket.on('player_output', function(output) {
+  $("#player_output").html = output;
+})
+
 socket.on('alert', function(data){
   console.log(data);
   alert(data.message);
@@ -84,5 +88,5 @@ socket.on('alert', function(data){
 
 socket.on('message', function(data){
   console.log(data);
-  showError(data.message);
+  showError(data);
 })

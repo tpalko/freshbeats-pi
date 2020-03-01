@@ -212,7 +212,7 @@ album = Album.manager.find(name='Rage Against the Machine')
   - reliable awareness of state between components 
     - healthz endpoints everywhere
   - reliable error handling and messaging to the user and in logs 
-  - uptime resiliency 
+  - uptime resiliency - plug and play 
   - dockerized (minimum: full scripted/ansible/whatever, bonus: k8s-ready)
   - flexible configuration 
   - testable components / single-node mode 
@@ -235,6 +235,17 @@ album = Album.manager.find(name='Rage Against the Machine')
   * track log of played songs, so 'previous' actually gets previous 
   * tagging 
   * beatplayer gets four registrations if it goes down and comes back up 
+  * extract additional output from player, show in scrolling window 
+  * devices integration / support 
+  * allow playlist to be scrolled, don't reset to current if scrolling 
+  * artist/album grouping playlist display mode
+  * mobile CSS 
+  * fix discrepancy between sync/async player updates (volume vs. everything else)
+  * tabbed search results 
+  * TaHoBudDey integration 
+  * youtube integration (youtube integrated search? at least handling youtube addresses in the playlist)
+  * hibernate mode (health checks slow down over time when no user input recorded)
+  * beatplayer API to support client registration management, soft restart, general state stuff 
 * extra: 
   - remove devops cruft 
   - renaming / file organization 
