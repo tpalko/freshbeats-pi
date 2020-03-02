@@ -298,12 +298,15 @@ class PlayerObj():
         callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
         logger.info("calling beatplayer. song: %s callback: %s" % (song_filepath, callback))
         response = self.beatplayer.client.play(song_filepath, callback)
+        logger.debug("play response: %s" % json.dumps(response))
         if response['success']:
             self.playlist.increment_current_playlistsong_play_count()
         return response 
         
     def _beatplayer_stop(self):
-        return self.beatplayer.client.stop()
+        response = self.beatplayer.client.stop()
+        logger.debug("stop response: %s" % json.dumps(response))
+        return response
     
     def _beatplayer_mute(self):
         return self.beatplayer.client.mute()
@@ -671,6 +674,7 @@ def player_complete(request):
         if complete_response['data']['complete']:
             player.call("complete", success=complete_response['success'], message=complete_response['message'])
         else:
+            logger.debug("player output: %s" % complete_response['message'])
             _publish_event('player_output', json.dumps(complete_response['message']))
         response['success'] = True
 

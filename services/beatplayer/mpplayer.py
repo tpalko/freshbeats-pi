@@ -22,7 +22,8 @@ except: #2
 import threading
 from abc import ABCMeta, abstractmethod
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, disable_existing_loggers=False)
+
 logger = logging.getLogger(__name__)
 
 urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
@@ -407,7 +408,7 @@ class MPPlayer():
                     int_resp['message'] = self.player.ps.stdout.readline().rstrip('\n')
                     if callback_url:
                         requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
-                    logger.info(int_resp['message'])
+                    logger.info("ps.stdout: %s" % int_resp['message'])
                     time.sleep(2)
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
