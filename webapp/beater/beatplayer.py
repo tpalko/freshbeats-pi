@@ -231,6 +231,8 @@ class Beatplayer():
                     if self.registered:
                         logger.info("Application subscribed to beatplayer! (%s attempts)" % attempts)                        
                         self.last_status = datetime.now()
+                    else:
+                        logger.debug("attempt %s - not yet registered: %s" % (attempts, response))
                     _show_beatplayer_status()
                     if response['data']['retry'] == False:
                         break
