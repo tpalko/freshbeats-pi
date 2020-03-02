@@ -24,11 +24,13 @@ except: #2
 import threading
 from abc import ABCMeta, abstractmethod
 
+#logging.basicConfig(level=logging.DEBUG)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.DEBUG)
 
-# urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
-# urllib_logger.setLevel(level=logging.WARN)
+urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
+urllib_logger.setLevel(level=logging.WARN)
 
 class BaseClient():
     __metaclass__ = ABCMeta
@@ -407,21 +409,31 @@ class MPPlayer():
             
             def run_in_thread(callback_url):#, command, force):
                 '''Thread target'''
-                logger.info("Waiting for self.ps..")
-                while self.player.ps.poll() is None:
-                    int_resp = {'success': True, 'message': '', 'data': {'complete': False}} 
-                    int_resp['message'] = self.player.ps.stdout.readline().rstrip('\n')
-                    if callback_url:
-                        requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
-                    logger.info("ps.stdout: %s" % int_resp['message'])
-                    time.sleep(2)
+                logger.info("Waiting for self.ps..")                
+                
+                if callback_url:
+                    process_dead = False 
+                    int_resp = {'success': True, 'message': self.player.ps.stdout.read(), 'data': {'complete': False}} 
+                    while True:
+                        if len(int_resp['message']) > 0:
+                            for line in int_resp['message'].split(b'\n'):
+                                logger.debug("STDOUT: %s" % line)
+                            requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
+                            int_resp['message'] = ''
+                        if process_dead:
+                            break
+                        sleep(1)
+                        if self.player.ps.poll() is not None:
+                            process_dead = True 
+                        int_resp['message'] = self.player.ps.stdout.read()
+                                
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
-                logger.info("returncode: %s" % returncode)
-                logger.info(out)
-                logger.info(err)
+                logger.debug("returncode: %s" % returncode)
+                logger.debug("out: %s" % out)
+                logger.debug("err: %s" % err)
                 if callback_url:
-                    callback_response = {'success': returncode == 0, 'message': out if returncode == 0 else err, 'data': {'complete': True}}
+                    callback_response = {'success': returncode == 0, 'message': '', 'data': {'complete': True, 'out': out, 'err': err}}
                     requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
                 self.player.current_command = None 
                 return
