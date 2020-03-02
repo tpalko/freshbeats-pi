@@ -96,6 +96,7 @@ class BaseClient():
                 byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                 response['success'] = True 
                 response['data']['bytes_read'] = byte_count
+                logger.debug("socket file read %s bytes on command %s" % (byte_count, command))
             else:
                 response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
         except:
@@ -396,7 +397,7 @@ class MPPlayer():
                 raise Exception("The file path %s does not exist" % filepath)
             
             response = self.player.play(filepath)
-            #self.player.set_volume()
+            self.player.set_volume()
             
             def run_in_thread(callback_url):#, command, force):
                 '''Thread target'''

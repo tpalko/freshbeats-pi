@@ -227,17 +227,13 @@ class Beatplayer():
                 try:
                     attempts += 1
                     response = self.client.register_client(callback_url)
-                    if response['success']:
-                        self.registered = True
-                        self.last_status = datetime.now()
-                        _show_beatplayer_status(self)
+                    self.registered = response['data']['registered']
+                    if self.registered:
                         logger.info("Application subscribed to beatplayer! (%s attempts)" % attempts)                        
+                        self.last_status = datetime.now()
+                    _show_beatplayer_status()
+                    if response['data']['retry'] == False:
                         break
-                    else:
-                        logger.info(response)
-                        self.registered = response['data']['registered']
-                        if self.registered or response['data']['retry'] == False:
-                            break
                 except:
                     logger.error("Error registering with %s: %s" % (self.beater_url, str(sys.exc_info()[1])))
                 wait = attempts*3 if attempts < 200 else 600
@@ -261,11 +257,11 @@ class Beatplayer():
                 elif self.last_status < datetime.now() - timedelta(seconds=15):
                     self.status = BEATPLAYER_STATUS_DOWN
                     logger.warn("Stale status - beatplayer is %s" % self.status)
-                    _show_beatplayer_status(self)
+                    _show_beatplayer_status()
                 time.sleep(5)
             logger.warn("Self-deregistering..")
             self.registered = False          
-            _show_beatplayer_status(self)           
+            _show_beatplayer_status()           
             t = threading.Thread(target=register_client)
             t.start()
                     
@@ -286,22 +282,11 @@ class PlayerObj():
     
     playlist = None
     beatplayer = None 
-    beatplayer_proxy = None 
     
     def __init__(self, *args, **kwargs):
-        if 'init' not in kwargs or kwargs['init']:
-            self._load()
-            self.playlist = Playlist()
-        
-        if 'beatplayer' in kwargs:
-            logger.debug("beatplayer found in PlayerObj kwargs")
-            self.beatplayer = kwargs['beatplayer']        
-        else:
-            logger.debug("Using global beatplayer in PlayerObj")
-            global beatplayer 
-            self.beatplayer = beatplayer
-        #self.beatplayer = Beatplayer(url=settings.BEATPLAYER_URL)
-        #self.beatplayer_status()
+        self._load()
+        self.playlist = Playlist()
+        self.beatplayer = Beatplayer(url=settings.BEATPLAYER_URL)
 
     def get_current_song(self):
         return self.playlist.get_current_playlistsong().song
@@ -623,11 +608,12 @@ def health_response(request):
         player.call("clear_state")
     player.call('set_beatplayer_volume', volume=health_data['volume'])  
     
-    if player.beatplayer.status != BEATPLAYER_STATUS_UP:
-        logger.info("beatplayer status: %s -> %s" % (player.beatplayer.status, BEATPLAYER_STATUS_UP))
-        player.beatplayer.status = BEATPLAYER_STATUS_UP
-        _show_beatplayer_status(player.beatplayer)
-    player.beatplayer.last_status = datetime.now()
+    global beatplayer 
+    if beatplayer.status != BEATPLAYER_STATUS_UP:
+        logger.info("beatplayer status: %s -> %s" % (beatplayer.status, BEATPLAYER_STATUS_UP))
+        beatplayer.status = BEATPLAYER_STATUS_UP
+        _show_beatplayer_status()
+    beatplayer.last_status = datetime.now()
 
     return JsonResponse({'success': True})
 
@@ -703,7 +689,7 @@ def beatplayer_status(request):
 
     try:
         global beatplayer 
-        _show_beatplayer_status(beatplayer)        
+        _show_beatplayer_status()        
         response['success'] = True
     except:
         response['message'] = str(sys.exc_info()[1])
@@ -800,7 +786,8 @@ def _handle_command(command, **kwargs): #albumid=None, songid=None, artistid=Non
     return JsonResponse({'success': True})
 
 
-def _show_beatplayer_status(beatplayer):
+def _show_beatplayer_status():
+    global beatplayer
     _publish_event('beatplayer_status', json.dumps({'status': beatplayer.status, 'registered': beatplayer.registered}))
 
 def _show_player_status(player):    
