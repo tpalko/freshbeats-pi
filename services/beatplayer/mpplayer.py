@@ -229,6 +229,7 @@ class MPVClient(BaseClient):
         return self._issue_command(command)
         
     def set_volume(self):
+        logger.debug("MPV set volume")
         command = { 'command': [ "set_property", "volume", self.volume ] }
         return self._send_to_socket(command)
         
