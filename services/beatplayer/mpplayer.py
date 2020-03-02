@@ -26,11 +26,10 @@ from abc import ABCMeta, abstractmethod
 
 #logging.basicConfig(level=logging.DEBUG)
 
-logger = logging.getLogger(__name__)
-logger.setLevel(level=logging.DEBUG)
-
 urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
 urllib_logger.setLevel(level=logging.WARN)
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
 
 class BaseClient():
     __metaclass__ = ABCMeta
@@ -416,7 +415,7 @@ class MPPlayer():
                     int_resp = {'success': True, 'message': self.player.ps.stdout.read(), 'data': {'complete': False}} 
                     while True:
                         if len(int_resp['message']) > 0:
-                            for line in int_resp['message'].split(b'\n'):
+                            for line in str(int_resp['message']).split('\n'):
                                 logger.debug("STDOUT: %s" % line)
                             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
                             int_resp['message'] = ''
