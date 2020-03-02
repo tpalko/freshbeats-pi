@@ -419,7 +419,10 @@ class MPPlayer():
                                 logger.debug("STDOUT: %s" % line)
                             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
                             int_resp['message'] = ''
+                        else:
+                            logger.debug("stdout is empty")
                         if process_dead:
+                            logger.debug("process is dead, exiting stdout while loop")
                             break
                         time.sleep(1)
                         if self.player.ps.poll() is not None:
