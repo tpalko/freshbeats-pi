@@ -24,10 +24,10 @@ except: #2
 import threading
 from abc import ABCMeta, abstractmethod
 
-#logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
-urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
-urllib_logger.setLevel(level=logging.WARN)
+#urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
+#urllib_logger.setLevel(level=logging.WARN)
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.DEBUG)
 
@@ -421,7 +421,7 @@ class MPPlayer():
                             int_resp['message'] = ''
                         if process_dead:
                             break
-                        sleep(1)
+                        time.sleep(1)
                         if self.player.ps.poll() is not None:
                             process_dead = True 
                         int_resp['message'] = self.player.ps.stdout.read()
