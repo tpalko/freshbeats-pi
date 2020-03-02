@@ -82,6 +82,7 @@ class BaseClient():
         return response 
     
     def _send_to_socket(self, command):
+        logger.debug("_send_to_socket: %s" % command)
         response = {'success': False, 'message': '', 'data': {}}
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -95,6 +96,7 @@ class BaseClient():
                     attempts += 1
                     time.sleep(2)
             if os.path.exists("/tmp/mpv.sock"):
+                logger.debug("connecting to /tmp/mpv.sock for %s" % command)
                 s.connect("/tmp/mpv.sock")
                 byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                 response['success'] = True 
@@ -143,6 +145,7 @@ class BaseClient():
             self.volume -= 5
         else:
             self.volume = 0
+        logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
     @abstractmethod
@@ -151,6 +154,7 @@ class BaseClient():
             self.volume += 5
         else:
             self.volume = 100
+        logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
     @abstractmethod
