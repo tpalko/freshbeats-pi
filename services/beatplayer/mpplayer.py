@@ -24,12 +24,11 @@ except: #2
 import threading
 from abc import ABCMeta, abstractmethod
 
-logging.basicConfig(level=logging.DEBUG)
-
 logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
 
-urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
-urllib_logger.setLevel(level=logging.WARN)
+# urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
+# urllib_logger.setLevel(level=logging.WARN)
 
 class BaseClient():
     __metaclass__ = ABCMeta
@@ -285,6 +284,7 @@ class MPPlayer():
     
     def register_client(self, callback_url):
         response = {'success': False, 'message': '', 'data': {}}
+        logger.debug("registration request with callback %s" % callback_url)
         try:            
             def ping_client():
                 fails = 0
@@ -292,9 +292,10 @@ class MPPlayer():
                     try:                  
                         player_health = self.player.healthz()
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
-                        if not callback_response or not callback_response.json()['success']:
-                            logger.info(callback_response)
-                            raise Exception("No response or not response.success")
+                        if not callback_response:
+                            raise Exception("No response on client ping %s" % callback_url)
+                        if not callback_response.json()['success']:
+                            logger.info("Not success on client ping %s: %s" % (callback_url, callback_response))
                     except:
                         logger.error(str(sys.exc_info()[1]))
                         fails += 1
@@ -312,7 +313,9 @@ class MPPlayer():
                 response['data']['registered'] = True 
                 response['success'] = True 
             else:
-                response['message'] = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
+                message = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
+                logger.info(message)
+                response['message'] = message
                 response['data']['registered'] = True 
                 response['data']['retry'] = False 
         except:
