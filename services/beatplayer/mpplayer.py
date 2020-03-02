@@ -12,6 +12,7 @@ try: #3
     from xmlrpc.server import SimpleXMLRPCServer
 except: #2
     from SimpleXMLRPCServer import SimpleXMLRPCServer
+
 import logging
 from optparse import OptionParser
 import requests
@@ -19,10 +20,11 @@ try: #3
     from configparser import ConfigParser
 except: #2
     from ConfigParser import ConfigParser
+
 import threading
 from abc import ABCMeta, abstractmethod
 
-logging.basicConfig(level=logging.DEBUG, disable_existing_loggers=False)
+logging.basicConfig(level=logging.DEBUG)
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +46,8 @@ class BaseClient():
             # -- handling comma-separated strings as lists 
             if type(kwargs[k]) == str and kwargs[k].count(",") > 0:
                 val = kwargs[k].split(',')
+            logger.debug("setting %s: %s" % (k, val))
             self.__setattr__(k, val)
-        self.logger = logging.getLogger(__name__)
     
     def _issue_command(self, command):
         response = {'success': False, 'message': '', 'data': {}}
