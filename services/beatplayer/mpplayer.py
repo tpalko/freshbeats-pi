@@ -110,6 +110,7 @@ class BaseClient():
                     except:
                         logger.warn("%s: will try again" % (str(sys.exc_info()[1])))
                         time.sleep(1)
+                s.close()
             else:
                 response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
         except:
