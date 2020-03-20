@@ -97,11 +97,18 @@ class BaseClient():
                     time.sleep(2)
             if os.path.exists("/tmp/mpv.sock"):
                 logger.debug("connecting to /tmp/mpv.sock for %s" % command)
-                s.connect("/tmp/mpv.sock")
-                byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
-                response['success'] = True 
-                response['data']['bytes_read'] = byte_count
-                logger.debug("socket file read %s bytes on command %s" % (byte_count, command))
+                attempts = 0
+                while not response['success'] and attempts < 10:
+                    try:
+                        attempts += 1
+                        s.connect("/tmp/mpv.sock")
+                        byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
+                        response['success'] = True 
+                        response['data']['bytes_read'] = byte_count
+                        logger.debug("socket file read %s bytes on command %s" % (byte_count, command))
+                    except:
+                        logger.warn("%s: will try again" % (str(sys.exc_info()[1])))
+                        time.sleep(1)
             else:
                 response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
         except:
@@ -112,8 +119,15 @@ class BaseClient():
         return response 
         
     def healthz(self):
+        
+        ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ps_grep = subprocess.Popen(shelx.split("grep %s" % self.music_folder), stdin=ps_df, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = ps_grep.communicate(None)
+        returncode = ps_grep.wait()
+        music_folder_mount = returncode == 0
+        
         response = {'success': False, 'message': '', 'data': {}}
-        response['data'] = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'muted': self.muted, 'current_command': self.current_command}
+        response['data'] = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'muted': self.muted, 'current_command': self.current_command, 'music_folder_mounted': music_folder_mounted}
         try:
             returncode = -1
             pid = -1
