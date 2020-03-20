@@ -156,7 +156,11 @@ class BaseClient():
             self.volume = 100
         logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
-        
+    
+    @abstractmethod
+    def set_volume(self):
+        pass 
+ 
     @abstractmethod
     def play(self, filepath):
         pass
