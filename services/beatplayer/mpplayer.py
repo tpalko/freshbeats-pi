@@ -6,6 +6,7 @@ import sys
 import traceback
 import subprocess
 import time
+import shlex
 from datetime import datetime 
 import json
 try: #3
@@ -117,32 +118,6 @@ class BaseClient():
             logger.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
-        
-    def healthz(self):
-        
-        ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        ps_grep = subprocess.Popen(shelx.split("grep %s" % self.music_folder), stdin=ps_df, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = ps_grep.communicate(None)
-        returncode = ps_grep.wait()
-        music_folder_mount = returncode == 0
-        
-        response = {'success': False, 'message': '', 'data': {}}
-        response['data'] = {'ps': {}, 'paused': self.paused, 'volume': self.volume, 'muted': self.muted, 'current_command': self.current_command, 'music_folder_mounted': music_folder_mounted}
-        try:
-            returncode = -1
-            pid = -1
-            if self.ps:
-                returncode = self.ps.poll()
-                if returncode is None:
-                    pid = self.ps.pid
-            response['data']['ps']['returncode'] = returncode 
-            response['data']['ps']['pid'] = pid
-            response['success'] = True
-        except:
-            response['message'] = str(sys.exc_info()[1])
-            logger.error(response['message'])
-            traceback.print_tb(sys.exc_info()[2])
-        return response
         
     def can_play(self):
         result = False 
@@ -306,6 +281,32 @@ class MPPlayer():
 
         self.muted = False
     
+    def healthz(self):
+        
+        ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ps_grep = subprocess.Popen(shlex.split("grep %s" % self.music_folder), stdin=ps_df.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = ps_grep.communicate(None)
+        returncode = ps_grep.wait()
+        music_folder_mounted = returncode == 0
+        
+        response = {'success': False, 'message': '', 'data': {}}
+        response['data'] = {'ps': {}, 'paused': self.player.paused, 'volume': self.player.volume, 'muted': self.player.muted, 'current_command': self.player.current_command, 'music_folder_mounted': music_folder_mounted}
+        try:
+            returncode = -1
+            pid = -1
+            if self.player.ps:
+                returncode = self.player.ps.poll()
+                if returncode is None:
+                    pid = self.player.ps.pid
+            response['data']['ps']['returncode'] = returncode 
+            response['data']['ps']['pid'] = pid
+            response['success'] = True
+        except:
+            response['message'] = str(sys.exc_info()[1])
+            logger.error(response['message'])
+            traceback.print_tb(sys.exc_info()[2])
+        return response
+        
     def register_client(self, callback_url):
         response = {'success': False, 'message': '', 'data': {}}
         logger.debug("registration request with callback %s" % callback_url)
@@ -314,7 +315,8 @@ class MPPlayer():
                 fails = 0
                 while True:  
                     try:                  
-                        player_health = self.player.healthz()
+                        player_health = self.healthz()
+                        logger.debug(player_health)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
                         if not callback_response:
                             raise Exception("No response on client ping %s" % callback_url)
