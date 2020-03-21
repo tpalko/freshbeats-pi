@@ -3,6 +3,7 @@
 import os
 import socket
 import sys
+import signal
 import traceback
 import subprocess
 import time
@@ -247,8 +248,11 @@ class MPPlayer():
     player_clients = [MPVClient, MPlayerClient]
     player = None 
     server = False 
+    sigint = False 
 
     def __init__(self, *args, **kwargs):
+        
+        signal.signal(signal.SIGINT, self.sigint_handler())
         
         self.server = kwargs['server'] if 'server' in kwargs else False 
         
@@ -307,14 +311,21 @@ class MPPlayer():
             logger.error(response['message'])
             traceback.print_tb(sys.exc_info()[2])
         return response
-        
+    
+    def sigint_handler(self, player_handler=None):
+        def handler(sig, frame):
+            self.sigint = True 
+            if player_handler:
+                player_handler()
+        return handler 
+    
     def register_client(self, callback_url):
         response = {'success': False, 'message': '', 'data': {}}
         logger.debug("registration request with callback %s" % callback_url)
         try:            
             def ping_client():
                 fails = 0
-                while True:  
+                while not self.sigint:  
                     try:                  
                         player_health = self.healthz()
                         logger.debug(player_health)
@@ -331,7 +342,7 @@ class MPPlayer():
                         del self.api_clients[callback_url]                   
                         break
                     time.sleep(5)
-                logger.warn("Exiting ping loop for %s" % callback_url)
+                logger.warn("Exiting ping loop for %s (sigint: %s)" % (callback_url, self.sigint))
             if callback_url not in self.api_clients:
                 self.api_clients[callback_url] = datetime.now()
                 t = threading.Thread(target=ping_client)
