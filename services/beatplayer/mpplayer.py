@@ -554,11 +554,11 @@ if __name__ == "__main__":
     parser = OptionParser(usage='usage: %prog [options]')
 
     logger.debug("Adding options..")
-    parser.add_option("-a", "--address", dest="address", default='127.0.0.1', help="IP address on which to listen")
+    parser.add_option("-a", "--address", dest="address", default='0.0.0.0', help="IP address on which to listen")
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
     parser.add_option("-t", "--smoke-test", action="store_true", dest="smoke_test", help="Smoke test")
     parser.add_option("-f", "--filepath", dest="filepath", help="Play file")
-    parser.add_option("-e", "--player-executable", dest="executable", help="The executable program to play file")
+    parser.add_option("-e", "--player-executable", dest="executable", default='mpv' help="The executable program to play file")
 
     (options, args) = parser.parse_args()
     
