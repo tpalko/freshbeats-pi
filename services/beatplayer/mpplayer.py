@@ -449,9 +449,22 @@ class MPPlayer():
                 
                 if callback_url:
                     process_dead = False 
-                    int_resp = {'success': True, 'message': self.player.ps.stdout.read(), 'data': {'complete': False}} 
+                    int_resp = {'success': True, 'message': '', 'data': {'complete': False}} 
+                    '''
+                    order matters:
+                        read - post - break (don't lose data)
+                        check - read - break (break on what we knew before the read)
+                        start - break - sleep (so we don't sleep unnecessarily)
+                    '''
                     while True:
+                        if self.player.ps.poll() is not None:
+                            logger.debug(f'player process is dead')
+                            process_dead = True 
+                        else:
+                            logger.debug(f'player process is running ({self.player.ps.pid})')
+                        int_resp['message'] = self.player.ps.stdout.read()
                         if len(int_resp['message']) > 0:
+                            logger.debug(f'intermittent response has a message: {int_resp["message"]})'
                             for line in str(int_resp['message']).split('\n'):
                                 logger.debug("STDOUT: %s" % line)
                             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
@@ -462,10 +475,7 @@ class MPPlayer():
                             logger.debug("process is dead, exiting stdout while loop")
                             break
                         time.sleep(1)
-                        if self.player.ps.poll() is not None:
-                            process_dead = True 
-                        int_resp['message'] = self.player.ps.stdout.read()
-                                
+                                        
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
                 logger.debug("returncode: %s" % returncode)
