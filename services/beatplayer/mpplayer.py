@@ -56,7 +56,7 @@ class BaseClient():
         try:
             if not self.ps or self.ps.poll() is not None:
                 #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
-                self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, encoding='utf-8', stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
+                self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
                 self.current_command = command 
                 response['success'] = True 
             else:
