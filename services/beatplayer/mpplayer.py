@@ -487,6 +487,7 @@ class MPPlayer():
                             process_dead = True 
                         else:
                             logger.debug('player process is running (%s)' % self.player.ps.pid)
+                        logger.debug("reading from player stdout..")
                         int_resp['message'] = self.player.ps.stdout.read()
                         if len(int_resp['message']) > 0:
                             logger.debug('intermittent response has a message: %s' % int_resp["message"])
