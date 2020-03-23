@@ -99,7 +99,7 @@ class Process(object):
         statement = r'ssh %s %s "%s"' %(parameters, address, command)
 
         # - removing encode('utf-8') here because we may be doubling up encoding on string literals passed in to this function
-        return shlex.split(statement) # .encode('utf-8'))
+        return shlex.split(statement) # )
         
     def command(self, command):
         ps = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -116,6 +116,7 @@ class Process(object):
         plist = []
         outs = []
         errs = []
+        # -- recursively deconstruct the command list, pulling the last one off each time 
         if type(command).__name__ == 'list':
             if len(command) > 1:
                 first_commands = command[0:-1]
@@ -124,6 +125,7 @@ class Process(object):
                 command = command[-1]
             else:
                 command = command[0]
+        # -- the first pass here will be the first command in the list 
         logger.debug("plist length: %s, level %s, command %s" % (len(plist), level, command))
         if len(plist) > 0:
             statement = shlex.split(command)
@@ -149,22 +151,19 @@ class Process(object):
     def copy(self, file, path):
         (parameters, address) = self._get_ssh_identity_file_parameter()
         cp_statement = r'scp -r %s "%s" %s:"%s/"' % (parameters, file, address, path)
-        logger.debug(" - %s" % cp_statement.encode('utf-8'))
+        logger.debug(" - %s" % cp_statement)
 
-        ps = subprocess.Popen(shlex.split(cp_statement.encode('utf-8')), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ps = subprocess.Popen(shlex.split(cp_statement), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out,err,) = ps.communicate(None)
 
-        logger.debug(out)
-
-        err = err.replace("void endpwent()(3) is not implemented on Android\n", "")
-
-        if err != "":
-            raise Exception("'%s'" % err)
+        err = err.decode().replace("void endpwent()(3) is not implemented on Android\n", "")
+        
+        if len(err) > 0:
+            raise Exception(err)
 
         logger.debug(" - add code: %s" % ps.returncode) 
         
-        return (ps, out, err)
-    
+        return ([ps], out, err)
 
 class FreshBeats(object):
 
@@ -244,8 +243,8 @@ class FreshBeats(object):
             logger.warn("No albums found on device")
         else:
 
-            max_album = max([ len(a.name.encode('utf-8')) for a in found_on_device ]) + 1
-            max_artist = max([ len(a.artist.name.encode('utf-8')) for a in found_on_device ]) + 1
+            max_album = max([ len(a.name) for a in found_on_device ]) + 1
+            max_artist = max([ len(a.artist.name) for a in found_on_device ]) + 1
 
             logger.info("Albums on Device")
             logger.debug(max_album)
@@ -263,15 +262,16 @@ class FreshBeats(object):
 
         action_albums = Album.objects.filter(~Q(action=Album.DONOTHING), action__isnull=False)
         if len(action_albums) > 0:
-            max_album = max([ len(a.name.encode('utf-8')) for a in action_albums ]) + 1
-            max_artist = max([ len(a.artist.name.encode('utf-8')) for a in action_albums ]) + 1
+            max_album = max([ len(a.name) for a in action_albums ]) + 1
+            max_artist = max([ len(a.artist.name) for a in action_albums ]) + 1
         checkout_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT) | Q(action=Album.REQUESTCHECKOUT)) ])
         refresh_size = sum([ a.total_size - a.old_total_size for a in action_albums.filter(Q(action=Album.REFRESH)) ])
         checkin_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
 
         logger.info("Albums in Plan")
         for a in action_albums:
-            logger.info("{0:<{1}} / {2:<{3}}: {4:>32}".format(a.name.encode('utf-8'), max_album, a.artist.name.encode('utf-8'), max_artist, a.action))
+            logger.info(type(a.name))
+            logger.info("{0:<{1}} / {2:<{3}}: {4:>32}".format(a.name, max_album, a.artist.name, max_artist, a.action if a.action else '-no action-'))
 
         logger.info("Checking out {0} MB".format(checkout_size/(1024*1024)))
         logger.info("Refreshing {0} MB".format(refresh_size/(1024*1024)))
@@ -284,9 +284,9 @@ class FreshBeats(object):
 
     def remove_album_from_device(self, a):
 
-        logger.info("removing: %s %s" %(a.artist.name.encode('utf-8'), a.name.encode('utf-8')))
+        logger.info("removing: %s %s" %(a.artist.name, a.name))
         
-        album_path = join(self.beats_target_folder, a.artist.name.encode('utf-8'), a.name.encode('utf-8'))
+        album_path = join(self.beats_target_folder, a.artist.name, a.name)
         command = r'rm -rf \"%s\"' % album_path
         (plist, outs, errs) = self.process.remote_command(command)
         
@@ -310,15 +310,15 @@ class FreshBeats(object):
 
         artist_folder = join(self.beats_target_folder, a.artist.name) #join(self.device_mount, self.beats_target_folder, a.artist)
 
-        logger.info(" - adding folder: \"%s\"" %(artist_folder.encode('utf-8')))
+        logger.info(" - adding folder: \"%s\"" %(artist_folder))
         
         (plist, outs, errs) = self.process.remote_command(r'mkdir -p \"%s\"' % artist_folder)        
 
         storage_path = join(self.music_path, common.get_storage_path(a))
-        logger.debug(" - storage path: %s" % storage_path.encode('utf-8'))
+        logger.debug(" - storage path: %s" % storage_path)
 
         modified_artist_folder = artist_folder.replace(' ', r'\ ').replace("'", r'\'').replace("&", r'\&')
-        logger.debug(" - modified artist folder: %s" % modified_artist_folder.encode('utf-8'))
+        logger.debug(" - modified artist folder: %s" % modified_artist_folder)
 
         (plist, outs, errs) = self.process.copy(storage_path, modified_artist_folder)
         
