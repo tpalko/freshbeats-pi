@@ -322,10 +322,24 @@ class MPPlayer():
             self.sigint = True             
             if player_handler:
                 player_handler()
+            logger.debug("joining %s client threads.." % len(self.client_threads))
             for t in self.client_threads:
-                t.join()           
-            if self.play_thread:     
-                self.play_thread.join()
+                logger.debug(" - %s" % t.native_id)
+                if t.is_alive():
+                    t.join(timeout=10)
+                    if t.is_alive():
+                        logger.debug("   - timed out" % t.native_id)
+                    else:
+                        logger.debug("   - joined")
+                else:
+                    logger.debug("   - not alive")
+            if self.play_thread and self.play_thread.is_alive():     
+                logger.debug("joining play thread..")
+                self.play_thread.join(timeout=10)
+                if t.is_alive():
+                    logger.debug(" - timed out" % t.native_id)
+                else:
+                    logger.debug(" - joined")
             sys.exit(0)
         return handler 
     
