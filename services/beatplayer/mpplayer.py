@@ -486,7 +486,7 @@ class MPPlayer():
                             logger.debug("process is dead, exiting stdout while loop")
                             break
                         time.sleep(1)
-                                        
+                logger.debug("Waiting on player process..")
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
                 logger.debug("returncode: %s" % returncode)
