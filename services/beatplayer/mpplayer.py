@@ -249,6 +249,8 @@ class MPPlayer():
     player = None 
     server = False 
     sigint = False 
+    client_threads = None
+    play_thread = None 
 
     def __init__(self, *args, **kwargs):
         
@@ -263,6 +265,8 @@ class MPPlayer():
         self.f_errr = open("mplayer.err", "rb")
 
         self.music_folder = '/mnt/music'
+        
+        self.client_threads = []
         
         logger.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
@@ -314,9 +318,15 @@ class MPPlayer():
     
     def sigint_handler(self, player_handler=None):
         def handler(sig, frame):
-            self.sigint = True 
+            logger.warn("handling SIGINT")
+            self.sigint = True             
             if player_handler:
                 player_handler()
+            for t in self.client_threads:
+                t.join()           
+            if self.play_thread:     
+                self.play_thread.join()
+            sys.exit(0)
         return handler 
     
     def register_client(self, callback_url):
@@ -347,6 +357,7 @@ class MPPlayer():
                 self.api_clients[callback_url] = datetime.now()
                 t = threading.Thread(target=ping_client)
                 t.start()
+                self.client_threads.append(t)
                 logger.info("Registered client %s" % callback_url)
                 response['data']['registered'] = True 
                 response['success'] = True 
@@ -458,13 +469,13 @@ class MPPlayer():
                     '''
                     while True:
                         if self.player.ps.poll() is not None:
-                            logger.debug(f'player process is dead')
+                            logger.debug('player process is dead')
                             process_dead = True 
                         else:
-                            logger.debug(f'player process is running ({self.player.ps.pid})')
+                            logger.debug('player process is running (%s)' % self.player.ps.pid)
                         int_resp['message'] = self.player.ps.stdout.read()
                         if len(int_resp['message']) > 0:
-                            logger.debug(f'intermittent response has a message: {int_resp["message"]})'
+                            logger.debug('intermittent response has a message: %s' % int_resp["message"])
                             for line in str(int_resp['message']).split('\n'):
                                 logger.debug("STDOUT: %s" % line)
                             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
@@ -484,11 +495,11 @@ class MPPlayer():
                 if callback_url:
                     callback_response = {'success': returncode == 0, 'message': '', 'data': {'complete': True, 'out': out, 'err': err}}
                     requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
-                self.player.current_command = None 
+                self.player.current_command = None                 
                 return
 
-            t = threading.Thread(target=run_in_thread, args=(callback_url,)) #, command, force))
-            t.start()
+            self.play_thread = threading.Thread(target=run_in_thread, args=(callback_url,)) #, command, force))
+            self.play_thread.start()
             
             if not self.server:
                 t.join()
@@ -558,7 +569,7 @@ if __name__ == "__main__":
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
     parser.add_option("-t", "--smoke-test", action="store_true", dest="smoke_test", help="Smoke test")
     parser.add_option("-f", "--filepath", dest="filepath", help="Play file")
-    parser.add_option("-e", "--player-executable", dest="executable", default='mpv' help="The executable program to play file")
+    parser.add_option("-e", "--player-executable", dest="executable", default='mpv', help="The executable program to play file")
 
     (options, args) = parser.parse_args()
     
