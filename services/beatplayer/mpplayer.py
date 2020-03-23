@@ -56,7 +56,7 @@ class BaseClient():
         try:
             if not self.ps or self.ps.poll() is not None:
                 #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
-                self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
+                self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, encoding='utf-8', stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
                 self.current_command = command 
                 response['success'] = True 
             else:
@@ -487,19 +487,21 @@ class MPPlayer():
                         else:
                             logger.debug('player process is running (%s)' % self.player.ps.pid)
                         logger.debug("reading from player stdout..")
-                        int_resp['message'] = self.player.ps.stdout.read()
+                        int_resp['message'] = self.player.ps.stdout.readline()
                         if len(int_resp['message']) > 0:
                             logger.debug('intermittent response has a message: %s' % int_resp["message"])
                             for line in str(int_resp['message']).split('\n'):
                                 logger.debug("STDOUT: %s" % line)
                             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
-                            int_resp['message'] = ''
                         else:
                             logger.debug("stdout is empty")
                         if process_dead:
                             logger.debug("process is dead, exiting stdout while loop")
                             break
-                        time.sleep(1)
+                        if len(int_resp['message']) > 0:
+                            int_resp['message'] = ''
+                        else:
+                            time.sleep(1)
                 logger.debug("Waiting on player process..")
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
