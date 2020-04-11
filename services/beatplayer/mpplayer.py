@@ -244,11 +244,11 @@ class MPVClient(BaseClient):
     
 class MPPlayer():
     
-    api_clients = {}
     player_clients = [MPVClient, MPlayerClient]
     player = None 
     server = False 
     sigint = False 
+    api_clients = None 
     client_threads = None
     play_thread = None 
 
@@ -266,7 +266,8 @@ class MPPlayer():
 
         self.music_folder = '/mnt/music'
         
-        self.client_threads = []
+        self.api_clients = {}
+        self.client_threads = {}
         
         logger.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
@@ -323,7 +324,8 @@ class MPPlayer():
             if player_handler:
                 player_handler()
             logger.debug("joining %s client threads.." % len(self.client_threads))
-            for t in self.client_threads:
+            for callback_url in self.client_threads.keys():
+                t = self.client_threads[callback_url]
                 logger.debug(" - %s" % t.ident)
                 if t.is_alive():
                     t.join(timeout=10)
@@ -349,41 +351,53 @@ class MPPlayer():
         try:            
             def ping_client():
                 fails = 0
-                while not self.sigint:  
+                while not self.sigint and callback_url in self.api_clients:  
                     try:                  
                         player_health = self.healthz()
                         logger.debug(player_health)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
                         if not callback_response:
-                            raise Exception("No response on client ping %s" % callback_url)
+                            raise Exception("No response on client ping to %s" % callback_url)
                         if not callback_response.json()['success']:
                             logger.info("Not success on client ping %s: %s" % (callback_url, callback_response))
                     except:
                         logger.error(str(sys.exc_info()[1]))
+                        traceback.print_tb(sys.exc_info()[2])
                         fails += 1
                     if fails > 5:
                         logger.warn("Failed to post callback URL %s, de-registering the client" % callback_url)
                         del self.api_clients[callback_url]                   
+                        del self.client_threads[callback_url]
                         break
                     time.sleep(5)
-                logger.warn("Exiting ping loop for %s (sigint: %s)" % (callback_url, self.sigint))
-            if callback_url not in self.api_clients:
-                self.api_clients[callback_url] = datetime.now()
-                t = threading.Thread(target=ping_client)
-                t.start()
-                self.client_threads.append(t)
-                logger.info("Registered client %s" % callback_url)
-                response['success'] = True 
-            else:
+                logger.warn("Exiting ping loop for %s (sigint: %s, api_clients: %s)" % (callback_url, self.sigint, callback_url in self.api_clients))
+            register = True 
+            if callback_url in self.api_clients and callback_url in self.client_threads:
+                t = self.client_threads[callback_url]
+                if t.is_alive():
+                    register = False 
+            if not register:
                 message = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
                 response['message'] = message
                 logger.info(message)
+            else:
+                if callback_url not in self.api_clients:
+                    self.api_clients[callback_url] = datetime.now()
+                if callback_url in self.client_threads:
+                    t = self.client_threads[callback_url]
+                    t.join(timeout=5)
+                t = threading.Thread(target=ping_client)
+                t.start()
+                self.client_threads[callback_url] = t
+                logger.info("Registered client %s" % callback_url)
+                response['success'] = True 
             response['data']['registered'] = True 
             response['data']['retry'] = False
         except:
             response['message'] = str(sys.exc_info()[1])
             logger.error("Error attempting to register client:")
             logger.error(response['message'])
+            traceback.print_tb(sys.exc_info()[2])
         return response 
 
     def get_music_folder(self):
