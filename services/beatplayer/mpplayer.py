@@ -376,6 +376,7 @@ class MPPlayer():
                 t = self.client_threads[callback_url]
                 if t.is_alive():
                     register = False 
+                    logger.info(" - client %s found with a living thread - not registering" % callback_url)
             if not register:
                 message = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
                 response['message'] = message
