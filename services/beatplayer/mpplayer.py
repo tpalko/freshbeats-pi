@@ -355,11 +355,15 @@ class MPPlayer():
                     try:                  
                         player_health = self.healthz()
                         logger.debug(player_health)
+                        logger.debug("Calling %s.." % callback_url)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
+                        logger.debug(" - some response from %s" % callback_url)
                         if not callback_response:
-                            raise Exception("No response on client ping to %s" % callback_url)
+                            raise Exception(" - no response on client ping to %s" % callback_url)
                         if not callback_response.json()['success']:
-                            logger.info("Not success on client ping %s: %s" % (callback_url, callback_response))
+                            logger.info(" - not success on client ping %s: %s" % (callback_url, callback_response))
+                        else:
+                            logger.info(" - success from %s" % callback_url)
                     except:
                         logger.error(str(sys.exc_info()[1]))
                         traceback.print_tb(sys.exc_info()[2])
