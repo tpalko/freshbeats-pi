@@ -28,6 +28,13 @@ from .switchboard import _publish_event
 logging.basicConfig(level=logging.DEBUG, disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
+DEFAULT_MUTE = False 
+DEFAULT_SHUFFLE = False
+DEFAULT_STATE= Player.PLAYER_STATE_STOPPED
+DEFAULT_CURSOR_MODE = Player.CURSOR_MODE_NEXT
+DEFAULT_REPEAT_SONG = False 
+DEFAULT_VOLUME = 90
+
 class PlaylistBacking():
     pass 
 
@@ -36,7 +43,7 @@ class DatabaseBacking(PlaylistBacking):
     def get_current(self):
         return PlaylistSong.objects.filter(is_current=True).first()
     def get_last(self):
-        return PlaylistSong.objects.all().order_by('queue_number').reverse().first()
+        return PlaylistSong.objects.all().order_by('-queue_number').first()
     def get_random(self):
         return random.choice(PlaylistSong.objects.all()) 
     def get_next(self):
@@ -70,7 +77,7 @@ class Playlist():
     
     def play_count_filter(self, playlistsongs):
         if len(playlistsongs) > 0:
-            play_count_array = [ s.play_count for s in playlistsongs ]
+            play_count_array = [ s.song.play_count for s in playlistsongs ]
             avg = sum(play_count_array) / len(play_count_array)
             logger.debug("average play count: %s" % avg)
             return playlistsongs.filter(play_count__lte=avg)
@@ -139,16 +146,20 @@ class Playlist():
             
     def _get_remaining_playlistsongs(self):
         current_playlistsong = self.get_current_playlistsong()
+        remaining = []
         if current_playlistsong:
-            return PlaylistSong.objects.filter(queue_number__gt=current_playlistsong.queue_number)
-        else:
-            return PlaylistSong.objects.all()
+            remaining = PlaylistSong.objects.filter(queue_number__gt=current_playlistsong.queue_number)
+        if len(remaining) == 0:
+            remaining = PlaylistSong.objects.all()
+        return remaining
         
     def increment_current_playlistsong_play_count(self):
         current_playlistsong = self.get_current_playlistsong()
         if current_playlistsong:
             current_playlistsong.play_count = current_playlistsong.play_count + 1
+            current_playlistsong.song.play_count = current_playlistsong.song.play_count + 1
             current_playlistsong.last_played_at = datetime.now()
+            current_playlistsong.song.last_played_at = datetime.now()
             current_playlistsong.save()
             self.playlist_stale = True
 
@@ -199,47 +210,75 @@ class Playlist():
                 bump = bump + 1
                 self.add_song_to_playlist(song, current_playlistsong.queue_number + bump)
 
-BEATPLAYER_STATUS_UP = 'up'
+BEATPLAYER_STATUS_READY = 'ready'
+BEATPLAYER_STATUS_NOTREADY = 'notready'
 BEATPLAYER_STATUS_DOWN = 'down'
 
-class Beatplayer():
+class BeatplayerRegistrar():
     
+    # local only 
+    beater_url = None    
     client = None 
-    beater_url = None 
-    status = BEATPLAYER_STATUS_DOWN
+    # global and local 
     last_status = None 
-    volume = None 
+    
+    # global, player, and local 
+    status = BEATPLAYER_STATUS_DOWN
+    reachable = False 
     registered = False 
+    mounted = False 
+    selfreport = False 
     
     def __init__(self, *args, **kwargs):
-        if 'url' not in kwargs:
-            raise Exception("Beatplayer requires url")
-        self.beater_url = kwargs['url']
+        if 'url' in kwargs:
+            self.beater_url = kwargs['url']
+        else:
+            self.beater_url = settings.BEATPLAYER_URL
         logger.debug("Creating beatplayer @ %s" % self.beater_url)
         self.client = client.ServerProxy(self.beater_url)
+    
+    def log_health_response(self, health_data):
+        logger.debug(health_data)
+        self.mounted = health_data['music_folder_mounted']
+        beatplayer.last_status = datetime.now()
+
+    def _set_show_status(self):
+        if self.reachable and self.registered and self.selfreport and self.mounted:
+            self.status = BEATPLAYER_STATUS_READY
+        elif not self.reachable:
+            self.status = BEATPLAYER_STATUS_DOWN
+        else:
+            self.status = BEATPLAYER_STATUS_NOTREADY
+        _show_beatplayer_status()
         
     def register(self, callback_url):
         def register_client():
             logger.debug("Attempting to register with %s" % self.beater_url)
             attempts = 0
             while not self.registered:
-                logger.info("Registration attempting..")
                 try:
                     attempts += 1
                     response = self.client.register_client(callback_url)
+                    self.reachable = True 
                     self.registered = response['data']['registered']
                     if self.registered:
                         logger.info("Application subscribed to beatplayer! (%s attempts)" % attempts)                        
                         self.last_status = datetime.now()
                     else:
                         logger.debug("attempt %s - not yet registered: %s" % (attempts, response))
-                    _show_beatplayer_status()
                     if response['data']['retry'] == False:
                         break
+                except ConnectionRefusedError as cre:
+                    self.reachable = False 
                 except:
+                    logger.error(sys.exc_info()[0])
+                    logger.error(sys.exc_info()[1])
+                    #traceback.print_tb(sys.exc_info()[2])
+                    self.reachable = False 
                     logger.error("Error registering with %s: %s" % (self.beater_url, str(sys.exc_info()[1])))
+                self._set_show_status()
                 wait = attempts*3 if attempts < 200 else 600
-                logger.debug("%s attempts, waiting %s.." % (attempts, wait))
+                logger.debug("registration attempt: %s, waiting %s.." % (attempts, wait))
                 time.sleep(wait)
             if self.registered:
                 t = threading.Thread(target=fresh_check)
@@ -247,7 +286,6 @@ class Beatplayer():
         def fresh_check():
             misses = 0
             while self.registered:
-                logger.debug("Fresh checking..")
                 if self.last_status is None:
                     misses += 1
                     logger.warn("No beatplayer report: %s/3" % misses)
@@ -257,13 +295,17 @@ class Beatplayer():
                     logger.warn("Beatplayer down for 30 seconds, assuming restart, quitting fresh check and attempting re-registration")
                     break
                 elif self.last_status < datetime.now() - timedelta(seconds=15):
-                    self.status = BEATPLAYER_STATUS_DOWN
+                    self.selfreport = False 
                     logger.warn("Stale status - beatplayer is %s" % self.status)
-                    _show_beatplayer_status()
+                else:
+                    self.selfreport = True 
+                self.reachable = True 
+                self._set_show_status()
                 time.sleep(5)
             logger.warn("Self-deregistering..")
             self.registered = False          
-            _show_beatplayer_status()           
+            self.selfreport = False 
+            self._set_show_status()
             t = threading.Thread(target=register_client)
             t.start()
                     
@@ -275,76 +317,72 @@ class PlayerObj():
     Player implements standard playback actions with a Playlist and additional logic and state.
     '''
     
-    mute = False
-    shuffle = False
-    repeat_song = False 
+    mute = DEFAULT_MUTE
+    shuffle = DEFAULT_SHUFFLE
+    repeat_song = DEFAULT_REPEAT_SONG
     
-    state = Player.PLAYER_STATE_STOPPED
-    cursor_mode = Player.CURSOR_MODE_NEXT
+    state = DEFAULT_STATE
+    cursor_mode = DEFAULT_CURSOR_MODE
+    
+    volume = None 
     
     playlist = None
-    beatplayer = None 
+    beater_url = None
+    beatplayer_client = None 
     
     def __init__(self, *args, **kwargs):
         self._load()
         self.playlist = Playlist()
-        self.beatplayer = Beatplayer(url=settings.BEATPLAYER_URL)
-
-    def get_current_song(self):
-        return self.playlist.get_current_playlistsong().song
-        
-    def _beatplayer_play(self):
-        song = self.playlist.get_current_playlistsong().song        
-        beatplayer_music_folder = self.beatplayer.client.get_music_folder()
-        song_filepath = "%s/%s/%s/%s" % (beatplayer_music_folder, song.album.artist.name, song.album.name, song.name)
-        callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
-        logger.info("calling beatplayer. song: %s callback: %s" % (song_filepath, callback))
-        response = self.beatplayer.client.play(song_filepath, callback)
-        logger.debug("play response: %s" % json.dumps(response))
-        if response['success']:
-            self.playlist.increment_current_playlistsong_play_count()
-        return response 
-        
-    def _beatplayer_stop(self):
-        response = self.beatplayer.client.stop()
-        logger.debug("stop response: %s" % json.dumps(response))
-        return response
+        if 'url' in kwargs:
+            self.beater_url = kwargs['url']
+        else:
+            self.beater_url = settings.BEATPLAYER_URL
+        self.beatplayer_client = client.ServerProxy(self.beater_url)
     
-    def _beatplayer_mute(self):
-        return self.beatplayer.client.mute()
-        
-    def _beatplayer_pause(self):
-        return self.beatplayer.client.pause()
-    
-    def _beatplayer_volume_down(self):
-        return self.beatplayer.client.volume_down()
-    
-    def _beatplayer_volume_up(self):
-        return self.beatplayer.client.volume_up()
-    
-    def _load(self):
-        players = Player.objects.all()
-        if len(players) > 0:
-            player = players[0]
+    def _load(self):        
+        player = self._get_last()
+        if player:
             self.mute = player.mute
             self.shuffle = player.shuffle
             self.state = player.state
             self.cursor_mode = player.cursor_mode
+            self.repeat_song = player.repeat_song
+            self.volume = player.volume
+        else:
+            self.mute = DEFAULT_MUTE 
+            self.shuffle = DEFAULT_SHUFFLE
+            self.state = DEFAULT_STATE 
+            self.cursor_mode = DEFAULT_CURSOR_MODE
+            self.repeat_song = DEFAULT_REPEAT_SONG
+            self.volume = DEFAULT_VOLUME
             
-    def _save(self):
+    def _save(self, command=None, args=None):
+        # select p.created_at, preceding_command, preceding_command_args, beatplayer_registered, beatplayer_status, s.name, volume, mute, shuffle, state, cursor_mode, repeat_song from beater_player p left join beater_playlistsong ps on ps.id = p.playlistsong_id left join beater_song s on s.id = ps.song_id order by created_at desc limit 20;
         player = Player()
-        players = Player.objects.all()
-        if len(players) > 0:
-            player = players[0]        
+        # players = Player.objects.all()
+        # if len(players) > 0:
+        #     player = players[0]        
+        
         player.mute = self.mute
         player.shuffle = self.shuffle
         player.state = self.state
         player.cursor_mode = self.cursor_mode
-        player.save()
-    
-    def _vals(self):
-        return { k: self.__dict__[k] for k in self.__dict__.keys() if type(self.__dict__[k]).__name__ in ['str','bool','int'] }
+        player.repeat_song = self.repeat_song 
+        player.volume = self.volume
         
+        # -- these bits are dynamic, we store for posterity not functionality 
+        player.preceding_command = command 
+        player.preceding_command_args = args
+        player.playlistsong = self.playlist.get_current_playlistsong()
+        global beatplayer
+        player.beatplayer_status = beatplayer.status
+        player.beatplayer_registered = beatplayer.registered
+        
+        last_player = self._get_last()
+        
+        if(not player.compare(last_player)):
+            player.save()
+         
     def call(self, command, **kwargs):
         
         logger.debug("handling player call - %s, kwargs: %s" % (command, json.dumps(kwargs)))
@@ -353,14 +391,52 @@ class PlayerObj():
         f = self.__getattribute__(command)
         response = f(**{ k: kwargs[k] for k in kwargs if kwargs[k] is not None})
         if response:
-            logger.debug("%s response: %s" % (command, response))
+            logger.debug("(call) %s response: %s" % (command, response))
         if response and not response['success'] and response['message']:
             _publish_event('message', json.dumps(response['message']))
         
         #logger.debug("Saving state..")
-        self._save()
+        self._save(command, kwargs)
         #logger.debug("Showing status..")
         _show_player_status(self)
+
+    def get_current_song(self):
+        return self.playlist.get_current_playlistsong().song
+        
+    def _beatplayer_play(self):
+        song = self.playlist.get_current_playlistsong().song        
+        beatplayer_music_folder = self.beatplayer_client.get_music_folder()
+        song_filepath = "%s/%s/%s/%s" % (beatplayer_music_folder, song.album.artist.name, song.album.name, song.name)
+        callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
+        logger.info("calling beatplayer. song: %s callback: %s" % (song_filepath, callback))
+        response = self.beatplayer_client.play(song_filepath, callback)
+        logger.debug("play response: %s" % json.dumps(response))
+        if response['success']:
+            self.playlist.increment_current_playlistsong_play_count()
+        return response 
+        
+    def _beatplayer_stop(self):
+        response = self.beatplayer_client.stop()
+        logger.debug("(_beatplayer_stop) stop response: %s" % json.dumps(response))
+        return response
+    
+    def _beatplayer_mute(self):
+        return self.beatplayer_client.mute()
+        
+    def _beatplayer_pause(self):
+        return self.beatplayer_client.pause()
+    
+    def _beatplayer_volume_down(self):
+        return self.beatplayer_client.volume_down()
+    
+    def _beatplayer_volume_up(self):
+        return self.beatplayer_client.volume_up()
+    
+    def _get_last(self):
+        return Player.objects.all().order_by('-created_at').first()
+    
+    def _vals(self):
+        return { k: self.__dict__[k] for k in self.__dict__.keys() if type(self.__dict__[k]).__name__ in ['str','bool','int'] }
         
     def clear_state(self, state=None):
         self.state = Player.PLAYER_STATE_STOPPED
@@ -413,16 +489,16 @@ class PlayerObj():
     
     def volume_down(self, **kwargs):
         response = self._beatplayer_volume_down()
-        #self.set_beatplayer_volume(volume=response['data']['volume'])
+        #self.set_volume(volume=response['data']['volume'])
         return response
         
     def volume_up(self, **kwargs):
         response = self._beatplayer_volume_up()
-        #self.set_beatplayer_volume(volume=response['data']['volume'])
+        #self.set_volume(volume=response['data']['volume'])
         return response
     
-    def set_beatplayer_volume(self, **kwargs):
-        self.beatplayer.volume = kwargs['volume'] if 'volume' in kwargs else self.beatplayer.volume
+    def set_volume(self, **kwargs):
+        self.volume = kwargs['volume'] if 'volume' in kwargs else self.volume
 
     def pause(self, **kwargs):
         response = None 
@@ -440,8 +516,12 @@ class PlayerObj():
         response = None 
         if self.state != Player.PLAYER_STATE_STOPPED:
             response = self._beatplayer_stop()
+            logger.debug("_beatplayer_stop response: %s" % response)
             if response['success'] or 'Broken pipe' in response['message'] or 'no beatplayer process' in response['message']:
+                logger.debug("(stop) stop response: %s" % response)
                 self.state = Player.PLAYER_STATE_STOPPED
+            else:
+                logger.debug("called stop, but did not set state to stopped for some reason")
         return response
             
     def play(self, **kwargs):
@@ -591,13 +671,14 @@ class PlayerObj():
 # TODO: this needs to be reimplemented
 # -- beatplayer up first, webapp calls on start to register, beatplayer pings on short cycle, webapp checks age of last ping for status 
 # -- webapp up first, exponential backoff call to beatplayer to register with some high max, refresh backoff on page requests 
-logger.info("")
-logger.info("*********************************")
-logger.info("* Starting up global beatplayer *")
-logger.info("*********************************")
-logger.info("")
-beatplayer = Beatplayer(url=settings.BEATPLAYER_URL)
-beatplayer.register("http://%s:%s/health_response/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT))
+if settings.FRESHBEATS_SERVING != 'False':
+    logger.info("")
+    logger.info("*********************************")
+    logger.info("* Starting up global beatplayer *")
+    logger.info("*********************************")
+    logger.info("")
+    beatplayer = BeatplayerRegistrar()
+    beatplayer.register("http://%s:%s/health_response/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT))
 
 @csrf_exempt
 def health_response(request):
@@ -611,15 +692,11 @@ def health_response(request):
     player = PlayerObj()
     if 'ps' in health_data and health_data['ps']['pid'] < 0:
         player.call("clear_state")
-    player.call('set_beatplayer_volume', volume=health_data['volume'])  
+    player.call('set_volume', volume=health_data['volume'])  
     
     global beatplayer 
-    if beatplayer.status != BEATPLAYER_STATUS_UP:
-        logger.info("beatplayer status: %s -> %s" % (beatplayer.status, BEATPLAYER_STATUS_UP))
-        beatplayer.status = BEATPLAYER_STATUS_UP
-        _show_beatplayer_status()
-    beatplayer.last_status = datetime.now()
-
+    beatplayer.log_health_response(health_data)
+    
     return JsonResponse({'success': True})
 
 
@@ -794,7 +871,13 @@ def _handle_command(command, **kwargs): #albumid=None, songid=None, artistid=Non
 
 def _show_beatplayer_status():
     global beatplayer
-    _publish_event('beatplayer_status', json.dumps({'status': beatplayer.status, 'registered': beatplayer.registered}))
+    _publish_event('beatplayer_status', json.dumps({
+        'status': beatplayer.status, 
+        'reachable': beatplayer.reachable,
+        'registered': beatplayer.registered,
+        'selfreport': beatplayer.selfreport,
+        'mounted': beatplayer.mounted
+        }))
 
 def _show_player_status(player):    
     #logger.info("Rendering current song..")

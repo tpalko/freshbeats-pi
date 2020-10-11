@@ -1,6 +1,8 @@
 from __future__ import unicode_literals
 from django.db import models
 import logging 
+from datetime import datetime
+from pytz import timezone 
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -138,6 +140,9 @@ class Album(models.Model):
         '''Assumes given status exists and removes it'''
         albumstatus = self.albumstatus_set.filter(status=status)
         albumstatus.delete()
+    
+    # def play_recency_score(self):dd
+    #     total_count = sum([ s.play_count or 0])
 
     def __unicode__(self):
         return self.name
@@ -172,7 +177,9 @@ class Song(models.Model):
     tracknumber = models.IntegerField(null=True)
     title = models.CharField(max_length=255, null=True)
     musicbrainz_trackid = models.CharField(max_length=36, null=True)
-
+    play_count = models.IntegerField(null=False, default=0)
+    last_played_at = models.DateTimeField(null=True)
+    
     class Meta:
         ordering = ('name',)
 
@@ -194,6 +201,11 @@ class PlaylistSong(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_played_at = models.DateTimeField(null=True)
     #objects = CacheManager()
+
+UTC = timezone("UTC")
+
+def get_created_at():
+    return timezone("UTC").localize(datetime.now())
 
 class Player(models.Model):
     PLAYER_STATE_STOPPED = 'stopped'
@@ -221,8 +233,30 @@ class Player(models.Model):
         (CURSOR_MODE_NEXT, 'Next'),
         (CURSOR_MODE_STATIC, 'Static')
     )
-
+    
+    preceding_command = models.CharField(max_length=255, null=True)
+    preceding_command_args = models.CharField(max_length=255, null=True)
     mute = models.BooleanField(null=False, default=False)
     shuffle = models.BooleanField(null=False, default=False)
     state = models.CharField(max_length=7, choices=PLAYER_STATE_CHOICES, default=PLAYER_STATE_STOPPED, null=False)
     cursor_mode = models.CharField(max_length=6, choices=CURSOR_MODE_CHOICES, default=CURSOR_MODE_NEXT, null=False)
+    repeat_song = models.BooleanField(null=False, default=False)
+    beatplayer_status = models.CharField(max_length=20, null=True)
+    beatplayer_registered = models.NullBooleanField()
+    volume = models.IntegerField(null=True)
+    playlistsong = models.ForeignKey(PlaylistSong, null=True)
+    created_at = models.DateTimeField(default=get_created_at)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def compare(self, p1):
+        ps = p1.playlistsong
+        for a in [ a for a in self.__dict__ if a not in ['created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:
+            ao = self.__dict__[a]
+            bo = None 
+            if a in p1.__dict__:
+                bo = p1.__dict__[a]
+            if ao != bo:
+                logger.debug("%s: current %s != db %s" % (a, ao, bo))
+                return False 
+        #logger.debug("%s == %s" % (self.__dict__, p1.__dict__))                
+        return True 

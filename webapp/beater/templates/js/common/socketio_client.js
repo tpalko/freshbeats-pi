@@ -62,23 +62,22 @@ socket.on('player_status', function(player_status){
 });
 
 socket.on('beatplayer_status', function(beatplayer_status) {
-  //console.log(beatplayer_status)
+  console.log(beatplayer_status)
   //$("#volume_display").html(player_status.player.beatplayer_volume + "%");
   
-  if (beatplayer_status.status == 'up') {
+  if (beatplayer_status.status == 'ready') {
     $("#beatplayer_status").removeClass("btn-warning").removeClass("btn-danger").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';
-  } else {
-    if (beatplayer_status.registered) {
-        $("#beatplayer_status").removeClass("btn-success").removeClass("btn-danger").addClass("btn-warning").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
-    } else {
-        $("#beatplayer_status").removeClass("btn-success").removeClass("btn-warning").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';        
-    }
-    
+  } else if (beatplayer_status.status == 'notready') {
+    $("#beatplayer_status").removeClass("btn-success").removeClass("btn-danger").addClass("btn-warning").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
+  } else if (beatplayer_status.status == 'down') {
+    $("#beatplayer_status").removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
   }
+  $("#beatplayer_status").find("img")[0].title = "reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered + ", selfreport: " + beatplayer_status.selfreport + ", mounted: " + beatplayer_status.mounted;
+  
 });
 
 socket.on('player_output', function(output) {
-  $("#player_output").html = output;
+  $("#player_output").html($("#player_output").html() + output);
 })
 
 socket.on('alert', function(data){
