@@ -54,16 +54,18 @@ def _call_freshbeats(function, *args, **kwargs):
         ch = logging.StreamHandler(log_capture_string)
 
         logger = logging.getLogger('FreshBeats')
+        # -- this is the log level setting that actually determines the log level
+        logger.setLevel(logging.INFO)
         logger.addHandler(ch)
 
         t = threading.Thread(target=function, args=kwargs.values())
         t.start()
 
         while t.isAlive():
-            _publish_event('device_output', json.dumps({function.__name__: function_name, 'complete': False, 'out': log_capture_string.getvalue()}))
+            _publish_event('device_output', json.dumps({'function_name': function.__name__, 'complete': False, 'out': log_capture_string.getvalue()}))
             time.sleep(1)
 
-        _publish_event('device_output', json.dumps({function.__name__: function_name, 'complete': True, 'out': log_capture_string.getvalue()}))
+        _publish_event('device_output', json.dumps({'function_name': function.__name__, 'complete': True, 'out': log_capture_string.getvalue()}))
 
         logger.removeHandler(ch)
 

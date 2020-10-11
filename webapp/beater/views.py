@@ -7,7 +7,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
 import os
 import sys
-from .models import Album, Artist, Song, AlbumStatus# , Device
+from .models import Album, Artist, Song, AlbumStatus, PlaylistSong
 import logging
 import traceback
 import json
@@ -26,9 +26,21 @@ def home(request):
     # alphabet = sorted(alphabet, cmp=lambda x,y: cmp(x.lower(), y.lower()))
     return render(request, 'home.html', {})
 
+@csrf_exempt
+def playlist_sort(request):
+    logger.info(dir(request))
+    logger.info(request.body)
+    logger.info(request.is_ajax())
+    return JsonResponse({ 'success': True })
+
+def playlists(request):
+    return render(request, 'playlists.html', {})
+
+def playlist(request):
+    playlistsongs = PlaylistSong.objects.all().order_by("queue_number")
+    return render(request, 'playlist.html', { 'playlistsongs': playlistsongs })
 
 def search(request):
-
     return render(request, 'search.html', {})
 
 

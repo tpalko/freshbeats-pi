@@ -1,4 +1,5 @@
 socket.on('device_output', function(data){
+  console.log(data);
 	$("#device_output").html(data.out);
 	if (data.complete) {
 		$("#" + data.function_name).attr('disabled', false);

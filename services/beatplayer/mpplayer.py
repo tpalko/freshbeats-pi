@@ -357,7 +357,7 @@ class MPPlayer():
                         logger.debug(player_health)
                         logger.debug("Calling %s.." % callback_url)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
-                        logger.debug(" - some response from %s" % callback_url)
+                        logger.debug(" - returned from post to %s" % callback_url)
                         if not callback_response:
                             raise Exception(" - no response on client ping to %s" % callback_url)
                         if not callback_response.json()['success']:

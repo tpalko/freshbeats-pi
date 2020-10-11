@@ -1,0 +1,7 @@
+<div id="playlistsong_sort">
+{% for playlistsong in playlistsongs %}
+  <div id="playlistsong_{{ playlistsong.id }}" class="draggable ui-widget-content">
+    {{ playlistsong.queue_number }}: {{ playlistsong.song.name }} / {{ playlistsong.song.album.artist.name }} / {{ playlistsong.song.album.name }}        
+  </div>
+{% endfor %}
+</div>

@@ -27,8 +27,12 @@ urlpatterns = [
     url(r'^mobile/$', views.mobile, name='mobile'),
     url(r'^devices/$', views.devices, name='devices'),
     url(r'^manage/$', views.manage, name='manage'),
+    url(r'^playlist/sort$', views.playlist_sort, name='playlist_sort'),
+    url(r'^playlists/$', views.playlists, name='playlists'),
+    url(r'^playlist/$', views.playlist, name='playlist'),
     url(r'^report/$', views.report, name='report'),
     url(r'^survey/$', views.survey, name='survey'),
+    
 
     url(r'^command/(?P<type>[a-zA-Z]+)/$', beatplayer.command, name='command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer.player, name='album_command'),

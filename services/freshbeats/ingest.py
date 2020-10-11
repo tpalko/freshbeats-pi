@@ -8,7 +8,6 @@ import traceback
 from configparser import ConfigParser
 import click
 import hashlib
-from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 import django
 from django.db.models import Q
 
@@ -16,9 +15,10 @@ sys.path.append(join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 
 django.setup()
+from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
 from mutagen import easyid3, id3
-from . import common
+import common
 
 logging.basicConfig(
     level=logging.INFO
@@ -128,8 +128,15 @@ class Ingest(object):
 
     ''' Fresher beats '''
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
 
+        self.artist_filter = kwargs['artist_filter'] if 'artist_filter' in kwargs else None
+        self.tags_menu = kwargs['tags_menu'] if 'tags_menu' in kwargs else False
+        self.sha1_scan = kwargs['sha1_scan'] if 'sha1_scan' in kwargs else False
+        self.id3_scan = kwargs['id3_scan'] if 'id3_scan' in kwargs else False
+        self.purge = kwargs['purge'] if 'purge' in kwargs else False
+        self.skip_verification = kwargs['skip_verification'] if 'skip_verification' in kwargs else False
+        
         config = ConfigParser()
         config.read(
             join(os.path.dirname(__file__), './config/settings.cfg')
@@ -215,7 +222,8 @@ class Ingest(object):
         for song in album.song_set.all():
             song.delete()
             
-    def update_db(self, artist_filter=None, tags_menu=False, sha1_scan=False, id3_scan=False, purge=False, skip_verification=False):
+    def update_db(self):
+        
         ''' Read folders on disk and update database accordingly.'''
         '''
         walk folder and for each stop:
@@ -279,8 +287,8 @@ class Ingest(object):
                     artist_name = parts[-2].strip()
 
                 #logger.debug("folder path is type %s while input flag is type %s" % (type(artist), type(artist_filter)))
-                if artist_filter and str(artist_filter) != str(artist_name):
-                    logger.debug(" - %s no match for artist filter %s" % (artist_name, str(artist_filter)))
+                if self.artist_filter and str(self.artist_filter) != str(artist_name):
+                    logger.debug(" - %s no match for artist filter %s" % (artist_name, str(self.artist_filter)))
                     continue
 
                 if len(files) > 0 and all(f in self.skip_files for f in files):
@@ -306,7 +314,7 @@ class Ingest(object):
                 (artist, artist_added) = self._save_artist(artist_name)
                 (album, album_added) = self._save_album(artist, album_name, total_size)
 
-                if skip_verification and not artist_added and not album_added:
+                if self.skip_verification and not artist_added and not album_added:
                     continue
 
                 flags = AlbumStatus.objects.filter(album=album)
@@ -351,9 +359,9 @@ class Ingest(object):
                     else:
                         logger.info(" - updated %s/%s", album.artist, album)
                 else:
-                    if id3_scan or sha1_scan:
+                    if self.id3_scan or self.sha1_scan:
                         for song in album.song_set.all():
-                            if id3_scan:
+                            if self.id3_scan:
                                 song_frames = self._get_frames(join(root, song.name), song_database_frame_types)                                
                                 logger.debug(" - read %s frames from %s" % (len(song_frames.keys()), song.name))
                                 for frame in song_frames.keys():
@@ -361,7 +369,7 @@ class Ingest(object):
                                     if str(db_value) != str(song_frames[frame]):
                                         logger.info("   - %s mismatch (db: %s, file: %s)" % (frame, db_value, song_frames[frame]))
                                         song.__setattr__(frame, song_frames[frame])
-                            if sha1_scan:
+                            if self.sha1_scan:
                                 logger.info(" - calculating song hash")
                                 sha1sum = self._get_sha1sum(root, song.name)
                                 if song.sha1sum != sha1sum:
@@ -373,14 +381,14 @@ class Ingest(object):
                                     song.save()
                             
                 id3_tag_skew = False
-                if not tags_menu:
+                if not self.tags_menu:
                     if not skip_id3_tag_skew_check:
                         for t in dist:
                             if len(dist[t]) > 1 or len([ v for v in dist[t] if v is None ]) > 0:
                                 id3_tag_skew = True
                                 break
 
-                if id3_tag_skew or tags_menu:
+                if id3_tag_skew or self.tags_menu:
                     while(True):
                         albummeta.printmeta()
                         print("Some discrepancies were detected in the MP3 file tags.")
@@ -388,8 +396,8 @@ class Ingest(object):
                         print("")
                         print("fix ID3 (t)ags")
                         print("    set (f)lags")
-                        print("        (c)ontinue")
-                        print("        (s)kip all")
+                        print("     do (n)othing for this album")
+                        print("        (s)kip this and stop checking ID3 tags on remaining albums")
                         print("        (q)uit")
                         print("")
                         chosen = input("       ? ")
@@ -401,7 +409,7 @@ class Ingest(object):
                         elif str(chosen).lower() == "s":
                             skip_id3_tag_skew_check = True
                             break
-                        elif str(chosen).lower() == "c":
+                        elif str(chosen).lower() == "n":
                             break
                         elif str(chosen).lower() == "q":
                             quit = True
@@ -592,7 +600,14 @@ class Ingest(object):
             frame_menu = { i: t for i, t in enumerate(list(dist.keys()), 1) }
             albummeta.printmeta()
             for i in list(frame_menu.keys()):
-                print((" (%s) %s: %s" % (i, frame_menu[i], ", ".join(dist[frame_menu[i]]))))
+                dist_display = ''
+                if len(dist[frame_menu[i]]) > 1:
+                    dist_display = '\n\t'
+                    for d in dist[frame_menu[i]]:
+                        dist_display += '%s\n\t' % d 
+                else:
+                    dist_display = "\n".join(dist[frame_menu[i]])
+                print(" (%s) %s: %s" % (i, frame_menu[i], dist_display))
             print(" (q)uit")
             chosen = input("? ")
 
@@ -602,6 +617,8 @@ class Ingest(object):
                 easyid_key = frame_menu[int(chosen)]
                 albummeta.printmeta()
                 print(("Fixing %s:" % easyid_key))
+                print("Choose one value to apply to all tracks.")
+                print("If there is not a single value for all tracks but the information shown is not correct, sorry, we don't support that yet.")
                 # -- capture one output of the unordered dict and use it for both the question and answer lookup
                 frame_val_menu = { n: val for n, val in enumerate(list(files_per_val_per_frame[easyid_key].keys()), 1) }
                 frame_val = None
@@ -681,18 +698,26 @@ class Ingest(object):
         #                 logger.error(n)
 
 @click.command()
-@click.option('--artist_filter', '-t', 'artist_filter', default=None, help='Narrows actions to artist name given')
-@click.option('--tags_menu', '-m', is_flag=True, help='Force showing the tags menu.')
-@click.option('--sha1_scan', '-s', is_flag=True, help='Test existing songs for SHA1 match.')
-@click.option('--id3_scan', '-3', is_flag=True, help='Test existing songs for song-specific ID3 tag mismatch')
+@click.option('--artist-filter', '-t', 'artist_filter', default=None, help='Narrows actions to artist name given')
+@click.option('--tags-menu', '-m', is_flag=True, help='Force showing the tags menu.')
+@click.option('--sha1-scan', '-s', is_flag=True, help='Test existing songs for SHA1 match.')
+@click.option('--id3-scan', '-3', is_flag=True, help='Test existing songs for song-specific ID3 tag mismatch')
 @click.option('--purge', '-g', is_flag=True, help='Purge disk and database of not-found items.')
-@click.option('--skip_verification', '-l', is_flag=True, help='Skip verification of database information with files on disk.')
+@click.option('--skip-verification', '-l', is_flag=True, help='Skip verification of database information with files on disk.')
 def main(artist_filter, tags_menu, sha1_scan, id3_scan, purge, skip_verification):
 
     try:
 
-        f = FreshBeats()
-        f.update_db(artist_filter=artist_filter, tags_menu=tags_menu, sha1_scan=sha1_scan, id3_scan=id3_scan, purge=purge, skip_verification=skip_verification)
+        config = {
+            'artist_filter': artist_filter, 
+            'tags_menu': tags_menu, 
+            'sha1_scan': sha1_scan, 
+            'id3_scan': id3_scan, 
+            'purge': purge, 
+            'skip_verification': skip_verification
+        }
+        f = Ingest(**config)
+        f.update_db()
 
     except:
         logger.error(sys.exc_info()[0])
