@@ -233,7 +233,6 @@ class Player(models.Model):
         (CURSOR_MODE_NEXT, 'Next'),
         (CURSOR_MODE_STATIC, 'Static')
     )
-    
     preceding_command = models.CharField(max_length=255, null=True)
     preceding_command_args = models.CharField(max_length=255, null=True)
     mute = models.BooleanField(null=False, default=False)

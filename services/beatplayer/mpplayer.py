@@ -7,7 +7,6 @@ import signal
 import traceback
 import subprocess
 import time
-import shlex
 from datetime import datetime 
 import json
 try: #3
@@ -147,11 +146,7 @@ class BaseClient():
             self.volume = 100
         logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
-    
-    @abstractmethod
-    def set_volume(self):
-        pass 
- 
+        
     @abstractmethod
     def play(self, filepath):
         pass
@@ -595,7 +590,7 @@ class MPPlayer():
     #     return thread
 
 if __name__ == "__main__":
-
+    
     logger.debug("Creating option parser..")
     parser = OptionParser(usage='usage: %prog [options]')
 
