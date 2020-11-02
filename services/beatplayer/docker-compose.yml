@@ -1,7 +1,7 @@
 version: "2.0"
 services:
   beatplayer:
-    image: frankendeb:5000/beatplayer:armv6l
+    image: registry.palkosoftware.net:5000/beatplayer:${ARCH}
     build: .
     container_name: freshbeats_beatplayer
     restart: "always"
