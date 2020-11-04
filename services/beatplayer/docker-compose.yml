@@ -5,7 +5,7 @@ services:
     container_name: freshbeats_beatplayer
     restart: "always"
     volumes:
-      - ${HOST_MUSIC_FOLDER}:/mnt/music
+      - ${HOST_MUSIC_FOLDER}:/mnt/music:ro
       - /tmp:/tmp
     devices:
       - /dev/snd
