@@ -23,6 +23,6 @@ echo "ALPINE_ARCH: ${ALPINE_ARCH}"
 docker build -t beatplayer:${CPU_ARCH} --build-arg ALPINE_ARCH=${ALPINE_ARCH} .
 BUILD_RETURN=$?
 
-[[ "${BUILD_RETURN}" -eq 0 && -n "${DOCKER_REGISTRY}" ]] \
+([[ "${BUILD_RETURN}" -eq 0 && -n "${DOCKER_REGISTRY}" ]] \
  && docker tag beatplayer:${CPU_ARCH} ${DOCKER_REGISTRY}/beatplayer:${CPU_ARCH} \
- && docker push ${DOCKER_REGISTRY}/beatplayer:${CPU_ARCH}
+ && docker push ${DOCKER_REGISTRY}/beatplayer:${CPU_ARCH}) || exit ${BUILD_RETURN}
