@@ -9,14 +9,12 @@ function usage() {
 [[ "$1" = "-h" ]] && usage && exit 0
 
 DOCKER_REGISTRY=$1
-
-CPU_ARCH=$1
 CPU_ARCH=${CPU_ARCH:=$(uname -m)}
 
-case "${CPU_ARCH}" in 
-  arm61)    ALPINE_ARCH=arm32v6;;
-  arm71)    ALPINE_ARCH=arm32v7;;
-  x86_64|*) ALPINE_ARCH=amd64;;  
+case ${CPU_ARCH} in 
+  armv6l)    ALPINE_ARCH=arm32v6;;
+  armv7l)    ALPINE_ARCH=arm32v7;;
+  x86_64|*)  ALPINE_ARCH=amd64;;  
 esac 
 
 echo "CPU_ARCH: ${CPU_ARCH}"
