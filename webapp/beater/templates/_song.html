@@ -3,8 +3,8 @@
 		<strong>SONG:</strong> <h4>{{name_highlight|safe}}</h4> on <span class="album">{{song.album.name}}</span> by <span class="artist">{{song.album.artist.name}}</span>
 	</div>
 	<div class="col-md-2">
-    <a href="#" class="btn btn-primary btn-sm command ajax" endpoint="player" command="play" songid="{{song.id}}">play</a>
-    <a href="#" class="btn btn-primary btn-sm command ajax" endpoint="player" command="splice" songid="{{song.id}}">splice</a>
-    <a href="#" class="btn btn-primary btn-sm command ajax" endpoint="player" command="enqueue" songid="{{song.id}}">enqueue</a>
+    <a href="#" class="btn btn-primary btn-sm player ajax" command="play" songid="{{song.id}}">play</a>
+    <a href="#" class="btn btn-primary btn-sm player ajax" command="splice" songid="{{song.id}}">splice</a>
+    <a href="#" class="btn btn-primary btn-sm player ajax" command="enqueue" songid="{{song.id}}">enqueue</a>
 	</div>
 </div>

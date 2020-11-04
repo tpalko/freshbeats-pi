@@ -2,10 +2,6 @@
 from __future__ import unicode_literals
 
 from django.db import models, migrations
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def forwards_func(apps, schema_editor):
 

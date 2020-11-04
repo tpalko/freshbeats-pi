@@ -18,9 +18,25 @@ from django.contrib import admin
 from django.conf.urls.static import static
 from django.conf import settings
 from beater import views
-from beater import beatplayer
-from beater import freshbeats_client
- 
+from beater.beatplayer import handlers as beatplayer_handlers
+from beater.beatplayer.health import BeatplayerRegistrar
+from beater.freshbeats import freshbeats_client
+import logging 
+
+logger = logging.getLogger(__name__)
+
+# TODO: this needs to be reimplemented
+# -- beatplayer up first, webapp calls on start to register, beatplayer pings on short cycle, webapp checks age of last ping for status 
+# -- webapp up first, exponential backoff call to beatplayer to register with some high max, refresh backoff on page requests 
+if settings.FRESHBEATS_SERVING != 'False':
+    logger.info("")
+    logger.info("*********************************")
+    logger.info("* Starting up global beatplayer *")
+    logger.info("*********************************")
+    logger.info("")
+    beatplayer = BeatplayerRegistrar.getInstance()
+    beatplayer.register()
+
 urlpatterns = [
     url(r'^$', views.home, name='home'),
     url(r'^search/$', views.search, name='search'),
@@ -34,14 +50,15 @@ urlpatterns = [
     url(r'^survey/$', views.survey, name='survey'),
     
 
-    url(r'^command/(?P<type>[a-zA-Z]+)/$', beatplayer.command, name='command'),
-    # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer.player, name='album_command'),
-    # url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer.player, name='song_command'),
-    # url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer.player, name='player'),
-    url(r'^player_complete/$', beatplayer.player_complete, name='player_complete'),
-    url(r'^health_response/$', beatplayer.health_response, name='health_response'),
-    url(r'^beatplayer_status/$', beatplayer.beatplayer_status, name='beatplayer_status'),
-    url(r'^player_status_and_state/$', beatplayer.player_status_and_state, name='player_status_and_state'),
+    url(r'^player/(?P<command>[a-z\_A-Z]+)/$', beatplayer_handlers.player, name='player'),
+    # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer_handlers.player, name='album_command'),
+    # url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer_handlers.player, name='song_command'),
+    # url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer_handlers.player, name='player'),
+    url(r'^player_complete/$', beatplayer_handlers.player_complete, name='player_complete'),
+    url(r'^health_response/$', beatplayer_handlers.health_response, name='health_response'),
+    url(r'^beatplayer_status/$', beatplayer_handlers.beatplayer_status, name='beatplayer_status'),
+    url(r'^player_status_and_state/$', beatplayer_handlers.player_status_and_state, name='player_status_and_state'),
+    
     url(r'^apply_plan/$', freshbeats_client.apply_plan, name='apply_plan'),
     url(r'^validate_plan/$', freshbeats_client.validate_plan, name='validate_plan'),
     url(r'^plan_report/$', freshbeats_client.plan_report, name='plan_report'),

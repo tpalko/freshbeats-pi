@@ -2,9 +2,9 @@
 	<div class="col-md-9">
 		<strong>ALBUM</strong><h3>{{name_highlight|safe}}</h3> by <h4 style="display: inline;">{{album.artist.name}}</h4>
     <div>
-      <a href="#" class="btn btn-album command ajax" endpoint="player" command="play" albumid="{{album.id}}">play</a>
-      <a href="#" class="btn btn-album command ajax" endpoint="player" command="splice" albumid="{{album.id}}">splice</a>
-      <a href="#" class="btn btn-album command ajax" endpoint="player" command="enqueue" albumid="{{album.id}}">enqueue</a>
+      <a href="#" class="btn btn-album player ajax" command="play" albumid="{{album.id}}">play</a>
+      <a href="#" class="btn btn-album player ajax" command="splice" albumid="{{album.id}}">splice</a>
+      <a href="#" class="btn btn-album player ajax" command="enqueue" albumid="{{album.id}}">enqueue</a>
     </div>
 	</div>
 </div>

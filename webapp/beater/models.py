@@ -1,10 +1,10 @@
 from __future__ import unicode_literals
 from django.db import models
 import logging 
+import json
 from datetime import datetime
-from pytz import timezone 
+from .common.util import get_localized_now
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # class Device(models.Manager):
@@ -202,10 +202,37 @@ class PlaylistSong(models.Model):
     last_played_at = models.DateTimeField(null=True)
     #objects = CacheManager()
 
-UTC = timezone("UTC")
-
-def get_created_at():
-    return timezone("UTC").localize(datetime.now())
+class BeatPlayerClient(models.Model):
+    
+    BEATPLAYER_STATUS_READY = 'ready'
+    BEATPLAYER_STATUS_NOTREADY = 'notready'
+    BEATPLAYER_STATUS_DOWN = 'down'
+    
+    BEATPLAYER_STATUS_CHOICES = (
+        (BEATPLAYER_STATUS_READY, 'Ready'),
+        (BEATPLAYER_STATUS_NOTREADY, 'Not Ready'),
+        (BEATPLAYER_STATUS_DOWN, 'Down')
+    )
+    
+    beatplayer_url = models.CharField(max_length=255, null=False)
+    freshbeats_callback_url = models.CharField(max_length=255, null=False)
+    registered_at = models.DateTimeField(null=True)
+    last_health_check = models.DateTimeField(null=True)
+    status = models.CharField(max_length=20, choices=BEATPLAYER_STATUS_CHOICES, default=BEATPLAYER_STATUS_DOWN, null=False)
+    reachable = models.BooleanField(null=False, default=False)
+    registered = models.BooleanField(null=False, default=False)
+    mounted = models.BooleanField(null=False, default=False)
+    selfreport = models.BooleanField(null=False, default=False)
+    
+    def status_dump(self):
+        return json.dumps({
+            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S"), 
+            'status': self.status, 
+            'reachable': self.reachable,
+            'registered': self.registered,
+            'selfreport': self.selfreport,
+            'mounted': self.mounted
+        })
 
 class Player(models.Model):
     PLAYER_STATE_STOPPED = 'stopped'
@@ -244,7 +271,7 @@ class Player(models.Model):
     beatplayer_registered = models.NullBooleanField()
     volume = models.IntegerField(null=True)
     playlistsong = models.ForeignKey(PlaylistSong, null=True)
-    created_at = models.DateTimeField(default=get_created_at)
+    created_at = models.DateTimeField(default=get_localized_now)
     updated_at = models.DateTimeField(auto_now=True)
     
     def compare(self, p1):

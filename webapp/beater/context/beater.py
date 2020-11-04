@@ -2,12 +2,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 import logging
 
-LOGGER = logging.getLogger(__name__)
-# fresh_logger = logging.StreamHandler()
-
-LOGGER.setLevel(logging.DEBUG)
-# logger.addHandler(fresh_logger)
-
+logger = logging.getLogger(__name__)
 
 def switchboard_processor(request_context):
     '''Dynamically determine conventionally named js include file'''
@@ -23,7 +18,7 @@ def switchboard_processor(request_context):
             # -- this allows server-side scripting in javascript includes 
             render_to_string(page_script_path)
     except Exception as e:
-        LOGGER.warn("page js at '%s' does not exist", page_script_path)
+        logger.warn("page js at '%s' does not exist", page_script_path)
         page_script_path = None
 
     return {

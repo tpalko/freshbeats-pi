@@ -26,12 +26,12 @@ except: #2
 import threading
 from abc import ABCMeta, abstractmethod
 
-logging.basicConfig(level=logging.INFO)
+BEATPLAYER_DEFAULT_VOLUME = 90
+BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
+LOG_LEVEL = os.getenv('BEATPLAYER_LOG_LEVEL', 'INFO')
 
-#urllib_logger = logging.getLogger('requests.packages.urllib3.connectionpool')
-#urllib_logger.setLevel(level=logging.WARN)
+logging.basicConfig(level=logging._nameToLevel[LOG_LEVEL.upper()])
 logger = logging.getLogger(__name__)
-logger.setLevel(level=logging.DEBUG)
 
 class BaseClient():
     __metaclass__ = ABCMeta
@@ -42,7 +42,7 @@ class BaseClient():
     current_command = None 
     
     def __init__(self, *args, **kwargs):
-        self.volume = int(os.getenv('BEATPLAYER_DEFAULT_VOLUME'))
+        self.volume = int(BEATPLAYER_INITIAL_VOLUME)
         for k in kwargs:
             val = kwargs[k]
             # -- handling comma-separated strings as lists 
@@ -130,7 +130,6 @@ class BaseClient():
             logger.error(str(sys.exc_info()[1]))
         return result
         
-    @abstractmethod
     def volume_down(self):
         if self.volume >= 5:
             self.volume -= 5
@@ -139,7 +138,6 @@ class BaseClient():
         logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
-    @abstractmethod
     def volume_up(self):
         if self.volume <= (100 - 5):
             self.volume += 5
@@ -334,7 +332,7 @@ class MPPlayer():
             if self.play_thread and self.play_thread.is_alive():     
                 logger.debug("joining play thread..")
                 self.play_thread.join(timeout=10)
-                if t.is_alive():
+                if self.play_thread.is_alive():
                     logger.debug(" - timed out" % t.ident)
                 else:
                     logger.debug(" - joined")
@@ -533,7 +531,7 @@ class MPPlayer():
             self.play_thread.start()
             
             if not self.server:
-                t.join()
+                self.play_thread.join()
             
             #t = self.popenAndCall(call_callback)#, command, force)
             # self.ps = subprocess.Popen(command, shell=do_shell, stdin=subprocess.PIPE, stdout=self.f_outw, stderr=self.f_errw)
@@ -592,7 +590,6 @@ class MPPlayer():
 
 if __name__ == "__main__":
     
-    logger.debug("Creating option parser..")
     parser = OptionParser(usage='usage: %prog [options]')
 
     logger.debug("Adding options..")
@@ -604,31 +601,35 @@ if __name__ == "__main__":
 
     (options, args) = parser.parse_args()
     
+    logger.debug("Options:")
     logger.debug(options)
-
-    logger.debug("Creating MPPlayer..")
     
     if options.smoke_test:
         try:
+            play_test_filepath = options.filepath if options.filepath else os.path.basename(sys.argv[0])
+            logger.info("Running smoke test with %s playing %s" % (options.executable, play_test_filepath))
             m = MPPlayer(player=options.executable)
-            m.play(options.filepath if options.filepath else os.path.basename(sys.argv[0]))
+            m.play(filepath=play_test_filepath)
         except:
+            logger.error(str(sys.exc_info()[0])) 
             logger.error(str(sys.exc_info()[1])) 
+            traceback.print_tb(sys.exc_info()[2])
     elif options.filepath:
         try:
             m = MPPlayer(player=options.executable)
-            result = m.play(options.filepath)
+            result = m.play(filepath=options.filepath)
         except:
-            logger.error(str(sys.exc_info()[1]))
+            logger.error(str(sys.exc_info()[0])) 
+            logger.error(str(sys.exc_info()[1])) 
+            traceback.print_tb(sys.exc_info()[2])
     else:
-        logger.debug("Creating XML RPC server..")
+
+        logger.info("Creating XML RPC server..")
         s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
 
-        logger.debug("Registering MPPlayer with XML RPC server..")
         m = MPPlayer(server=True, player=options.executable)
+        logger.info("Registering MPPlayer with XML RPC server..")
         s.register_instance(m)
 
         logger.info("Serving forever on %s:%s.." % (options.address, options.port))
-        s.serve_forever()  # not
-
-        logger.debug("Served.")
+        s.serve_forever()

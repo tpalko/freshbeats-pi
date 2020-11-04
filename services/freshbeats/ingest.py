@@ -18,12 +18,7 @@ django.setup()
 from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
 from mutagen import easyid3, id3
-import common
-
-logging.basicConfig(
-    level=logging.INFO
-)
-# fresh_logger = logging.StreamHandler()
+from .common import get_storage_path
 
 logger = logging.getLogger('FreshBeats')
 logger.setLevel(logging.INFO)
@@ -441,7 +436,7 @@ class Ingest(object):
                 )
                 logger.info("Hard deleting non-existant albums (never checked-out)..")
                 for album in albums:
-                    if not os.path.exists(join(self.music_path, common.get_storage_path(album))):
+                    if not os.path.exists(join(self.music_path, get_storage_path(album))):
                         # a.delete()
                         logger.info(" - would delete %s/%s", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
 
@@ -452,7 +447,7 @@ class Ingest(object):
                 logger.info("Soft deleting other albums not found on disk..")
 
                 for album in albums:
-                    if not os.path.exists(join(self.music_path, common.get_storage_path(album))):
+                    if not os.path.exists(join(self.music_path, get_storage_path(album))):
                         # a.deleted = True
                         # a.save()
                         logger.info("    Soft-Deleted %s %s",

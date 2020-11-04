@@ -30,6 +30,8 @@ socket.on('connect_response', function(data) {
 
 socket.on('player_status', function(player_status){
 
+  console.log(player_status);
+  
   $("#player_status").html(player_status.current_song);
   
   if (player_status.player.shuffle) {
@@ -56,6 +58,7 @@ socket.on('player_status', function(player_status){
   }
   
   $(".playlist").html(player_status.playlist);
+  $("#player_volume").html(player_status.player.volume);
   $(".playlist")[0].scroll(0, $(".playlist").find(".playlistsong.current")[0].offsetTop - 43);
   
   realignPage();  
@@ -78,7 +81,11 @@ socket.on('beatplayer_status', function(beatplayer_status) {
 
 socket.on('player_output', function(output) {
   $("#player_output").html($("#player_output").html() + output);
-})
+});
+
+socket.on('clear_player_output', function() {
+  $("#player_output").html("");
+});
 
 socket.on('alert', function(data){
   console.log(data);

@@ -53,18 +53,19 @@
   				</div>
   				<div class="col-md-5">
             <!-- cursor-fill or columns-gutters could also work for shuffle -->
-            <a class="btn btn-default command" endpoint="player" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
-  					<a class="btn btn-default command" endpoint="player" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
-            <a class="btn btn-default command" endpoint="player" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
-            <a class="btn btn-default command" endpoint="player" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
-  					<a class="btn btn-danger command" endpoint="player" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
-  					<a class="btn btn-default command" endpoint="player" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
-  					<a class="btn btn-default command" endpoint="player" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
-            <a class="btn btn-default command" endpoint="player" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
-            <a class="btn btn-default btn-sm command" endpoint="player" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
-            <a class="btn btn-default btn-sm command" endpoint="player" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
-            <a class="btn btn-default btn-sm command" endpoint="player" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
-            <a class="btn btn-default btn-sm command" endpoint="player" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
+            <a class="btn btn-default player" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
+  					<a class="btn btn-default player" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
+            <a class="btn btn-default player" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
+            <a class="btn btn-default player" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
+  					<a class="btn btn-danger player" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
+  					<a class="btn btn-default player" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
+  					<a class="btn btn-default player" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
+            <a class="btn btn-default player" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
+            <a class="btn btn-default btn-sm player" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
+            <a class="btn btn-default btn-sm player" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
+            <a class="btn btn-default btn-sm player" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
+            <a class="btn btn-default btn-sm player" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
+            <span id="player_volume"></span>
             <div class="row" id="player_status">
             </div>
   				</div>
@@ -341,25 +342,25 @@
 				});
 			});
 
-			var command_url = '{% url "command" "null" %}';
+			var player_url = '{% url "player" "null" %}';
 
-			$(document).on('click', "a.command", function(e){
+			$(document).on('click', "a.player", function(e){
 
 				var clickable = $(this);
-				var endpoint = $(this).attr("endpoint");
 				var command = $(this).attr("command");
+        
 				var albumid = $(this).attr("albumid");
 				var songid = $(this).attr("songid");
         var artistid = $(this).attr("artistid");
         var playlistsongid = $(this).attr("playlistsongid");
 
-				var url = command_url.replace(/null/, endpoint);
+				var url = player_url.replace(/null/, command);
 
         console.debug(url);
 
 				$.ajax({
 					url: url,
-					data: { command: command, albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
+					data: { albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
 					type: "POST",
 					datatype: "json",
 					success: function(data, textStatus, jqXHR){

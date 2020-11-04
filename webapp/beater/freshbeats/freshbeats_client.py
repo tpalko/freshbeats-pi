@@ -9,9 +9,10 @@ import json
 import threading
 import time
 import io
-from .switchboard import _publish_event
+from ..common.switchboard import _publish_event
 
 sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
+
 from freshbeats import freshbeats, ingest
 
 def _get_freshbeats(function_name):
@@ -55,7 +56,7 @@ def _call_freshbeats(function, *args, **kwargs):
 
         logger = logging.getLogger('FreshBeats')
         # -- this is the log level setting that actually determines the log level
-        logger.setLevel(logging.INFO)
+        #logger.setLevel(logging.INFO)
         logger.addHandler(ch)
 
         t = threading.Thread(target=function, args=kwargs.values())

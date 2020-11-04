@@ -41,11 +41,6 @@ BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
 
 django.setup()
 
-logging.basicConfig(
-    level=logging.INFO
-)
-# fresh_logger = logging.StreamHandler()
-
 logger = logging.getLogger('FreshBeats')
 logger.setLevel(logging.INFO)
 

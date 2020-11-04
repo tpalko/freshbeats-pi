@@ -2,7 +2,7 @@
 
 {% for playlistsong in playlistsongs %}
 <div class="playlistsong {% if playlistsong.is_current %}current{% endif %}" id="playlist_queue_number_{{ playlistsong.queue_number }}">  
-  {% if playlistsong.is_current %}<strong>{% else %}<a class="command" endpoint="player" command="play" playlistsongid="{{ playlistsong.id }}" href="#">{% endif %}
+  {% if playlistsong.is_current %}<strong>{% else %}<a class="player" command="play" playlistsongid="{{ playlistsong.id }}" href="#">{% endif %}
   {{ playlistsong.queue_number }}: {{ playlistsong.song.title }} / {{ playlistsong.song.album.artist.name }} 
   {% if playlistsong.is_current %}</strong>{% else %}</a>{% endif %}
 </div>

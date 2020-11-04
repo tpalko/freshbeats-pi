@@ -14,7 +14,6 @@ import json
 import random
 import re
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # - PAGES

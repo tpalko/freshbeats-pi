@@ -8,7 +8,7 @@ import sys
 logger = logging.getLogger('FreshBeats')
 defLogger = logging.getLogger()
 
-def _publish_event(event, payload):
+def _publish_event(event, payload="{}"):
     # -- payload = {"function_name": "", "complete": "", "out": ""}
     '''Send a message through switchboard'''
     #logger.info("Loading..")

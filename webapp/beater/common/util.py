@@ -1,5 +1,12 @@
 from django.http import HttpResponse, JsonResponse
+from datetime import datetime 
+from pytz import timezone 
 
+UTC = timezone("UTC")
+
+def get_localized_now():
+    return timezone("UTC").localize(datetime.now())
+    
 def capture(f):
 	"""
 	Decorator to capture standard output

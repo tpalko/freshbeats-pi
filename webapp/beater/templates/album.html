@@ -13,7 +13,7 @@
 				</div>
 
 				<div class="col-md-3">
-					<a href="#" class="btn btn-xs btn-primary command" endpoint="player" command="enqueue_album" albumid="{{album.id}}">enqueue album</a>
+					<a href="#" class="btn btn-xs btn-primary player" command="enqueue" albumid="{{album.id}}">enqueue album</a>
 				</div>
 			</div>
 
@@ -27,8 +27,8 @@
 
 						<tr>
 							<td class="col-md-5">{{song.name}}</td>
-							<td><a href="#" class="btn btn-primary command" endpoint="player" command="play" songid="{{song.id}}">play now</a></td>
-							<td><a href="#" class="btn btn-primary command" endpoint="player" command="enqueue_song" songid="{{song.id}}">enqueue</a></td>
+							<td><a href="#" class="btn btn-primary player" command="play" songid="{{song.id}}">play now</a></td>
+							<td><a href="#" class="btn btn-primary player" command="enqueue" songid="{{song.id}}">enqueue</a></td>
 						</tr>
 
 						{% endfor %}

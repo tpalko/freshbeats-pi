@@ -1,8 +1,6 @@
 from django import template
 import logging
 
-logging.basicConfig(level=logging.DEBUG)
-
 logger = logging.getLogger(__name__)
 
 register = template.Library()
