@@ -28,14 +28,13 @@ from abc import ABCMeta, abstractmethod
 
 BEATPLAYER_DEFAULT_VOLUME = 90
 BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
-LOG_LEVEL = os.getenv('BEATPLAYER_LOG_LEVEL', 'INFO')
-
-logging.basicConfig(level=logging._nameToLevel[LOG_LEVEL.upper()])
+HEALTH_LOG_LEVEL = os.getenv('BEATPLAYER_HEALTH_LOG_LEVEL', 'INFO')
+PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
 
 logger_health = logging.getLogger('mpplayer.health')
-logger_health.setLevel(level=logging.WARN)
+logger_health.setLevel(level=logging._nameToLevel[HEALTH_LOG_LEVEL.upper()])
 logger_player = logging.getLogger('mpplayer.player')
-logger_player.setLevel(level=logging.DEBUG)
+logger_player.setLevel(level=logging._nameToLevel[PLAYER_LOG_LEVEL.upper()])
 
 logger_urllib = logging.getLogger('urllib3')
 logger.urllib.setLevel(level=logging.WARN)
