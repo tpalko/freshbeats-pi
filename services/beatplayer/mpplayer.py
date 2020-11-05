@@ -31,6 +31,8 @@ BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYE
 HEALTH_LOG_LEVEL = os.getenv('BEATPLAYER_HEALTH_LOG_LEVEL', 'INFO')
 PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
 
+logging.basicConfig(level=logging.WARN)
+
 logger_health = logging.getLogger('mpplayer.health')
 logger_health.setLevel(level=logging._nameToLevel[HEALTH_LOG_LEVEL.upper()])
 logger_player = logging.getLogger('mpplayer.player')
