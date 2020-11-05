@@ -226,7 +226,7 @@ class BeatPlayerClient(models.Model):
     
     def status_dump(self):
         return json.dumps({
-            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S"), 
+            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S") if self.last_health_check else None, 
             'status': self.status, 
             'reachable': self.reachable,
             'registered': self.registered,

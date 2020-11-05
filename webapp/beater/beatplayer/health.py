@@ -42,8 +42,7 @@ class BeatplayerRegistrar():
     def client_state(self, read_only=False):
         if read_only:
             client_state = self._get_client_state()
-            logger.debug("Yielding read-only client state:")
-            logger.debug(client_state.status_dump())
+            logger.debug("Client state (r/o yield): %s" % client_state.status_dump())
             try:
                 yield client_state
             finally:
@@ -51,21 +50,18 @@ class BeatplayerRegistrar():
         else:            
             self.lock.acquire()
             client_state = self._get_client_state()
-            logger.debug("Yielding client state:")
-            logger.debug(client_state.status_dump())
+            logger.debug("Client state (yield): %s" % client_state.status_dump())
             try:
                 yield client_state
             finally:
-                logger.debug("Saving client state:")
-                logger.debug(client_state.status_dump())
+                logger.debug("Client state (save): %s" % client_state.status_dump())
                 client_state.save()
                 self.lock.release()
     
     def log_health_response(self, health_data):
-        logger.debug("CLIENT STATE ACCESS: Handling health response..")
         with self.client_state() as client_state:
             now = get_localized_now()
-            logger.debug('Health response (%s): - mounted: %s <-- %s' % (datetime.strftime(now, "%Y-%m-%d %H:%M:%S"), client_state.mounted, health_data["music_folder_mounted"]))
+            logger.debug('Health response (%s): %s' % (datetime.strftime(now, "%Y-%m-%d %H:%M:%S"), json.dumps(health_data)))
             client_state.mounted = health_data['music_folder_mounted']
             client_state.last_health_check = now
             self._set_and_show_status(client_state)
@@ -90,7 +86,6 @@ class BeatplayerRegistrar():
         def register_client():
             attempts = 0
             while True:
-                logger.debug("CLIENT STATE ACCESS: Registration loop..")
                 with self.client_state() as client_state:
                     logger.info("Attempting to register at %s" % client_state.beatplayer_url)
                     try:
@@ -128,9 +123,7 @@ class BeatplayerRegistrar():
             misses = 0
             while True:
                 now = get_localized_now()
-                logger.debug("CLIENT STATE ACCESS: Fresh check loop..")
                 with self.client_state() as client_state:
-                    logger.debug("Last_report_at: %s, now: %s" % (datetime.strftime(client_state.last_health_check, "%Y-%m-%d %H:%M:%S"), datetime.strftime(now, "%Y-%m-%d %H:%M:%S")))
                     if client_state.last_health_check is None:
                         misses += 1
                         logger.warn("No beatplayer report: %s/3" % misses)
@@ -138,8 +131,9 @@ class BeatplayerRegistrar():
                             client_state.selfreport = False 
                             break 
                     else:
-                        misses = 0
                         since_last = (now - client_state.last_health_check).total_seconds()
+                        logger.debug("Last health check response: %s seconds ago (%s)" % (since_last, datetime.strftime(client_state.last_health_check, "%Y-%m-%d %H:%M:%S")))
+                        misses = 0
                         if since_last > 30:
                             client_state.selfreport = False 
                             logger.warn("Beatplayer down for %s seconds, assuming restart, quitting fresh check and attempting re-registration" % (since_last))
@@ -150,8 +144,7 @@ class BeatplayerRegistrar():
                         else:
                             client_state.selfreport = True 
                     self._set_and_show_status(client_state)
-                    time.sleep(5)
-            logger.debug("CLIENT STATE ACCESS: Post-fresh check deregistration..")
+                time.sleep(5)
             with self.client_state() as client_state:
                 logger.warn("Self-deregistering..")
                 client_state.registered = False          

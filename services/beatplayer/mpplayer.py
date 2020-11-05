@@ -31,7 +31,10 @@ BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYE
 LOG_LEVEL = os.getenv('BEATPLAYER_LOG_LEVEL', 'INFO')
 
 logging.basicConfig(level=logging._nameToLevel[LOG_LEVEL.upper()])
-logger = logging.getLogger(__name__)
+logger_health = logging.getLogger('mpplayer.health')
+logger_health.setLevel(level=logging.WARN)
+logger_player = logging.getLogger('mpplayer.player')
+logger_player.setLevel(level=logging.DEBUG)
 
 class BaseClient():
     __metaclass__ = ABCMeta
@@ -48,7 +51,7 @@ class BaseClient():
             # -- handling comma-separated strings as lists 
             if type(kwargs[k]) == str and kwargs[k].count(",") > 0:
                 val = kwargs[k].split(',')
-            logger.debug("setting %s: %s" % (k, val))
+            logger_player.debug("setting %s: %s" % (k, val))
             self.__setattr__(k, val)
     
     def _issue_command(self, command):
@@ -63,8 +66,8 @@ class BaseClient():
                 response['message'] = "A process is running (%s), no action" % self.ps.pid
         except:
             response['message'] = str(sys.exc_info()[1])
-            logger.error(response['message'])
-            logger.error(sys.exc_info()[0])
+            logger_player.error(response['message'])
+            logger_player.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
     
@@ -78,27 +81,27 @@ class BaseClient():
                 response['message'] = "No process is running"
         except:
             response['message'] = str(sys.exc_info()[1])
-            logger.error(response['message'])
-            logger.error(sys.exc_info()[0])
+            logger_player.error(response['message'])
+            logger_player.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
     
     def _send_to_socket(self, command):
-        logger.debug("_send_to_socket: %s" % command)
+        logger_player.debug("_send_to_socket: %s" % command)
         response = {'success': False, 'message': '', 'data': {}}
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             attempts = 0
             while not os.path.exists("/tmp/mpv.sock"):
                 if attempts > 15:
-                    logger.warn("tried 15 times over 30 seconds to find /tmp/mpv.sock, quitting")
+                    logger_player.warning("tried 15 times over 30 seconds to find /tmp/mpv.sock, quitting")
                     break
                 else:
-                    logger.warn("/tmp/mpv.sock does not exist.. waiting 2..")
+                    logger_player.warning("/tmp/mpv.sock does not exist.. waiting 2..")
                     attempts += 1
                     time.sleep(2)
             if os.path.exists("/tmp/mpv.sock"):
-                logger.debug("connecting to /tmp/mpv.sock for %s" % command)
+                logger_player.debug("connecting to /tmp/mpv.sock for %s" % command)
                 attempts = 0
                 while not response['success'] and attempts < 10:
                     try:
@@ -107,17 +110,17 @@ class BaseClient():
                         byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                         response['success'] = True 
                         response['data']['bytes_read'] = byte_count
-                        logger.debug("socket file read %s bytes on command %s" % (byte_count, command))
+                        logger_player.debug("socket file read %s bytes on command %s" % (byte_count, command))
                     except:
-                        logger.warn("%s: will try again" % (str(sys.exc_info()[1])))
+                        logger_player.warning("%s: will try again" % (str(sys.exc_info()[1])))
                         time.sleep(1)
                 s.close()
             else:
                 response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
         except:
             response['message'] = str(sys.exc_info()[1])
-            logger.error(response['message'])
-            logger.error(sys.exc_info()[0])
+            logger_player.error(response['message'])
+            logger_player.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
         
@@ -127,7 +130,7 @@ class BaseClient():
             ps = subprocess.Popen(["which", self.player_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             result = ps.wait() == 0
         except:
-            logger.error(str(sys.exc_info()[1]))
+            logger_player.error(str(sys.exc_info()[1]))
         return result
         
     def volume_down(self):
@@ -135,7 +138,7 @@ class BaseClient():
             self.volume -= 5
         else:
             self.volume = 0
-        logger.debug("new volume calculated: %s" % self.volume)
+        logger_player.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
     def volume_up(self):
@@ -143,7 +146,7 @@ class BaseClient():
             self.volume += 5
         else:
             self.volume = 100
-        logger.debug("new volume calculated: %s" % self.volume)
+        logger_player.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
     @abstractmethod
@@ -211,14 +214,14 @@ class MPVClient(BaseClient):
         super().__init__(*args, **kwargs)
         
     def play(self, filepath):
-        command_line = "%s --no-video --input-ipc-server=/tmp/mpv.sock" % self.player_path
+        command_line = "%s --quiet=yes --no-video --input-ipc-server=/tmp/mpv.sock" % self.player_path
         command = command_line.split(' ')
         command.append(filepath)
-        logger.debug(' '.join(command))
+        logger_player.debug(' '.join(command))
         return self._issue_command(command)
         
     def set_volume(self):
-        logger.debug("MPV set volume")
+        logger_player.debug("MPV set volume")
         command = { 'command': [ "set_property", "volume", self.volume ] }
         return self._send_to_socket(command)
         
@@ -245,6 +248,7 @@ class MPPlayer():
     api_clients = None 
     client_threads = None
     play_thread = None 
+    skip_mount_check = False 
 
     def __init__(self, *args, **kwargs):
         
@@ -258,43 +262,55 @@ class MPPlayer():
         self.f_outr = open("mplayer.out", "rb")
         self.f_errr = open("mplayer.err", "rb")
 
-        self.music_folder = '/mnt/music'
+        self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
+        self.skip_mount_check = os.getenv('BEATPLAYER_SKIP_MOUNT_CHECK', '0') == '1'
         
         self.api_clients = {}
         self.client_threads = {}
         
-        logger.info("Choosing player..")
+        logger_player.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
         for p in self.player_clients:
             i = p()
             player_name = i.__class__.__name__
             if i.can_play():
-                logger.info("  - %s can play" % player_name)
+                logger_player.info("  - %s can play" % player_name)
                 self.player = i
                 if preferred_player and i.player_path == preferred_player:
                     break 
             else:
-                logger.info("  - %s cannot play" % player_name)
+                logger_player.info("  - %s cannot play" % player_name)
         
-        logger.info("  - %s chosen (%s)" % (self.player.__class__.__name__, self.player.player_path))
+        logger_player.info("  - %s chosen (%s)" % (self.player.__class__.__name__, self.player.player_path))
         
         if not self.player:
             raise Exception("No suitable player exists")   
         
-        logger.info("music folder: %s" % self.music_folder)
+        logger_player.info("music folder: %s" % self.music_folder)
 
         self.muted = False
     
     def healthz(self):
         
-        ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        ps_grep = subprocess.Popen(shlex.split("grep %s" % self.music_folder), stdin=ps_df.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = ps_grep.communicate(None)
-        returncode = ps_grep.wait()
-        music_folder_mounted = returncode == 0
-        
+        if not self.skip_mount_check:
+            ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ps_grep = subprocess.Popen(shlex.split("grep %s" % self.music_folder), stdin=ps_df.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (out, err) = ps_grep.communicate(None)
+            returncode = ps_grep.wait()
+            music_folder_mounted = returncode == 0
+        else:
+            music_folder_mounted = True 
+            
         response = {'success': False, 'message': '', 'data': {}}
-        response['data'] = {'ps': {}, 'paused': self.player.paused, 'volume': self.player.volume, 'muted': self.player.muted, 'current_command': self.player.current_command, 'music_folder_mounted': music_folder_mounted}
+        response['data'] = {
+            'ps': {}, 
+            'paused': self.player.paused, 
+            'volume': self.player.volume, 
+            'muted': self.player.muted, 
+            'current_command': self.player.current_command, 
+            'music_folder_mounted': music_folder_mounted
+        }
+        
         try:
             returncode = -1
             pid = -1
@@ -307,78 +323,78 @@ class MPPlayer():
             response['success'] = True
         except:
             response['message'] = str(sys.exc_info()[1])
-            logger.error(response['message'])
+            logger_health.error(response['message'])
             traceback.print_tb(sys.exc_info()[2])
         return response
     
     def sigint_handler(self, player_handler=None):
         def handler(sig, frame):
-            logger.warn("handling SIGINT")
+            logger_player.warning("handling SIGINT")
             self.sigint = True             
             if player_handler:
                 player_handler()
-            logger.debug("joining %s client threads.." % len(self.client_threads))
+            logger_player.debug("joining %s client threads.." % len(self.client_threads))
             for callback_url in self.client_threads.keys():
                 t = self.client_threads[callback_url]
-                logger.debug(" - %s" % t.ident)
+                logger_player.debug(" - %s" % t.ident)
                 if t.is_alive():
                     t.join(timeout=10)
                     if t.is_alive():
-                        logger.debug("   - timed out" % t.ident)
+                        logger_player.debug("   - timed out" % t.ident)
                     else:
-                        logger.debug("   - joined")
+                        logger_player.debug("   - joined")
                 else:
-                    logger.debug("   - not alive")
+                    logger_player.debug("   - not alive")
             if self.play_thread and self.play_thread.is_alive():     
-                logger.debug("joining play thread..")
+                logger_player.debug("joining play thread..")
                 self.play_thread.join(timeout=10)
                 if self.play_thread.is_alive():
-                    logger.debug(" - timed out" % t.ident)
+                    logger_player.debug(" - %s timed out" % t.ident)
                 else:
-                    logger.debug(" - joined")
+                    logger_player.debug(" - joined")
             sys.exit(0)
         return handler 
     
     def register_client(self, callback_url):
         response = {'success': False, 'message': '', 'data': {}}
-        logger.debug("registration request with callback %s" % callback_url)
+        logger_health.debug("registration request with callback %s" % callback_url)
         try:            
             def ping_client():
                 fails = 0
                 while not self.sigint and callback_url in self.api_clients:  
                     try:                  
                         player_health = self.healthz()
-                        logger.debug(player_health)
-                        logger.debug("Calling %s.." % callback_url)
+                        logger_health.debug(player_health)
+                        logger_health.debug("Calling %s.." % callback_url)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
-                        logger.debug(" - returned from post to %s" % callback_url)
+                        logger_health.debug(" - returned from post to %s" % callback_url)
                         if not callback_response:
                             raise Exception(" - no response on client ping to %s" % callback_url)
                         if not callback_response.json()['success']:
-                            logger.info(" - not success on client ping %s: %s" % (callback_url, callback_response))
+                            logger_health.info(" - not success on client ping %s: %s" % (callback_url, callback_response))
                         else:
-                            logger.info(" - success from %s" % callback_url)
+                            logger_health.info(" - success from %s" % callback_url)
                     except:
-                        logger.error(str(sys.exc_info()[1]))
+                        logger_health.error(str(sys.exc_info()[1]))
                         traceback.print_tb(sys.exc_info()[2])
                         fails += 1
                     if fails > 5:
-                        logger.warn("Failed to post callback URL %s, de-registering the client" % callback_url)
+                        logger_health.warning("Failed to post callback URL %s, de-registering the client" % callback_url)
                         del self.api_clients[callback_url]                   
                         del self.client_threads[callback_url]
                         break
                     time.sleep(5)
-                logger.warn("Exiting ping loop for %s (sigint: %s, api_clients: %s)" % (callback_url, self.sigint, callback_url in self.api_clients))
+                logger_health.warning("Exiting ping loop for %s (sigint: %s, api_clients: %s)" % (callback_url, self.sigint, callback_url in self.api_clients))
             register = True 
             if callback_url in self.api_clients and callback_url in self.client_threads:
                 t = self.client_threads[callback_url]
                 if t.is_alive():
                     register = False 
-                    logger.info(" - client %s found with a living thread - not registering" % callback_url)
+                    logger_health.info(" - client %s found with a living thread - not registering" % callback_url)
             if not register:
                 message = "Client %s already registered (%s seconds ago)" % (callback_url, (datetime.now() - self.api_clients[callback_url]).total_seconds())
                 response['message'] = message
-                logger.info(message)
+                logger_health.info(message)
             else:
                 if callback_url not in self.api_clients:
                     self.api_clients[callback_url] = datetime.now()
@@ -388,14 +404,14 @@ class MPPlayer():
                 t = threading.Thread(target=ping_client)
                 t.start()
                 self.client_threads[callback_url] = t
-                logger.info("Registered client %s" % callback_url)
+                logger_health.info("Registered client %s" % callback_url)
                 response['success'] = True 
             response['data']['registered'] = True 
             response['data']['retry'] = False
         except:
             response['message'] = str(sys.exc_info()[1])
-            logger.error("Error attempting to register client:")
-            logger.error(response['message'])
+            logger_health.error("Error attempting to register client:")
+            logger_health.error(response['message'])
             traceback.print_tb(sys.exc_info()[2])
         return response 
 
@@ -424,7 +440,7 @@ class MPPlayer():
     # 
     #         return info
     #     except Exception as e:
-    #         logger.error(sys.exc_info())
+    #         logger_player.error(sys.exc_info())
     #         traceback.print_tb(sys.exc_info()[2])
 
     def stop(self):
@@ -470,7 +486,7 @@ class MPPlayer():
     def play(self, filepath, callback_url=None): #, force=False):#, match=None):
         
         response = {'success': False, 'message': '', 'data': {}}
-        logger.debug("Playing %s" % filepath)
+        logger_player.debug("Playing %s" % filepath)
             
         try:
 
@@ -482,7 +498,7 @@ class MPPlayer():
             
             def run_in_thread(callback_url):#, command, force):
                 '''Thread target'''
-                logger.info("Waiting for self.ps..")                
+                logger_player.info("Waiting for self.ps..")                
                 
                 if callback_url:
                     process_dead = False 
@@ -494,33 +510,51 @@ class MPPlayer():
                         start - break - sleep (so we don't sleep unnecessarily)
                     '''
                     while True:
-                        if self.player.ps.poll() is not None:
-                            logger.debug('player process is dead')
-                            process_dead = True 
-                        else:
-                            logger.debug('player process is running (%s)' % self.player.ps.pid)
-                        logger.debug("reading from player stdout..")
-                        int_resp['message'] = self.player.ps.stdout.readline()
-                        if len(int_resp['message']) > 0:
-                            logger.debug('intermittent response has a message: %s' % int_resp["message"])
-                            for line in str(int_resp['message']).split('\n'):
-                                logger.debug("STDOUT: %s" % line)
-                            requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
-                        else:
-                            logger.debug("stdout is empty")
-                        if process_dead:
-                            logger.debug("process is dead, exiting stdout while loop")
-                            break
-                        if len(int_resp['message']) > 0:
-                            int_resp['message'] = ''
-                        else:
-                            time.sleep(1)
-                logger.debug("Waiting on player process..")
+                        try:
+                            if self.player.ps.poll() is not None:
+                                logger_player.debug('player process is dead')
+                                process_dead = True 
+                            else:
+                                logger_player.debug('player process is running (%s)' % self.player.ps.pid)
+                            logger_player.debug(' '.join(self.player.current_command))
+                            logger_player.debug("reading from player stdout..")
+                            lines = []
+                            next_line = self.player.ps.stdout.readline()
+                            while next_line != '' and 'Broken pipe' not in next_line:
+                                logger_player.debug(next_line)
+                                lines.append(next_line)
+                                time.sleep(0.3)
+                                logger_player.debug(dir(self.player.ps))
+                                logger_player.debug(dir(self.player.ps.stdout))
+                                next_line = self.player.ps.stdout.readline()
+                                logger_player.debug("line was read..")
+                            logger_player.debug("done reading")
+                            int_resp['message'] = '\n'.join(lines)
+                            
+                            if len(int_resp['message']) > 0:
+                                logger_player.debug('intermittent response has a message: %s' % int_resp["message"])
+                                for line in lines:
+                                    logger_player.debug("STDOUT: %s" % line)
+                                requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
+                            else:
+                                logger_player.debug("stdout is empty")
+                            if process_dead:
+                                logger_player.debug("process is dead, exiting stdout while loop")
+                                break
+                            if len(int_resp['message']) > 0:
+                                int_resp['message'] = ''
+                            else:
+                                time.sleep(1)
+                        except:
+                            logger_player.error(sys.exc_info()[0])
+                            logger_player.error(sys.exc_info()[1])
+                            traceback.print_tb(sys.exc_info()[2])
+                logger_player.debug("Waiting on player process..")
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
-                logger.debug("returncode: %s" % returncode)
-                logger.debug("out: %s" % out)
-                logger.debug("err: %s" % err)
+                logger_player.debug("returncode: %s" % returncode)
+                logger_player.debug("out: %s" % out)
+                logger_player.debug("err: %s" % err)
                 if callback_url:
                     callback_response = {'success': returncode == 0, 'message': '', 'data': {'complete': True, 'out': out, 'err': err}}
                     requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
@@ -554,12 +588,12 @@ class MPPlayer():
             
         except Exception as e:
 
-            logger.error(sys.exc_info()[0])
-            logger.error(sys.exc_info()[1])
+            logger_player.error(sys.exc_info()[0])
+            logger_player.error(sys.exc_info()[1])
             traceback.print_tb(sys.exc_info()[2])            
             response['message'] = str(sys.exc_info()[1])
 
-        logger.debug("Returning from play call")
+        logger_player.debug("Returning from play call")
         
         return response
 
@@ -573,13 +607,13 @@ class MPPlayer():
     # 
     #     def run_in_thread(on_exit):#, command, force):
     #         '''Thread target'''
-    #         logger.info("Waiting for self.ps..")
+    #         logger_player.info("Waiting for self.ps..")
     #         wait_result = self.ps.wait()
     #         #(out, err) = self.ps.communicate(None)
-    #         logger.info(wait_result)
-    #         # logger.info(out)
-    #         # logger.info(err)
-    #         logger.info("ps is done, calling on_exit()")
+    #         logger_player.info(wait_result)
+    #         # logger_player.info(out)
+    #         # logger_player.info(err)
+    #         logger_player.info("ps is done, calling on_exit()")
     #         on_exit(wait_result)
     #         return
     # 
@@ -592,7 +626,7 @@ if __name__ == "__main__":
     
     parser = OptionParser(usage='usage: %prog [options]')
 
-    logger.debug("Adding options..")
+    logger_player.debug("Adding options..")
     parser.add_option("-a", "--address", dest="address", default='0.0.0.0', help="IP address on which to listen")
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
     parser.add_option("-t", "--smoke-test", action="store_true", dest="smoke_test", help="Smoke test")
@@ -601,35 +635,35 @@ if __name__ == "__main__":
 
     (options, args) = parser.parse_args()
     
-    logger.debug("Options:")
-    logger.debug(options)
+    logger_player.debug("Options:")
+    logger_player.debug(options)
     
     if options.smoke_test:
         try:
             play_test_filepath = options.filepath if options.filepath else os.path.basename(sys.argv[0])
-            logger.info("Running smoke test with %s playing %s" % (options.executable, play_test_filepath))
+            logger_player.info("Running smoke test with %s playing %s" % (options.executable, play_test_filepath))
             m = MPPlayer(player=options.executable)
             m.play(filepath=play_test_filepath)
         except:
-            logger.error(str(sys.exc_info()[0])) 
-            logger.error(str(sys.exc_info()[1])) 
+            logger_player.error(str(sys.exc_info()[0])) 
+            logger_player.error(str(sys.exc_info()[1])) 
             traceback.print_tb(sys.exc_info()[2])
     elif options.filepath:
         try:
             m = MPPlayer(player=options.executable)
             result = m.play(filepath=options.filepath)
         except:
-            logger.error(str(sys.exc_info()[0])) 
-            logger.error(str(sys.exc_info()[1])) 
+            logger_player.error(str(sys.exc_info()[0])) 
+            logger_player.error(str(sys.exc_info()[1])) 
             traceback.print_tb(sys.exc_info()[2])
     else:
 
-        logger.info("Creating XML RPC server..")
+        logger_player.info("Creating XML RPC server..")
         s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
 
         m = MPPlayer(server=True, player=options.executable)
-        logger.info("Registering MPPlayer with XML RPC server..")
+        logger_player.info("Registering MPPlayer with XML RPC server..")
         s.register_instance(m)
 
-        logger.info("Serving forever on %s:%s.." % (options.address, options.port))
+        logger_player.info("Serving forever on %s:%s.." % (options.address, options.port))
         s.serve_forever()

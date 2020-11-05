@@ -4,7 +4,7 @@ from __future__ import unicode_literals
 
 import beater.models
 from django.db import migrations, models
-
+from ..common.util import get_localized_now
 
 class Migration(migrations.Migration):
 
@@ -30,6 +30,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='player',
             name='created_at',
-            field=models.DateTimeField(default=beater.models.get_created_at),
+            field=models.DateTimeField(default=get_localized_now),
         ),
     ]

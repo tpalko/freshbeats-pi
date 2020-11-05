@@ -134,7 +134,6 @@ class PlayerWrapper():
     def call(self, command, **kwargs):
         
         logger.debug("handling player call - %s, kwargs: %s" % (command, json.dumps(kwargs)))
-        logger.debug(self._vals())
         
         f = self.__getattribute__(command)
         response = f(**{ k: kwargs[k] for k in kwargs if kwargs[k] is not None})
