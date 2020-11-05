@@ -40,14 +40,15 @@ class BeatplayerRegistrar():
         
     @contextmanager
     def client_state(self, read_only=False):
-        if read_only:
+        if read_only:                        
             client_state = self._get_client_state()
             logger.debug("Client state (r/o yield): %s" % client_state.status_dump())
             try:
                 yield client_state
             finally:
                 pass 
-        else:            
+        else:        
+            logger.debug("Client state R/W request")    
             self.lock.acquire()
             client_state = self._get_client_state()
             logger.debug("Client state (yield): %s" % client_state.status_dump())

@@ -31,10 +31,14 @@ BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYE
 LOG_LEVEL = os.getenv('BEATPLAYER_LOG_LEVEL', 'INFO')
 
 logging.basicConfig(level=logging._nameToLevel[LOG_LEVEL.upper()])
+
 logger_health = logging.getLogger('mpplayer.health')
 logger_health.setLevel(level=logging.WARN)
 logger_player = logging.getLogger('mpplayer.player')
 logger_player.setLevel(level=logging.DEBUG)
+
+logger_urllib = logging.getLogger('urllib3')
+logger.urllib.setLevel(level=logging.WARN)
 
 class BaseClient():
     __metaclass__ = ABCMeta
