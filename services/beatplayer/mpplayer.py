@@ -521,7 +521,7 @@ class MPPlayer():
                                 process_dead = True 
                             else:
                                 logger_player.debug('player process is running (%s)' % self.player.ps.pid)
-                            logger_player.debug(' '.join(self.player.current_command))
+                            logger_player.debug(' '.join(self.player.current_command) if self.player.current_command else None)
                             logger_player.debug("reading from player stdout..")
                             lines = []
                             next_line = self.player.ps.stdout.readline()
