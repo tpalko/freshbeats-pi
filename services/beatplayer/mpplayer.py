@@ -37,7 +37,7 @@ logger_player = logging.getLogger('mpplayer.player')
 logger_player.setLevel(level=logging._nameToLevel[PLAYER_LOG_LEVEL.upper()])
 
 logger_urllib = logging.getLogger('urllib3')
-logger.urllib.setLevel(level=logging.WARN)
+logger_urllib.setLevel(level=logging.WARN)
 
 class BaseClient():
     __metaclass__ = ABCMeta
