@@ -14,14 +14,11 @@ from optparse import OptionParser
 import requests
 import threading
 from wrappers import MPVWrapper, MPlayerWrapper
-
-BEATPLAYER_DEFAULT_VOLUME = 90
-BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
-
-PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
+from health import PlayerHealth
 
 logging.basicConfig(level=logging.WARN)
 
+PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
 logger_player = logging.getLogger('mpplayer.player')
 logger_player.setLevel(level=logging._nameToLevel[PLAYER_LOG_LEVEL.upper()])
 

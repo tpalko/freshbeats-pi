@@ -33,29 +33,29 @@ class PlayerHealth():
             
     def _sigint_handler(self, player_handler=None):
         def handler(sig, frame):
-            logger_player.warning("handling SIGINT")
+            logger_health.warning("handling SIGINT")
             self.sigint = True             
             if player_handler:
                 player_handler()
-            logger_player.debug("joining %s client threads.." % len(self.client_threads))
+            logger_health.debug("joining %s client threads.." % len(self.client_threads))
             for callback_url in self.client_threads.keys():
                 t = self.client_threads[callback_url]
-                logger_player.debug(" - %s" % t.ident)
+                logger_health.debug(" - %s" % t.ident)
                 if t.is_alive():
                     t.join(timeout=10)
                     if t.is_alive():
-                        logger_player.debug("   - timed out" % t.ident)
+                        logger_health.debug("   - timed out" % t.ident)
                     else:
-                        logger_player.debug("   - joined")
+                        logger_health.debug("   - joined")
                 else:
-                    logger_player.debug("   - not alive")
+                    logger_health.debug("   - not alive")
             if self.play_thread and self.play_thread.is_alive():     
-                logger_player.debug("joining play thread..")
+                logger_health.debug("joining play thread..")
                 self.play_thread.join(timeout=10)
                 if self.play_thread.is_alive():
-                    logger_player.debug(" - %s timed out" % t.ident)
+                    logger_health.debug(" - %s timed out" % t.ident)
                 else:
-                    logger_player.debug(" - joined")
+                    logger_health.debug(" - joined")
             sys.exit(0)
         return handler 
         

@@ -13,6 +13,9 @@ except: #2
 
 from abc import ABCMeta, abstractmethod
 
+BEATPLAYER_DEFAULT_VOLUME = 90
+BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
+
 WRAPPER_LOG_LEVEL = os.getenv('BEATPLAYER_WRAPPER_LOG_LEVEL', 'INFO')
 logger_wrapper = logging.getLogger(__name__)
 logger_wrapper.setLevel(level=logging._nameToLevel[WRAPPER_LOG_LEVEL.upper()])
