@@ -18,5 +18,7 @@ EXPOSE ${BEATPLAYER_PORT}
 
 ENV XDG_RUNTIME_DIR=/tmp
 
+WORKDIR /opt/beatplayer/beatplayer
+
 #CMD ["python", "mpplayer.py", "-e", $ENV, "-a", "0.0.0.0", "-p", "9000"]
 CMD python3 mpplayer.py -a 0.0.0.0 -p ${BEATPLAYER_PORT}

@@ -157,16 +157,16 @@ class PlayerWrapper():
         with self.player() as player:
             player.volume = kwargs['volume'] if 'volume' in kwargs else player.volume
         
-    def clear_state(self, state=None):
-        with self.player() as player:
-            player.state = Player.PLAYER_STATE_STOPPED
-            player.mute = False         
+    # def clear_state(self, state=None):
+    #     with self.player() as player:
+    #         player.state = Player.PLAYER_STATE_STOPPED
+    #         player.mute = False         
     
     def complete(self, success=True, message=''):   
         response = {'success': False, 'message': ''}
         with self.player() as player:
             if not success:
-                player.state = Player.PLAYER_STATE_STOPPED
+                #player.state = Player.PLAYER_STATE_STOPPED
                 response['message'] = message 
             else:
                 if player.state != Player.PLAYER_STATE_STOPPED:
@@ -252,16 +252,14 @@ class PlayerWrapper():
         with self.player() as player:
             self.playlist.back_up_cursor()
             if player.state != Player.PLAYER_STATE_STOPPED:
-                player.cursor_mode = Player.CURSOR_MODE_STATIC
-                response = self._beatplayer_stop()
+                self._beatplayer_play()
         return response 
     
     def restart(self, **kwargs):
         response = None 
         with self.player() as player:
             if player.state != Player.PLAYER_STATE_STOPPED:
-                player.cursor_mode = Player.CURSOR_MODE_STATIC
-                response = self._beatplayer_stop()
+                self._beatplayer_play()
         return response 
     
     def stop(self, **kwargs):
@@ -276,54 +274,45 @@ class PlayerWrapper():
                 else:
                     logger.debug("called stop, but did not set state to stopped for some reason")
         return response
-    
-    def _stop_advance_play(self, player):
-        response = None 
-        player.shuffle = False 
-        if player.state != Player.PLAYER_STATE_STOPPED:
-            response = self._beatplayer_stop()
-        else:
-            cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
-            response = self._beatplayer_play()
-            if response['success']:
-                player.state = Player.PLAYER_STATE_PLAYING
-        return response
         
     # -- play_song and play_album are both 'off playlist' operations
     # -- but there's currently no such thing as 'off playlist'
     # -- play_song can do it, because it's only one song, and we can trigger state change on complete or next 
     # -- play_album can't do that, so we splice it
     
+    def _advance_play(self, player):
+        player.shuffle = False 
+        self.playlist.advance_cursor(shuffle=player.shuffle)
+        response = self._beatplayer_play()
+        if response['success']:
+            player.state = Player.PLAYER_STATE_PLAYING   
+            
     def play(self, **kwargs):
         song = None 
         album = None 
         artist = None 
         response = None
-        with self.player() as player:
+        with self.player() as player:            
             if 'songid' in kwargs and kwargs['songid'] is not None:  
                 songid = kwargs['songid']
                 song = Song.objects.get(pk=songid)
                 self.playlist.splice_song(song)
-                response = self._stop_advance_play(player)
+                self._advance_play(player)             
             elif 'albumid' in kwargs and kwargs['albumid'] is not None:
                 albumid = kwargs['albumid']
                 album = Album.objects.get(pk=albumid)
                 self.playlist.splice_album(album)
-                response = self._stop_advance_play(player)
+                self._advance_play(player)
             elif 'artistid' in kwargs and kwargs['artistid'] is not None:
                 artistid = kwargs['artistid']
                 artist = Artist.objects.get(pk=artistid)
                 self.playlist.splice_artist(artist)
-                response = self._stop_advance_play(player)
+                self._advance_play(player)
             elif 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
                 self.playlist.advance_cursor(kwargs['playlistsongid'])
-                if player.state != Player.PLAYER_STATE_STOPPED:            
-                    player.cursor_mode = Player.CURSOR_MODE_STATIC
-                    self._beatplayer_stop()
-                else:
-                    response = self._beatplayer_play()
-                    if response['success']:
-                        player.state = Player.PLAYER_STATE_PLAYING
+                response = self._beatplayer_play()
+                if response['success']:
+                    player.state = Player.PLAYER_STATE_PLAYING                
             else:
                 if player.state == Player.PLAYER_STATE_STOPPED:
                     response = self._beatplayer_play()
@@ -336,10 +325,9 @@ class PlayerWrapper():
     def next(self, **kwargs):
         response = None 
         with self.player() as player:
+            cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
             if player.state != Player.PLAYER_STATE_STOPPED:
-                response = self._beatplayer_stop()
-            else:
-                cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
+                self._beatplayer_play()
         return response 
     
     def next_artist(self, **kwargs):        
@@ -350,8 +338,7 @@ class PlayerWrapper():
                 cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
                 song = self.playlist.get_current_playlistsong().song
             if player.state != Player.PLAYER_STATE_STOPPED:            
-                player.cursor_mode = Player.CURSOR_MODE_STATIC
-                self._beatplayer_stop()
+                self._beatplayer_play()
     
     def toggle_shuffle(self, **kwargs):
         with self.player() as player:

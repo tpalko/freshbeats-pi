@@ -39,8 +39,8 @@ def health_response(request):
         
     health_data = health['data']
     player = PlayerWrapper.getInstance()
-    if 'ps' in health_data and health_data['ps']['pid'] < 0:
-        player.call("clear_state")
+    # if 'ps' in health_data and health_data['ps']['pid'] < 0:
+    #     player.call("clear_state")
     player.call('set_volume', volume=health_data['volume'])  
     
     beatplayer = BeatplayerRegistrar.getInstance()
