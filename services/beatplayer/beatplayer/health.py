@@ -29,7 +29,7 @@ class PlayerHealth():
         signal.signal(signal.SIGINT, self._sigint_handler())
         self.skip_mount_check = os.getenv('BEATPLAYER_SKIP_MOUNT_CHECK', '0') == '1'
         self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
-        logger_player.info("music folder: %s" % self.music_folder)
+        logger_health.info("music folder: %s" % self.music_folder)
         self.api_clients = {}
         self.client_threads = {}
             
