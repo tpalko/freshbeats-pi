@@ -43,8 +43,6 @@ class MPPlayer():
 
         self.f_outr = open("mplayer.out", "rb")
         self.f_errr = open("mplayer.err", "rb")
-
-        self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
         
         logger_player.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
@@ -63,15 +61,10 @@ class MPPlayer():
         
         if not self.player:
             raise Exception("No suitable player exists")   
-        
-        logger_player.info("music folder: %s" % self.music_folder)
 
         self.muted = False
         
         self.health = PlayerHealth()
-
-    def get_music_folder(self):
-        return self.music_folder
 
     def logs(self):
         self.f_outr.seek(0)
