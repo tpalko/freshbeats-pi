@@ -12,7 +12,7 @@ export ARCH=$(uname -m)
 while [[ $# -gt 0 ]]; do 
   case $1 in
     --) shift; break;;
-    *)  export DOCKER_REGISTRY=$1; shift;;
+    *)  export DOCKER_REGISTRY=$1/; shift;;
   esac 
 done 
 

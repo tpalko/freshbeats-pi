@@ -13,7 +13,7 @@ import logging
 from optparse import OptionParser
 import requests
 import threading
-from .wrappers import MPVWrapper, MPlayerWrapper
+from wrappers import MPVWrapper, MPlayerWrapper
 
 BEATPLAYER_DEFAULT_VOLUME = 90
 BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
@@ -196,9 +196,7 @@ class MPPlayer():
                                 requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
                             else:
                                 logger_player.debug("stdout is empty")
-                            if process_dead:
-                                logger_player.debug("process is dead, exiting stdout while loop")
-                                break
+                            
                             if len(int_resp['message']) > 0:
                                 int_resp['message'] = ''
                             else:
@@ -207,6 +205,10 @@ class MPPlayer():
                             logger_player.error(sys.exc_info()[0])
                             logger_player.error(sys.exc_info()[1])
                             traceback.print_tb(sys.exc_info()[2])
+                        finally:
+                           if process_dead:
+                               logger_player.debug("process is dead, exiting stdout while loop")
+                               break
                 logger_player.debug("Waiting on player process..")
                 returncode = self.player.ps.wait()
                 (out, err) = self.player.ps.communicate(None)
