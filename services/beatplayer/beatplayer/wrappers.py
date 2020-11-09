@@ -27,6 +27,7 @@ class BaseWrapper():
     
     volume = None 
     music_folder = None 
+    mpv_socket = None 
     
     ps = None 
     
@@ -45,6 +46,7 @@ class BaseWrapper():
         else:
             self.volume = int(BEATPLAYER_INITIAL_VOLUME)
             self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
+            self.mpv_socket = os.getenv('MPV_SOCKET', '/tmp/mpv.sock')
             logger_wrapper.info("music folder: %s" % self.music_folder)
             for k in kwargs:
                 val = kwargs[k]
@@ -93,28 +95,28 @@ class BaseWrapper():
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             attempts = 0
-            while not os.path.exists("/tmp/mpv.sock"):
+            while not os.path.exists(self.mpv_socket):
                 if attempts > 15:
-                    logger_wrapper.warning("tried 15 times over 30 seconds to find /tmp/mpv.sock, quitting")
+                    logger_wrapper.warning("tried 15 times over 30 seconds to find %s, quitting" % self.mpv_socket)
                     break
                 else:
-                    logger_wrapper.warning("/tmp/mpv.sock does not exist.. waiting 2..")
+                    logger_wrapper.warning("%s does not exist.. waiting 2.." % self.mpv_socket)
                     attempts += 1
                     time.sleep(2)
-            if os.path.exists("/tmp/mpv.sock"):
-                logger_wrapper.debug("connecting to /tmp/mpv.sock for %s" % command)
+            if os.path.exists(self.mpv_socket):
+                logger_wrapper.debug("connecting to %s for %s" % (self.mpv_socket, command))
                 attempts = 0
                 while not response['success'] and attempts < 1:
                     try:
                         attempts += 1
-                        s.connect("/tmp/mpv.sock")
+                        s.connect(self.mpv_socket)
                         s.settimeout(2)
                         byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                         response['success'] = True 
                         #response['data']['bytes_read'] = byte_count                        
                         while True:
                             try:
-                                response['data'] += s.recv(1024)
+                                response['data'] = "%s%s" % (response['data'], s.recv(1024))
                             except socket.timeout as t:
                                 break 
                         logger_wrapper.debug("socket file read %s bytes on command %s" % (len(response['data']), command))
@@ -123,7 +125,7 @@ class BaseWrapper():
                         time.sleep(1)
                 s.close()
             else:
-                response['message'] = "/tmp/mpv.sock could not be found, command (%s) not sent" % command
+                response['message'] = "%s could not be found, command (%s) not sent" % (self.mpv_socket, command)
         except:
             response['message'] = str(sys.exc_info()[1])
             logger_wrapper.error(response['message'])
@@ -248,7 +250,7 @@ class MPVWrapper(BaseWrapper):
         super().__init__(*args, **kwargs)
         
     def _play_command(self, filepath):
-        command_line = "%s --quiet=yes --no-video --volume=%s --input-ipc-server=/tmp/mpv.sock" % (self.player_path, self.volume)
+        command_line = "%s --quiet=yes --no-video --volume=%s --input-ipc-server=%s" % (self.player_path, self.volume, self.mpv_socket)
         command = command_line.split(' ')
         command.append(os.path.join(self.music_folder, filepath))
         logger_wrapper.debug(' '.join(command))
