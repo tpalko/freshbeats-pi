@@ -116,7 +116,7 @@ class BaseWrapper():
                         #response['data']['bytes_read'] = byte_count                        
                         while True:
                             try:
-                                response['data'] = "%s%s" % (response['data'], s.recv(1024))
+                                response['data'] = "%s%s" % (response['data'], s.recv(1024).decode())
                             except socket.timeout as t:
                                 break 
                         logger_wrapper.debug("socket file read %s bytes on command %s" % (len(response['data']), command))
@@ -318,7 +318,7 @@ class MPVWrapper(BaseWrapper):
         socket_response = self._send_to_socket(command)
         logger_wrapper.debug(socket_response)
         if socket_response['success'] and socket_response['data'] != '':
-            socket_data = json.loads(socket_response['data'].decode())
+            socket_data = json.loads(socket_response['data'])
             return socket_data['error'] == "success"
         return False 
     
