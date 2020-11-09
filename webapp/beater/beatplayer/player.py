@@ -38,7 +38,7 @@ class PlayerWrapper():
         
     def __init__(self, *args, **kwargs):
         if PlayerWrapper.__instance != None:
-            raise Exception("Singleton instance exists!")
+            raise Exception("Call PlayerWrapper.getInstance() for singleton")
         else:
             self.lock = threading.Lock()
             self.playlist = Playlist()
@@ -157,10 +157,10 @@ class PlayerWrapper():
         with self.player() as player:
             player.volume = kwargs['volume'] if 'volume' in kwargs else player.volume
         
-    # def clear_state(self, state=None):
-    #     with self.player() as player:
-    #         player.state = Player.PLAYER_STATE_STOPPED
-    #         player.mute = False         
+    def clear_state(self, state=None):
+        with self.player() as player:
+            player.state = Player.PLAYER_STATE_STOPPED
+            player.mute = False         
     
     def complete(self, success=True, message=''):   
         response = {'success': False, 'message': ''}
@@ -196,8 +196,7 @@ class PlayerWrapper():
     
     def _beatplayer_play(self):
         song = self.playlist.get_current_playlistsong().song        
-        beatplayer_music_folder = self.beatplayer_client.get_music_folder()
-        song_filepath = "%s/%s/%s/%s" % (beatplayer_music_folder, song.album.artist.name, song.album.name, song.name)
+        song_filepath = "%s/%s/%s" % (song.album.artist.name, song.album.name, song.name)
         callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
         logger.info("Calling beatplayer. song: %s callback: %s" % (song_filepath, callback))
         response = self.beatplayer_client.play(song_filepath, callback)

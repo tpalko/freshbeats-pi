@@ -13,13 +13,16 @@ import logging
 from optparse import OptionParser
 import requests
 import threading
-from wrappers import MPVWrapper, MPlayerWrapper
+from wrappers import BaseWrapper, MPVWrapper, MPlayerWrapper
 from health import PlayerHealth
 
-logging.basicConfig(level=logging.WARN)
+logging.basicConfig(
+    level=logging.WARN,
+    format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s'
+)
 
 PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
-logger_player = logging.getLogger('mpplayer.player')
+logger_player = logging.getLogger(__name__)
 logger_player.setLevel(level=logging._nameToLevel[PLAYER_LOG_LEVEL.upper()])
 
 logger_urllib = logging.getLogger('urllib3')
@@ -46,18 +49,14 @@ class MPPlayer():
         
         logger_player.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
-        for p in self.player_clients:
-            i = p()
-            player_name = i.__class__.__name__
-            if i.can_play():
-                logger_player.info("  - %s can play" % player_name)
-                self.player = i
-                if preferred_player and i.player_path == preferred_player:
-                    break 
+        for p in [ c for c in self.player_clients if c.executable_filename() == preferred_player or not preferred_player ]:
+            logger_player.info(" - testing %s" % p.__name__)
+            if p.can_play():
+                self.player = BaseWrapper.getInstance(p)
+                logger_player.info("  - %s chosen" % (p.__name__))
+                break 
             else:
-                logger_player.info("  - %s cannot play" % player_name)
-        
-        logger_player.info("  - %s chosen (%s)" % (self.player.__class__.__name__, self.player.player_path))
+                logger_player.info("  - %s cannot play" % p.__name__)
         
         if not self.player:
             raise Exception("No suitable player exists")   
@@ -65,7 +64,22 @@ class MPPlayer():
         self.muted = False
         
         self.health = PlayerHealth()
-
+    
+    def _dispatch(self, method, params):
+        logger_player.debug("Attempting to dispatch %s" % method)
+        modules = [self, self.health]
+        f = None 
+        response = None 
+        for m in modules:
+            try:
+                f = getattr(m, method)
+                response = f(*params)
+            except:
+                pass 
+        if not f:
+            raise Exception("Cannot dispatch %s: not found")
+        return response
+            
     def logs(self):
         self.f_outr.seek(0)
         lines = list(self.f_outr)
@@ -130,16 +144,13 @@ class MPPlayer():
         except:
             response['message'] = str(sys.exc_info()[1])
         return response
-        
+    
     def play(self, filepath, callback_url=None): #, force=False):#, match=None):
         
         response = {'success': False, 'message': '', 'data': {}}
         logger_player.debug("Playing %s" % filepath)
             
         try:
-
-            if not os.path.exists(filepath):
-                raise Exception("The file path %s does not exist" % filepath)
             
             response = self.player.play(filepath)
             self.player.set_volume()
@@ -172,8 +183,8 @@ class MPPlayer():
                                 logger_player.debug(next_line)
                                 lines.append(next_line)
                                 time.sleep(0.3)
-                                logger_player.debug(dir(self.player.ps))
-                                logger_player.debug(dir(self.player.ps.stdout))
+                                # logger_player.debug(dir(self.player.ps))
+                                # logger_player.debug(dir(self.player.ps.stdout))
                                 next_line = self.player.ps.stdout.readline()
                                 logger_player.debug("line was read..")
                             logger_player.debug("done reading")
@@ -314,7 +325,6 @@ if __name__ == "__main__":
         m = MPPlayer(server=True, player=options.executable)
         logger_player.info("Registering MPPlayer with XML RPC server..")
         s.register_instance(m)
-        s.register_instance(m.health)
 
         logger_player.info("Serving forever on %s:%s.." % (options.address, options.port))
         s.serve_forever()

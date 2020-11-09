@@ -109,7 +109,7 @@ class BeatplayerRegistrar():
                         logger.error(sys.exc_info()[1])
                         #traceback.print_tb(sys.exc_info()[2])
                         client_state.reachable = False 
-                        logger.error("Error registering with %s: %s" % (self.beater_url, str(sys.exc_info()[1])))
+                        logger.error("Error registering with %s: %s" % (client_state.beatplayer_url, str(sys.exc_info()[1])))
                     self._set_and_show_status(client_state)
                     if client_state.registered:
                         break

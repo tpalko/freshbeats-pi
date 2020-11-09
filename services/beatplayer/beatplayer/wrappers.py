@@ -21,22 +21,39 @@ logger_wrapper = logging.getLogger(__name__)
 logger_wrapper.setLevel(level=logging._nameToLevel[WRAPPER_LOG_LEVEL.upper()])
 
 class BaseWrapper():
+    
     __metaclass__ = ABCMeta
-    ps = None 
+    __instance = None 
+    
     volume = None 
-    paused = False
+    music_folder = None 
+    
+    ps = None 
+    
     muted = False  
     current_command = None 
     
+    @staticmethod 
+    def getInstance(t=None):
+        if t and BaseWrapper.__instance == None:
+            t()
+        return BaseWrapper.__instance 
+        
     def __init__(self, *args, **kwargs):
-        self.volume = int(BEATPLAYER_INITIAL_VOLUME)
-        for k in kwargs:
-            val = kwargs[k]
-            # -- handling comma-separated strings as lists 
-            if type(kwargs[k]) == str and kwargs[k].count(",") > 0:
-                val = kwargs[k].split(',')
-            logger_wrapper.debug("setting %s: %s" % (k, val))
-            self.__setattr__(k, val)
+        if BaseWrapper.__instance != None:
+            raise Exception("Already exists!")
+        else:
+            self.volume = int(BEATPLAYER_INITIAL_VOLUME)
+            self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
+            logger_wrapper.info("music folder: %s" % self.music_folder)
+            for k in kwargs:
+                val = kwargs[k]
+                # -- handling comma-separated strings as lists 
+                if type(kwargs[k]) == str and kwargs[k].count(",") > 0:
+                    val = kwargs[k].split(',')
+                logger_wrapper.debug("setting %s: %s" % (k, val))
+                self.__setattr__(k, val)
+            BaseWrapper.__instance = self 
     
     def _issue_command(self, command):
         response = {'success': False, 'message': '', 'data': {}}
@@ -108,13 +125,15 @@ class BaseWrapper():
             traceback.print_tb(sys.exc_info()[2])
         return response 
         
-    def can_play(self):
+    @classmethod
+    def can_play(cls):
         result = False 
         try:
-            ps = subprocess.Popen(["which", self.player_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ps = subprocess.Popen(["which", cls.executable_filename()], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             result = ps.wait() == 0
         except:
-            logger_wrapper.error(str(sys.exc_info()[1]))
+            logger_wrapper.error(sys.exc_info()[0])
+            logger_wrapper.error(sys.exc_info()[1])                        
         return result
         
     def volume_down(self):
@@ -133,10 +152,15 @@ class BaseWrapper():
         logger_wrapper.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
+    def validate_filepath(self, filepath):
+        full_path = os.path.join(self.music_folder, filepath)
+        if not os.path.exists(full_path):
+            raise Exception("The file path %s does not exist" % full_path)    
+            
     @abstractmethod
     def play(self, filepath):
-        pass
-    
+        pass 
+        
     @abstractmethod
     def next(self, filepath):
         pass 
@@ -157,16 +181,21 @@ class MPlayerWrapper(BaseWrapper):
     
     player_path = "mplayer"
     
+    def executable_filename():
+        return "mplayer"
+    
     def _play_command(self, filepath):
         command_line = "%s -ao alsa -slave -quiet" % self.player_path
         command = command_line.split(' ')
-        command.append(filepath)
+        command.append(os.path.join(self.music_folder, filepath))
         return command 
         
     def play(self, filepath):
+        self.validate_filepath(filepath)
         return self._issue_command(self._play_command(filepath))
     
     def next(self, filepath):
+        self.validate_filepath(filepath)
         stop_response = self._send_to_process("stop")
         return self._issue_command(self._play_command(filepath))
 
@@ -204,16 +233,29 @@ class MPVWrapper(BaseWrapper):
     '''
     
     player_path = "mpv"
+    paused = False
+    
+    def executable_filename():
+        return "mpv"
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-    def play(self, filepath):
+    def _play_command(self, filepath):
         command_line = "%s --quiet=yes --no-video --input-ipc-server=/tmp/mpv.sock" % self.player_path
         command = command_line.split(' ')
-        command.append(filepath)
+        command.append(os.path.join(self.music_folder, filepath))
         logger_wrapper.debug(' '.join(command))
         return self._issue_command(command)
+    
+    def play(self, filepath):
+        self.validate_filepath(filepath)
+        return self._play_command(filepath)
+            
+    def next(self, filepath):
+        self.validate_filepath(filepath)
+        stop_response = self.stop()
+        return self._play_command(filepath)
         
     def set_volume(self):
         logger_wrapper.debug("MPV set volume")

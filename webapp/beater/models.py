@@ -282,7 +282,7 @@ class Player(models.Model):
             if a in p1.__dict__:
                 bo = p1.__dict__[a]
             if ao != bo:
-                logger.debug("%s: current %s != db %s" % (a, ao, bo))
+                logger.debug("Comparing player states (%s): current %s != db %s" % (a, ao, bo))
                 return False 
         #logger.debug("%s == %s" % (self.__dict__, p1.__dict__))                
         return True 

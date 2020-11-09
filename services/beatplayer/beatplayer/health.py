@@ -9,13 +9,13 @@ import time
 import shlex
 from datetime import datetime 
 import json
-
 import logging
 import requests
 import threading
+from wrappers import BaseWrapper 
 
 HEALTH_LOG_LEVEL = os.getenv('BEATPLAYER_HEALTH_LOG_LEVEL', 'INFO')
-logger_health = logging.getLogger('mpplayer.health')
+logger_health = logging.getLogger(__name__)
 logger_health.setLevel(level=logging._nameToLevel[HEALTH_LOG_LEVEL.upper()])
 
 class PlayerHealth():
@@ -28,8 +28,7 @@ class PlayerHealth():
     def __init__(self, *args, **kwargs):
         signal.signal(signal.SIGINT, self._sigint_handler())
         self.skip_mount_check = os.getenv('BEATPLAYER_SKIP_MOUNT_CHECK', '0') == '1'
-        self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
-        logger_health.info("music folder: %s" % self.music_folder)
+        
         self.api_clients = {}
         self.client_threads = {}
             
@@ -63,32 +62,34 @@ class PlayerHealth():
         
     def healthz(self):
         
+        player = BaseWrapper.getInstance()
+        
         if not self.skip_mount_check:
             ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            ps_grep = subprocess.Popen(shlex.split("grep %s" % self.music_folder), stdin=ps_df.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ps_grep = subprocess.Popen(shlex.split("grep %s" % player.music_folder), stdin=ps_df.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (out, err) = ps_grep.communicate(None)
             returncode = ps_grep.wait()
             music_folder_mounted = returncode == 0
         else:
             music_folder_mounted = True 
-            
+        
         response = {'success': False, 'message': '', 'data': {}}
         response['data'] = {
             'ps': {}, 
-            'paused': self.player.paused, 
-            'volume': self.player.volume, 
-            'muted': self.player.muted, 
-            'current_command': self.player.current_command, 
+            'paused': player.paused, 
+            'volume': player.volume, 
+            'muted': player.muted, 
+            'current_command': player.current_command, 
             'music_folder_mounted': music_folder_mounted
         }
         
         try:
             returncode = -1
             pid = -1
-            if self.player.ps:
-                returncode = self.player.ps.poll()
+            if player.ps:
+                returncode = player.ps.poll()
                 if returncode is None:
-                    pid = self.player.ps.pid
+                    pid = player.ps.pid
             response['data']['ps']['returncode'] = returncode 
             response['data']['ps']['pid'] = pid
             response['success'] = True
