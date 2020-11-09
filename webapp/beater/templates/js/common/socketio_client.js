@@ -34,13 +34,13 @@ socket.on('player_status', function(player_status){
   
   $("#player_status").html(player_status.current_song);
   
-  if (player_status.player.shuffle) {
+  if (player_status.player.shuffle == "True") {
     $("a[command='toggle_shuffle']").removeClass('btn-default').addClass('btn-warning');  
   } else {
     $("a[command='toggle_shuffle']").removeClass('btn-warning').addClass('btn-default');  
   }
   
-  if (player_status.player.mute) {
+  if (player_status.player.mute == "True") {
     $("a[command='toggle_mute']").removeClass('btn-default').addClass('btn-warning');
   } else {
     $("a[command='toggle_mute']").removeClass('btn-warning').addClass('btn-default');

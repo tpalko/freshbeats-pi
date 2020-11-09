@@ -318,7 +318,7 @@ class MPVWrapper(BaseWrapper):
         socket_response = self._send_to_socket(command)
         logger_wrapper.debug(socket_response)
         if socket_response['success'] and socket_response['data'] != '':
-            socket_data = json.loads(socket_response['data'])
+            socket_data = json.loads(socket_response['data'].decode())
             return socket_data['error'] == "success"
         return False 
     

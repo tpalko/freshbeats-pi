@@ -38,9 +38,12 @@ def health_response(request):
         _publish_event('message', json.dumps(health['message']))
         
     health_data = health['data']
+    
+    logger.debug("Parsing health response in PlayerWrapper..")
     player = PlayerWrapper.getInstance()
     player.parse_state(health_data)
         
+    logger.debug("Parsing health response in BeatplayerRegistrar..")
     beatplayer = BeatplayerRegistrar.getInstance()
     beatplayer.log_health_response(health_data)
     

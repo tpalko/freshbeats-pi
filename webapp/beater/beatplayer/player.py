@@ -171,10 +171,11 @@ class PlayerWrapper():
                     
             player.volume = health_data['volume'] if 'volume' in health_data else player.volume
             player.state = Player.PLAYER_STATE_PAUSED if 'paused' in health_data and health_data['paused'] else player.state
-            player.mute = health_data['muted'] if 'muted' in health_data else player.mute
+            player.mute = health_data['muted'] == 'True' if 'muted' in health_data else player.mute
             player.time_remaining = health_data['time_remaining'] if 'time_remaining' in health_data else 0
             player.time_pos = health_data['time_pos'] if 'time_pos' in health_data else 0
             player.percent_pos = health_data['percent_pos'] if 'percent_pos' in health_data else 0
+        self.show_player_status()
         
     def get_current_song(self):
         return self.playlist.get_current_playlistsong().song
