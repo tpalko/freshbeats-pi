@@ -108,10 +108,16 @@ class BaseWrapper():
                     try:
                         attempts += 1
                         s.connect("/tmp/mpv.sock")
+                        s.settimeout(2)
                         byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                         response['success'] = True 
-                        response['data']['bytes_read'] = byte_count
-                        logger_wrapper.debug("socket file read %s bytes on command %s" % (byte_count, command))
+                        #response['data']['bytes_read'] = byte_count                        
+                        while True:
+                            try:
+                                response['data'] += s.recv(1024)
+                            except socket.timeout as t:
+                                break 
+                        logger_wrapper.debug("socket file read %s bytes on command %s" % (len(response['data']), command))
                     except:
                         logger_wrapper.warning("%s: will try again" % (str(sys.exc_info()[1])))
                         time.sleep(1)
@@ -242,7 +248,7 @@ class MPVWrapper(BaseWrapper):
         super().__init__(*args, **kwargs)
         
     def _play_command(self, filepath):
-        command_line = "%s --quiet=yes --no-video --input-ipc-server=/tmp/mpv.sock" % self.player_path
+        command_line = "%s --quiet=yes --no-video --volume %s --input-ipc-server=/tmp/mpv.sock" % (self.player_path, self.volume)
         command = command_line.split(' ')
         command.append(os.path.join(self.music_folder, filepath))
         logger_wrapper.debug(' '.join(command))
@@ -256,23 +262,52 @@ class MPVWrapper(BaseWrapper):
         self.validate_filepath(filepath)
         stop_response = self.stop()
         return self._play_command(filepath)
-        
-    def set_volume(self):
-        logger_wrapper.debug("MPV set volume")
-        command = { 'command': [ "set_property", "volume", self.volume ] }
-        return self._send_to_socket(command)
-        
+
     def stop(self):
         command = { 'command': [ "stop" ] }
         return self._send_to_socket(command)
-    
+        
+    def set_system_volume(self, volume):
+        self._set_property("ao-volume", volume)
+        
+    def set_player_volume(self):
+        self._set_property("volume", self.volume)
+
     def pause(self):
         self.paused = not self.paused 
-        command = { 'command': [ "set_property", "pause", "yes" if self.paused else "no" ] }
-        return self._send_to_socket(command)
+        return self._set_property("pause", "yes" if self.paused else "no")
     
-    def mute(self):
+    def mute(self):        
         self.muted = not self.muted
-        command = { 'command': [ "set_property", "mute", "yes" if self.muted else "no" ] }
+        return self._set_property("mute", "yes" if self.muted else "no")
+    
+    def get_time_remaining(self):
+        return self._get_property("time-remaining")
+    
+    def get_time_pos(self):
+        return self._get_property("time_pos")
+    
+    def get_percent_pos(self):
+        return self._get_property("percent-pos")
+        
+    def is_paused(self):
+        return self._get_property("pause")
+    
+    def is_muted(self):
+        return self._get_property("mute")
+        
+    def player_volume(self):
+        return self._get_property("volume")
+    
+    def _set_property(self, property, value):
+        logger_wrapper.info("Set property: %s <- %s" % (property, value))
+        command = { 'command': [ "set_property", property, value ] }
         return self._send_to_socket(command)
+   
+    def _get_property(self, property):
+        command = { 'command': [ "get_property", property ] }
+        response = json.loads(self._send_to_socket(command))
+        return response['data']
+        
+    
    

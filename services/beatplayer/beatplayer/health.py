@@ -76,9 +76,12 @@ class PlayerHealth():
         response = {'success': False, 'message': '', 'data': {}}
         response['data'] = {
             'ps': {}, 
-            'paused': player.paused, 
-            'volume': player.volume, 
-            'muted': player.muted, 
+            'paused': player.is_paused(), 
+            'volume': player.player_volume(), 
+            'muted': player.is_muted(), 
+            'time_remaining': player.get_time_remaining(),
+            'time_pos': player.get_time_pos(),
+            'percent_pos': player.get_percent_pos(),
             'current_command': player.current_command, 
             'music_folder_mounted': music_folder_mounted
         }

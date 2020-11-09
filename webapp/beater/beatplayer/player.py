@@ -150,17 +150,31 @@ class PlayerWrapper():
         beatplayer = BeatplayerRegistrar.getInstance()
         beatplayer.show_status()
     
+    def parse_state(self, health_data):
+        with self.player() as player:
+            if 'ps' in health_data:
+                if health_data['ps']['pid'] < 0:
+                    player.state = Player.PLAYER_STATE_STOPPED
+                    player.mute = False
+                else:
+                    player.state = Player.PLAYER_STATE_PLAYING
+                    
+            player.volume = health_data['volume'] if 'volume' in health_data else player.volume
+            player.state = Player.PLAYER_STATE_PAUSED if 'paused' in health_data and health_data['paused'] else player.state
+            player.mute = health_data['muted'] if 'muted' in health_data else player.mute
+            player.time_remaining = health_data['time_remaining'] if 'time_remaining' in health_data else 0
+            player.time_pos = health_data['time_pos'] if 'time_pos' in health_data else 0
+            player.percent_pos = health_data['percent_pos'] if 'percent_pos' in health_data else 0
+        
     def get_current_song(self):
         return self.playlist.get_current_playlistsong().song
         
-    def set_volume(self, **kwargs):
-        with self.player() as player:
-            player.volume = kwargs['volume'] if 'volume' in kwargs else player.volume
+    # def set_volume(self, **kwargs):
+    #     with self.player() as player:
+    #         player.volume = kwargs['volume'] if 'volume' in kwargs else player.volume
         
-    def clear_state(self, state=None):
-        with self.player() as player:
-            player.state = Player.PLAYER_STATE_STOPPED
-            player.mute = False         
+    # def clear_state(self, state=None):
+    #     with self.player() as player:
     
     def complete(self, success=True, message=''):   
         response = {'success': False, 'message': ''}
@@ -171,10 +185,11 @@ class PlayerWrapper():
             else:
                 if player.state != Player.PLAYER_STATE_STOPPED:
                     if player.cursor_mode == Player.CURSOR_MODE_NEXT:
-                        cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
+                        #cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
+                        pass 
                     else:
                         player.cursor_mode = Player.CURSOR_MODE_NEXT
-                    response = self._beatplayer_play()
+                    #response = self._beatplayer_play()
                     if response['success']:
                         player.state = Player.PLAYER_STATE_PLAYING
                 else:
@@ -189,7 +204,7 @@ class PlayerWrapper():
         #logger.info("stringed")        
         player_dump = {}
         with self.player() as player:
-            player_dump = { k: player.__getattribute__(k) for k in ['shuffle', 'mute', 'state', 'volume'] }
+            player_dump = { k: player.__getattribute__(k) for k in ['shuffle', 'mute', 'state', 'volume', 'time_remaining', 'time_pos', 'percent_pos'] }
         _publish_event('player_status', json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist}))
         
     ## -- BEGIN CLIENT CALLS -- ## 

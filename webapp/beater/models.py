@@ -264,6 +264,9 @@ class Player(models.Model):
     preceding_command_args = models.CharField(max_length=255, null=True)
     mute = models.BooleanField(null=False, default=False)
     shuffle = models.BooleanField(null=False, default=False)
+    time_remaining = models.DecimalField(max_digits=4, decimal_places=0, default=0)
+    time_pos = models.DecimalField(max_digits=4, decimal_places=0, default=0)
+    percent_pos = models.DecimalField(max_digits=4, decimal_places=0, default=0)
     state = models.CharField(max_length=7, choices=PLAYER_STATE_CHOICES, default=PLAYER_STATE_STOPPED, null=False)
     cursor_mode = models.CharField(max_length=6, choices=CURSOR_MODE_CHOICES, default=CURSOR_MODE_NEXT, null=False)
     repeat_song = models.BooleanField(null=False, default=False)
@@ -276,7 +279,7 @@ class Player(models.Model):
     
     def compare(self, p1):
         ps = p1.playlistsong
-        for a in [ a for a in self.__dict__ if a not in ['created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:
+        for a in [ a for a in self.__dict__ if a not in ['time_remaining', 'time_pos', 'percent_pos', 'created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:
             ao = self.__dict__[a]
             bo = None 
             if a in p1.__dict__:

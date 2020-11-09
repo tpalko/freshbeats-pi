@@ -2,7 +2,7 @@ ARG ALPINE_ARCH
 
 FROM ${ALPINE_ARCH}/alpine
 
-RUN apk update && apk add --no-cache python3 py3-pip mpv socat
+RUN apk update && apk add --no-cache python3 py3-pip mpv socat jq
 
 WORKDIR /opt/beatplayer 
 

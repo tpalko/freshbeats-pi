@@ -153,7 +153,6 @@ class MPPlayer():
         try:
             
             response = self.player.play(filepath)
-            self.player.set_volume()
             
             def run_in_thread(callback_url):#, command, force):
                 '''Thread target'''

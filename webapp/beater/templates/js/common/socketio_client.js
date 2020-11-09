@@ -59,6 +59,9 @@ socket.on('player_status', function(player_status){
   
   $(".playlist").html(player_status.playlist);
   $("#player_volume").html(player_status.player.volume);
+  $("#player_time_pos").html(player_status.player.time_pos);
+  $("#player_time_remaining").html(player_status.player.time_remaining);
+  $("#player_percent_pos").html(player_status.player.percent_pos + "%");
   $(".playlist")[0].scroll(0, $(".playlist").find(".playlistsong.current")[0].offsetTop - 43);
   
   realignPage();  
