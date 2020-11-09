@@ -310,11 +310,13 @@ class MPVWrapper(BaseWrapper):
         command = { 'command': [ "get_property", property ] }
         socket_response = self._send_to_socket(command)
         logger_wrapper.debug(socket_response)
-        return socket_response['data']
+        socket_data = json.loads(socket_response['data'])
+        return socket_data['data']
     
     def properties_available(self):
         command = { 'command': [ "get_property", "volume" ] }
         socket_response = self._send_to_socket(command)
-        return socket_response['success']
+        socket_data = json.loads(socket_response['data'])
+        return socket_data['error'] == "success"
     
    
