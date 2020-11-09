@@ -89,7 +89,7 @@ class BaseWrapper():
     
     def _send_to_socket(self, command):
         logger_wrapper.debug("_send_to_socket: %s" % command)
-        response = {'success': False, 'message': '', 'data': {}}
+        response = {'success': False, 'message': '', 'data': ""}
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             attempts = 0
