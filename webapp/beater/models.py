@@ -232,7 +232,7 @@ class BeatPlayerClient(models.Model):
             'registered': self.registered,
             'selfreport': self.selfreport,
             'mounted': self.mounted
-        })
+        }, indent=4)
 
 class Player(models.Model):
     PLAYER_STATE_STOPPED = 'stopped'
@@ -277,6 +277,19 @@ class Player(models.Model):
     created_at = models.DateTimeField(default=get_localized_now)
     updated_at = models.DateTimeField(auto_now=True)
     
+    def status_dump(self):
+        return json.dumps({
+            'mute': self.mute, 
+            'shuffle': self.shuffle,
+            'volume': self.volume,
+            'playlistsong': self.playlistsong.song.name,
+            'state': self.state,
+            'cursor_mode': self.cursor_mode,
+            'repeat_song': self.repeat_song,
+            'beatplayer_status': self.beatplayer_status,
+            'beatplayer_registered': self.beatplayer_registered
+        }, indent=4)
+        
     def compare(self, p1):
         ps = p1.playlistsong
         for a in [ a for a in self.__dict__ if a not in ['time_remaining', 'time_pos', 'percent_pos', 'created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:

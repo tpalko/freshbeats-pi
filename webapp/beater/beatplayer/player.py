@@ -47,26 +47,36 @@ class PlayerWrapper():
     
     @contextmanager
     def player(self, read_only=False, command=None, args=None):
-        self.lock.acquire()
-        player = self._get_last()
-        try:
-            yield player
-        finally:
-            player.preceding_command = command 
-            player.preceding_command_args = args
-            
-            player.playlistsong = self.playlist.get_current_playlistsong()
-            
-            beatplayer = BeatplayerRegistrar.getInstance()
-            with beatplayer.client_state(read_only=True) as client_state:
-                player.beatplayer_status = client_state.status
-                player.beatplayer_registered = client_state.registered
-            
-            last_player = self._get_last()
-            
-            if(not player.compare(last_player)):
-                player.save()
-            self.lock.release()
+        if read_only:
+            player = self._get_last()
+            logger.debug("Player state (r/o yield): %s" % player.status_dump())
+            try:
+                yield player
+            except:
+                pass 
+        else:
+            self.lock.acquire()
+            player = self._get_last()
+            logger.debug("Player state (r/w yield): %s" % player.status_dump())
+            try:
+                yield player
+            finally:
+                player.preceding_command = command 
+                player.preceding_command_args = args
+                
+                player.playlistsong = self.playlist.get_current_playlistsong()
+                
+                beatplayer = BeatplayerRegistrar.getInstance()
+                with beatplayer.client_state(read_only=True) as client_state:
+                    player.beatplayer_status = client_state.status
+                    player.beatplayer_registered = client_state.registered
+                
+                last_player = self._get_last()
+                
+                if(not player.compare(last_player)):
+                    logger.info("Player state (save): %s" % player.status_dump())
+                    player.save()
+                self.lock.release()
     
     # def _load(self):         
     #     player = self._get_last()
@@ -203,7 +213,7 @@ class PlayerWrapper():
         playlist = str(self.playlist)
         #logger.info("stringed")        
         player_dump = {}
-        with self.player() as player:
+        with self.player(read_only=True) as player:
             player_dump = { k: str(player.__getattribute__(k)) for k in ['shuffle', 'mute', 'state', 'volume', 'time_remaining', 'time_pos', 'percent_pos'] }
         _publish_event('player_status', json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist}))
         
@@ -263,7 +273,7 @@ class PlayerWrapper():
     
     def previous(self, **kwargs):
         response = None 
-        with self.player() as player:
+        with self.player(read_only=True) as player:
             self.playlist.back_up_cursor()
             if player.state != Player.PLAYER_STATE_STOPPED:
                 self._beatplayer_play()
@@ -271,7 +281,7 @@ class PlayerWrapper():
     
     def restart(self, **kwargs):
         response = None 
-        with self.player() as player:
+        with self.player(read_only=True) as player:
             if player.state != Player.PLAYER_STATE_STOPPED:
                 self._beatplayer_play()
         return response 
@@ -338,7 +348,7 @@ class PlayerWrapper():
     
     def next(self, **kwargs):
         response = None 
-        with self.player() as player:
+        with self.player(read_only=True) as player:
             cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
             if player.state != Player.PLAYER_STATE_STOPPED:
                 self._beatplayer_play()
@@ -347,7 +357,7 @@ class PlayerWrapper():
     def next_artist(self, **kwargs):        
         song = self.playlist.get_current_playlistsong().song
         current_artist = song.album.artist.id 
-        with self.player() as player:
+        with self.player(read_only=True) as player:
             while song.album.artist.id == current_artist:
                 cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
                 song = self.playlist.get_current_playlistsong().song
