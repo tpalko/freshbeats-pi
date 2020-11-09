@@ -104,7 +104,7 @@ class BaseWrapper():
             if os.path.exists("/tmp/mpv.sock"):
                 logger_wrapper.debug("connecting to /tmp/mpv.sock for %s" % command)
                 attempts = 0
-                while not response['success'] and attempts < 10:
+                while not response['success'] and attempts < 1:
                     try:
                         attempts += 1
                         s.connect("/tmp/mpv.sock")
@@ -248,7 +248,7 @@ class MPVWrapper(BaseWrapper):
         super().__init__(*args, **kwargs)
         
     def _play_command(self, filepath):
-        command_line = "%s --quiet=yes --no-video --volume %s --input-ipc-server=/tmp/mpv.sock" % (self.player_path, self.volume)
+        command_line = "%s --quiet=yes --no-video --volume=%s --input-ipc-server=/tmp/mpv.sock" % (self.player_path, self.volume)
         command = command_line.split(' ')
         command.append(os.path.join(self.music_folder, filepath))
         logger_wrapper.debug(' '.join(command))
@@ -306,8 +306,13 @@ class MPVWrapper(BaseWrapper):
    
     def _get_property(self, property):
         command = { 'command': [ "get_property", property ] }
-        response = json.loads(self._send_to_socket(command))
-        return response['data']
-        
+        socket_response = self._send_to_socket(command)
+        logger_wrapper.debug(socket_response)
+        return socket_response['data']
+    
+    def properties_available(self):
+        command = { 'command': [ "get_property", "volume" ] }
+        socket_response = self._send_to_socket(command)
+        return socket_response['success']
     
    

@@ -204,7 +204,7 @@ class PlayerWrapper():
         #logger.info("stringed")        
         player_dump = {}
         with self.player() as player:
-            player_dump = { k: player.__getattribute__(k) for k in ['shuffle', 'mute', 'state', 'volume', 'time_remaining', 'time_pos', 'percent_pos'] }
+            player_dump = { k: str(player.__getattribute__(k)) for k in ['shuffle', 'mute', 'state', 'volume', 'time_remaining', 'time_pos', 'percent_pos'] }
         _publish_event('player_status', json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist}))
         
     ## -- BEGIN CLIENT CALLS -- ## 
