@@ -196,11 +196,11 @@ class PlayerWrapper():
             else:
                 if player.state != Player.PLAYER_STATE_STOPPED:
                     if player.cursor_mode == Player.CURSOR_MODE_NEXT:
-                        #cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
+                        cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
                         pass 
                     else:
                         player.cursor_mode = Player.CURSOR_MODE_NEXT
-                    #response = self._beatplayer_play()
+                    response = self._beatplayer_play()
                     if response['success']:
                         player.state = Player.PLAYER_STATE_PLAYING
                 else:
