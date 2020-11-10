@@ -287,7 +287,7 @@ class MPVWrapper(BaseWrapper):
         return self._get_property("time-remaining")
     
     def get_time_pos(self):
-        return self._get_property("time_pos")
+        return self._get_property("time-pos")
     
     def get_percent_pos(self):
         return self._get_property("percent-pos")
