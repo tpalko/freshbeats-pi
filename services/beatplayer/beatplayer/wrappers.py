@@ -12,6 +12,7 @@ except: #2
     from ConfigParser import ConfigParser
 
 from abc import ABCMeta, abstractmethod
+from common.processmonitor import ProcessMonitor
 
 BEATPLAYER_DEFAULT_VOLUME = 90
 BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
@@ -33,6 +34,8 @@ class BaseWrapper():
     
     muted = False  
     current_command = None 
+    
+    play_thread = None 
     
     @staticmethod 
     def getInstance(t=None):
@@ -64,6 +67,7 @@ class BaseWrapper():
                 #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
                 self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
                 self.current_command = command 
+                logger_wrapper.debug(' '.join(self.current_command) if self.current_command else None)
                 response['success'] = True 
             else:
                 response['message'] = "A process is running (%s), no action" % self.ps.pid
@@ -114,10 +118,25 @@ class BaseWrapper():
                         byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
                         response['success'] = True 
                         #response['data']['bytes_read'] = byte_count                        
+                        blanks = 0
+                        logger_wrapper.debug("Looping socket recv for any output")
                         while True:
                             try:
-                                response['data'] = "%s%s" % (response['data'], s.recv(1024).decode())
+                                received = s.recv(1024).decode()
+                                if received == "":
+                                    blanks += 1
+                                    logger_wrapper.warning("Empty socket response %s" % blanks)
+                                    if blanks > 10:
+                                        raise Exception("Too many empty socket responses")
+                                else:
+                                    logger_wrapper.debug(" - socket response: %s" % received)
+                                    response['data'] = "%s%s" % (response['data'], received)    
                             except socket.timeout as t:
+                                break 
+                            except:
+                                logger_wrapper.error(sys.exc_info()[0])
+                                logger_wrapper.error(sys.exc_info()[1])
+                                traceback.print_tb(sys.exc_info()[2])
                                 break 
                         logger_wrapper.debug("socket file read %s bytes on command %s" % (len(response['data']), command))
                     except:
@@ -166,13 +185,14 @@ class BaseWrapper():
             raise Exception("The file path %s does not exist" % full_path)    
             
     @abstractmethod
-    def play(self, filepath):
-        pass 
+    def play(self, filepath, callback_url=None):
+        if callback_url:
+            logger_wrapper.info("New thread to handle play: %s" % filepath)
+            self.play_thread = ProcessMonitor.process(self.ps, callback_url)
+            # if not self.server:
+            #     logger.player.info("Not running in server mode. Joining thread when done.")
+            #     play_thread.join()
         
-    @abstractmethod
-    def next(self, filepath):
-        pass 
-    
     @abstractmethod
     def stop(self):
         pass
@@ -202,11 +222,6 @@ class MPlayerWrapper(BaseWrapper):
         self.validate_filepath(filepath)
         return self._issue_command(self._play_command(filepath))
     
-    def next(self, filepath):
-        self.validate_filepath(filepath)
-        stop_response = self._send_to_process("stop")
-        return self._issue_command(self._play_command(filepath))
-
     def stop(self):
         return self._send_to_process("stop")
         
@@ -219,17 +234,6 @@ class MPlayerWrapper(BaseWrapper):
     
     def set_volume(self):
         return self._send_to_process("volume %s 1" % self.volume)
-    
-    # def next(self):
-    # 
-    #     response = {'success': False, 'message': ''}
-    #     try:
-    #         self._issue_command("pt_step 1")
-    #         response['success'] = True 
-    #     except:
-    #         response['message'] = sys.exc_info()[1]
-    # 
-    #     return response 
         
 class MPVWrapper(BaseWrapper):
     
@@ -256,15 +260,12 @@ class MPVWrapper(BaseWrapper):
         logger_wrapper.debug(' '.join(command))
         return self._issue_command(command)
     
-    def play(self, filepath):
+    def play(self, filepath, callback_url=None):
         self.validate_filepath(filepath)
-        return self._play_command(filepath)
+        command_response = self._play_command(filepath)
+        super().play(filepath, callback_url)
+        return command_response 
             
-    def next(self, filepath):
-        self.validate_filepath(filepath)
-        stop_response = self.stop()
-        return self._play_command(filepath)
-
     def stop(self):
         command = { 'command': [ "stop" ] }
         return self._send_to_socket(command)
@@ -272,7 +273,7 @@ class MPVWrapper(BaseWrapper):
     def set_system_volume(self, volume):
         self._set_property("ao-volume", volume)
         
-    def set_player_volume(self):
+    def set_volume(self):
         self._set_property("volume", self.volume)
 
     def pause(self):
@@ -310,8 +311,13 @@ class MPVWrapper(BaseWrapper):
         command = { 'command': [ "get_property", property ] }
         socket_response = self._send_to_socket(command)
         logger_wrapper.debug(socket_response)
-        socket_data = json.loads(socket_response['data'])
-        return socket_data['data']
+        # -- {'data': '{"event":"tracks-changed"}\n{"event":"end-file"}\n', 'success': True, 'message': ''}
+        # --{'data': '{"data":false,"error":"success"}\n{"event":"audio-reconfig"}\n{"event":"tracks-changed"}\n{"event":"end-file"}\n', 'success': True, 'message': ''}
+        datas = [ json.loads(r) for r in socket_response['data'].split('\n') ]
+        events = ",".join([ d['event'] for d in datas if 'event' in d ])
+        logger_wrapper.warning("Events from socket: %s" % events)
+        data = "".join([ d for d in datas if 'data' in d ]) # --- expecting only one 
+        return data or None 
     
     def properties_available(self):
         command = { 'command': [ "get_property", "volume" ] }

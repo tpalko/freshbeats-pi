@@ -39,6 +39,8 @@ def health_response(request):
         
     health_data = health['data']
     
+    logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
+    
     logger.debug("Parsing health response in PlayerWrapper..")
     player = PlayerWrapper.getInstance()
     player.parse_state(health_data)

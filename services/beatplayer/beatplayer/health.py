@@ -13,6 +13,7 @@ import logging
 import requests
 import threading
 from wrappers import BaseWrapper 
+from common.processmonitor import ProcessMonitor
 
 HEALTH_LOG_LEVEL = os.getenv('BEATPLAYER_HEALTH_LOG_LEVEL', 'INFO')
 logger_health = logging.getLogger(__name__)
@@ -37,30 +38,34 @@ class PlayerHealth():
             logger_health.warning("handling SIGINT")
             self.sigint = True             
             if player_handler:
+                logger_health.warning("SIGINT handler running player handler..")
                 player_handler()
-            logger_health.debug("joining %s client threads.." % len(self.client_threads))
+            logger_health.warning("SIGINT handler joining %s client threads.." % len(self.client_threads))
             for callback_url in self.client_threads.keys():
                 t = self.client_threads[callback_url]
-                logger_health.debug(" - %s" % t.ident)
+                logger_health.warning(" - %s" % t.ident)
                 if t.is_alive():
                     t.join(timeout=10)
                     if t.is_alive():
-                        logger_health.debug("   - timed out" % t.ident)
+                        logger_health.warning("   - %s timed out" % t.ident)
                     else:
-                        logger_health.debug("   - joined")
+                        logger_health.warning("   - joined")
                 else:
-                    logger_health.debug("   - not alive")
-            if self.play_thread and self.play_thread.is_alive():     
-                logger_health.debug("joining play thread..")
-                self.play_thread.join(timeout=10)
-                if self.play_thread.is_alive():
-                    logger_health.debug(" - %s timed out" % t.ident)
+                    logger_health.warning("   - not alive")
+            player = BaseWrapper.getInstance()
+            if player.play_thread and player.play_thread.is_alive():     
+                logger_health.warning("SIGINT handler joining play thread..")
+                player.play_thread.join(timeout=10)
+                if player.play_thread.is_alive():
+                    logger_health.warning(" - %s timed out" % player.play_thread.ident)
                 else:
-                    logger_health.debug(" - joined")
+                    logger_health.warning(" - %s joined" % player.play_thread.ident)
             sys.exit(0)
         return handler 
         
     def healthz(self):
+        
+        logger_health.debug("Assessing player health..")
         
         player = BaseWrapper.getInstance()
         
@@ -99,6 +104,7 @@ class PlayerHealth():
                     pid = player.ps.pid
             response['data']['ps']['returncode'] = returncode 
             response['data']['ps']['pid'] = pid
+            response['data']['ps']['is_alive'] = ProcessMonitor.is_alive()
             response['success'] = True
         except:
             response['message'] = str(sys.exc_info()[1])
@@ -113,28 +119,27 @@ class PlayerHealth():
             def ping_client():
                 fails = 0
                 while not self.sigint and callback_url in self.api_clients:  
+                    logger_health.debug("Running client health ping loop..")
                     try:                  
                         player_health = self.healthz()
                         logger_health.debug(player_health)
                         logger_health.debug("Calling %s.." % callback_url)
                         callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))
-                        logger_health.debug(" - returned from post to %s" % callback_url)
-                        if not callback_response:
-                            raise Exception(" - no response on client ping to %s" % callback_url)
-                        if not callback_response.json()['success']:
-                            logger_health.info(" - not success on client ping %s: %s" % (callback_url, callback_response))
+                        if not callback_response or not callback_response.json()['success']:
+                            raise Exception(" - no response or unsuccessful client ping to %s" % callback_url)
                         else:
-                            logger_health.info(" - success from %s" % callback_url)
+                            logger_health.debug(" - success from %s" % callback_url)
                     except:
                         logger_health.error(str(sys.exc_info()[1]))
                         traceback.print_tb(sys.exc_info()[2])
                         fails += 1
                     if fails > 5:
-                        logger_health.warning("Failed to post callback URL %s, de-registering the client" % callback_url)
+                        logger_health.warning("%s fails to post callback URL %s, de-registering the client" % (5, callback_url))
                         del self.api_clients[callback_url]                   
                         del self.client_threads[callback_url]
                         break
-                    time.sleep(5)
+                    if 'ps' not in player_health['data'] or not player_health['data']['ps']['is_alive']:
+                        time.sleep(5)
                 logger_health.warning("Exiting ping loop for %s (sigint: %s, api_clients: %s)" % (callback_url, self.sigint, callback_url in self.api_clients))
             register = True 
             if callback_url in self.api_clients and callback_url in self.client_threads:

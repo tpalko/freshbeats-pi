@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # TODO: this needs to be reimplemented
 # -- beatplayer up first, webapp calls on start to register, beatplayer pings on short cycle, webapp checks age of last ping for status 
 # -- webapp up first, exponential backoff call to beatplayer to register with some high max, refresh backoff on page requests 
-if settings.FRESHBEATS_SERVING != 'False':
+if settings.FRESHBEATS_SERVING:
     logger.info("")
     logger.info("*********************************")
     logger.info("* Starting up global beatplayer *")

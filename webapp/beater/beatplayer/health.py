@@ -61,8 +61,7 @@ class BeatplayerRegistrar():
     
     def log_health_response(self, health_data):
         with self.client_state() as client_state:
-            now = get_localized_now()
-            logger.debug('Health response (%s): %s' % (datetime.strftime(now, "%Y-%m-%d %H:%M:%S"), json.dumps(health_data)))
+            now = get_localized_now()            
             client_state.mounted = health_data['music_folder_mounted']
             client_state.last_health_check = now
             self._set_and_show_status(client_state)

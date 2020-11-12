@@ -49,7 +49,7 @@ class PlayerWrapper():
     def player(self, read_only=False, command=None, args=None):
         if read_only:
             player = self._get_last()
-            logger.debug("Player state (r/o yield): %s" % player.status_dump())
+            logger.debug("Player state (R/O - yield): %s" % player.status_dump())
             try:
                 yield player
             except:
@@ -57,7 +57,7 @@ class PlayerWrapper():
         else:
             self.lock.acquire()
             player = self._get_last()
-            logger.debug("Player state (r/w yield): %s" % player.status_dump())
+            logger.debug("Player state (R/W - yield): %s" % player.status_dump())
             try:
                 yield player
             finally:
@@ -73,9 +73,11 @@ class PlayerWrapper():
                 
                 last_player = self._get_last()
                 
-                if(not player.compare(last_player)):
-                    logger.info("Player state (save): %s" % player.status_dump())
+                if not player.compare(last_player):
+                    logger.info("Player state (R/W - save): %s" % player.status_dump())
                     player.save()
+                else:
+                    logger.info("Player state (R/W - not saving)")
                 self.lock.release()
     
     # def _load(self):         
@@ -163,7 +165,7 @@ class PlayerWrapper():
     def parse_state(self, health_data):
         with self.player() as player:
             if 'ps' in health_data:
-                if health_data['ps']['pid'] < 0:
+                if not health_data['ps']['is_alive']:
                     player.state = Player.PLAYER_STATE_STOPPED
                     player.mute = False
                 else:

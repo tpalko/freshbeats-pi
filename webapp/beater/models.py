@@ -292,7 +292,7 @@ class Player(models.Model):
         
     def compare(self, p1):
         ps = p1.playlistsong
-        for a in [ a for a in self.__dict__ if a not in ['time_remaining', 'time_pos', 'percent_pos', 'created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:
+        for a in [ a for a in self.__dict__ if a not in ['created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:
             ao = self.__dict__[a]
             bo = None 
             if a in p1.__dict__:
