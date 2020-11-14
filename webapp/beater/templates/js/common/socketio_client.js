@@ -47,14 +47,14 @@ socket.on('player_status', function(player_status){
   }
   
   if (player_status.player.state == 'paused') {
-    $("a[command='pause']").removeClass('btn-default').addClass('btn-warning');
-    $("a[command='play']").removeClass('btn-default').addClass('btn-success');
+    $("a.player-state[command='pause']").removeClass('btn-default').addClass('btn-warning');
+    $("a.player-state[command='play']").removeClass('btn-default').addClass('btn-success');
   } else if (player_status.player.state == 'playing') {
-    $("a[command='pause']").removeClass('btn-warning').addClass('btn-default');
-    $("a[command='play']").removeClass('btn-default').addClass('btn-success');
+    $("a.player-state[command='pause']").removeClass('btn-warning').addClass('btn-default');
+    $("a.player-state[command='play']").removeClass('btn-default').addClass('btn-success');
   } else {
-    $("a[command='pause']").removeClass('btn-warning').addClass('btn-default');
-    $("a[command='play']").removeClass('btn-success').addClass('btn-default');
+    $("a.player-state[command='pause']").removeClass('btn-warning').addClass('btn-default');
+    $("a.player-state[command='play']").removeClass('btn-success').addClass('btn-default');
   }
   
   $(".playlist").html(player_status.playlist);

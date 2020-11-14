@@ -13,6 +13,7 @@ except: #2
 
 from abc import ABCMeta, abstractmethod
 from common.processmonitor import ProcessMonitor
+from common.mpvsockettalker import MpvSocketTalker
 
 BEATPLAYER_DEFAULT_VOLUME = 90
 BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
@@ -94,57 +95,12 @@ class BaseWrapper():
         return response 
     
     def _send_to_socket(self, command):
-        logger_wrapper.debug("_send_to_socket: %s" % command)
+        
         response = {'success': False, 'message': '', 'data': ""}
         try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            attempts = 0
-            while not os.path.exists(self.mpv_socket):
-                if attempts > 15:
-                    logger_wrapper.warning("tried 15 times over 30 seconds to find %s, quitting" % self.mpv_socket)
-                    break
-                else:
-                    logger_wrapper.warning("%s does not exist.. waiting 2.." % self.mpv_socket)
-                    attempts += 1
-                    time.sleep(2)
-            if os.path.exists(self.mpv_socket):
-                logger_wrapper.debug("connecting to %s for %s" % (self.mpv_socket, command))
-                attempts = 0
-                while not response['success'] and attempts < 1:
-                    try:
-                        attempts += 1
-                        s.connect(self.mpv_socket)
-                        s.settimeout(2)
-                        byte_count = s.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
-                        response['success'] = True 
-                        #response['data']['bytes_read'] = byte_count                        
-                        blanks = 0
-                        logger_wrapper.debug("Looping socket recv for any output")
-                        while True:
-                            try:
-                                received = s.recv(1024).decode()
-                                if received == "":
-                                    blanks += 1
-                                    logger_wrapper.warning("Empty socket response %s" % blanks)
-                                    if blanks > 10:
-                                        raise Exception("Too many empty socket responses")
-                                else:
-                                    logger_wrapper.debug(" - socket response: %s" % received)
-                                    response['data'] = "%s%s" % (response['data'], received)    
-                            except socket.timeout as t:
-                                break 
-                            except:
-                                logger_wrapper.error(sys.exc_info()[0])
-                                logger_wrapper.error(sys.exc_info()[1])
-                                traceback.print_tb(sys.exc_info()[2])
-                                break 
-                        logger_wrapper.debug("socket file read %s bytes on command %s" % (len(response['data']), command))
-                    except:
-                        logger_wrapper.warning("%s: will try again" % (str(sys.exc_info()[1])))
-                        time.sleep(1)
-                s.close()
-            else:
-                response['message'] = "%s could not be found, command (%s) not sent" % (self.mpv_socket, command)
+            talker = MpvSocketTalker.getInstance(self.mpv_socket)
+            response['data'] = talker.send(command)
+            response['success'] = True 
         except:
             response['message'] = str(sys.exc_info()[1])
             logger_wrapper.error(response['message'])
@@ -313,11 +269,12 @@ class MPVWrapper(BaseWrapper):
         logger_wrapper.debug(socket_response)
         # -- {'data': '{"event":"tracks-changed"}\n{"event":"end-file"}\n', 'success': True, 'message': ''}
         # --{'data': '{"data":false,"error":"success"}\n{"event":"audio-reconfig"}\n{"event":"tracks-changed"}\n{"event":"end-file"}\n', 'success': True, 'message': ''}
-        datas = [ json.loads(r) for r in socket_response['data'].split('\n') ]
+        datas = [ json.loads(r) for r in socket_response['data'].split('\n') if r ]
         events = ",".join([ d['event'] for d in datas if 'event' in d ])
-        logger_wrapper.warning("Events from socket: %s" % events)
-        data = "".join([ d for d in datas if 'data' in d ]) # --- expecting only one 
-        return data or None 
+        if events != "":
+            logger_wrapper.warning("Events from socket: %s" % events)
+        data = datas[0]['data'] if len(datas) > 0 and 'data' in datas[0] else False
+        return data
     
     def properties_available(self):
         command = { 'command': [ "get_property", "volume" ] }

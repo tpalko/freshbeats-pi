@@ -45,7 +45,7 @@ class PlayerHealth():
                 t = self.client_threads[callback_url]
                 logger_health.warning(" - %s" % t.ident)
                 if t.is_alive():
-                    t.join(timeout=10)
+                    t.join(timeout=2)
                     if t.is_alive():
                         logger_health.warning("   - %s timed out" % t.ident)
                     else:
@@ -75,7 +75,9 @@ class PlayerHealth():
             (out, err) = ps_grep.communicate(None)
             returncode = ps_grep.wait()
             music_folder_mounted = returncode == 0
+            logger_health.debug("Checked music folder %s mounted: %s" % (player.music_folder, music_folder_mounted))
         else:
+            logger_health.debug("Music folder mount check skipped")
             music_folder_mounted = True 
         
         response = {'success': False, 'message': '', 'data': {}}
@@ -88,13 +90,16 @@ class PlayerHealth():
         
         player_up = player.properties_available()
         if player_up:
+            logger_health.debug("Checking player stats:")
             response['data']['paused'] = player.is_paused()
             response['data']['volume'] = player.player_volume()
             response['data']['muted'] = player.is_muted()
             response['data']['time_remaining'] = player.get_time_remaining()
             response['data']['time_pos'] = player.get_time_pos()
             response['data']['percent_pos'] = player.get_percent_pos()
-        
+        else:
+            logger_health.debug("Skipping player stats check")
+            
         try:
             returncode = -1
             pid = -1
@@ -120,6 +125,7 @@ class PlayerHealth():
                 fails = 0
                 while not self.sigint and callback_url in self.api_clients:  
                     logger_health.debug("Running client health ping loop..")
+                    player_health = None 
                     try:                  
                         player_health = self.healthz()
                         logger_health.debug(player_health)
@@ -138,7 +144,7 @@ class PlayerHealth():
                         del self.api_clients[callback_url]                   
                         del self.client_threads[callback_url]
                         break
-                    if 'ps' not in player_health['data'] or not player_health['data']['ps']['is_alive']:
+                    if not player_health or 'ps' not in player_health['data'] or not player_health['data']['ps']['is_alive']:
                         time.sleep(5)
                 logger_health.warning("Exiting ping loop for %s (sigint: %s, api_clients: %s)" % (callback_url, self.sigint, callback_url in self.api_clients))
             register = True 

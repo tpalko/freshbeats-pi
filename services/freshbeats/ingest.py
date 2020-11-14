@@ -711,6 +711,7 @@ def main(artist_filter, tags_menu, sha1_scan, id3_scan, purge, skip_verification
             'purge': purge, 
             'skip_verification': skip_verification
         }
+        # -- double-star a dict to pass kwargs 
         f = Ingest(**config)
         f.update_db()
 

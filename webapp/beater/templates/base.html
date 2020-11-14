@@ -53,19 +53,19 @@
   				<div class="col-md-5">
             <div class="row">
               <!-- cursor-fill or columns-gutters could also work for shuffle -->
-              <a class="btn btn-default player" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
-    					<a class="btn btn-default player" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
-              <a class="btn btn-default player" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
-              <a class="btn btn-default player" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
-    					<a class="btn btn-danger player" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
-    					<a class="btn btn-default player" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
-    					<a class="btn btn-default player" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
-              <a class="btn btn-default player" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
-              <a class="btn btn-default btn-sm player" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
-              <a class="btn btn-default btn-sm player" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
-              <a class="btn btn-default btn-sm player" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
+              <a class="btn btn-default player player-state" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
+    					<a class="btn btn-default player player-state" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
+              <a class="btn btn-default player player-state" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
+              <a class="btn btn-default player player-state" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
+    					<a class="btn btn-danger player player-state" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
+    					<a class="btn btn-default player player-state" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
+    					<a class="btn btn-default player player-state" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
+              <a class="btn btn-default player player-state" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
+              <a class="btn btn-default btn-sm player player-state" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
+              <a class="btn btn-default btn-sm player player-state" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
+              <a class="btn btn-default btn-sm player player-state" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
               <span id="player_volume"></span>            
-              <a class="btn btn-default btn-sm player" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
+              <a class="btn btn-default btn-sm player player-state" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
             </div>            
             <div class="row">
               <div class="col-md-3">

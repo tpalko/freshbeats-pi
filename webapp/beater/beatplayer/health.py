@@ -1,4 +1,5 @@
 import sys
+import os
 import json
 import logging
 import traceback
@@ -11,6 +12,9 @@ from django.conf import settings
 from ..common.switchboard import _publish_event
 from ..common.util import get_localized_now
 from ..models import BeatPlayerClient
+
+REGISTRATION_TIMEOUT = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_TIMEOUT', 30))
+REGISTRATION_BACKOFF = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_BACKOFF', 3))
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +116,7 @@ class BeatplayerRegistrar():
                     self._set_and_show_status(client_state)
                     if client_state.registered:
                         break
-                    wait = attempts*3 if attempts < 200 else 600
+                    wait = attempts*REGISTRATION_BACKOFF if attempts < 200 else 600
                     logger.debug(" - registration attempt: %s, waiting %s.." % (attempts, wait))
                     time.sleep(wait)
             # - wait a moment after registering to start fresh checking..
@@ -134,7 +138,7 @@ class BeatplayerRegistrar():
                         since_last = (now - client_state.last_health_check).total_seconds()
                         logger.debug("Last health check response: %s seconds ago (%s)" % (since_last, datetime.strftime(client_state.last_health_check, "%Y-%m-%d %H:%M:%S")))
                         misses = 0
-                        if since_last > 30:
+                        if since_last > REGISTRATION_TIMEOUT:
                             client_state.selfreport = False 
                             logger.warn("Beatplayer down for %s seconds, assuming restart, quitting fresh check and attempting re-registration" % (since_last))
                             break
