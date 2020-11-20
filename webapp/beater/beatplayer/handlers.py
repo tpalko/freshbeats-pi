@@ -32,24 +32,35 @@ logger = logging.getLogger(__name__)
 @csrf_exempt
 def health_response(request):
     
-    health = json.loads(request.body.decode())
-    
-    if not health['success'] and health['message'] and len(health['message']) > 0:
-        _publish_event('message', json.dumps(health['message']))
+    response = {'message': "", 'success': False, 'result': {}}
+    try:
+        health = json.loads(request.body.decode())
         
-    health_data = health['data']
-    
-    logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
-    
-    logger.debug("Parsing health response in PlayerWrapper..")
-    player = PlayerWrapper.getInstance()
-    player.parse_state(health_data)
+        if not health['success'] and health['message'] and len(health['message']) > 0:
+            _publish_event('message', json.dumps(health['message']))
+            
+        health_data = health['data']
         
-    logger.debug("Parsing health response in BeatplayerRegistrar..")
-    beatplayer = BeatplayerRegistrar.getInstance()
-    beatplayer.log_health_response(health_data)
+        logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
+        
+        logger.debug("Parsing health response in PlayerWrapper..")
+        player = PlayerWrapper.getInstance()
+        player.parse_state(health_data)
+            
+        logger.debug("Parsing health response in BeatplayerRegistrar..")
+        beatplayer = BeatplayerRegistrar.getInstance()
+        beatplayer.log_health_response(health_data)
+        
+        response['success'] = True 
+    except Exception as e:
+        response['message'] = sys.exc_info()[1]
+        logger.error(dir(sys.exc_info()[2]))
+        logger.error(sys.exc_info()[2].tb_frame.f_code)
+        logger.error(sys.exc_info()[2].tb_frame.f_lineno)
+        logger.error(sys.exc_info()[2].tb_frame.f_locals)
+        _publish_event('alert', json.dumps({'message': str(sys.exc_info()[1])}))
     
-    return JsonResponse({'success': True})
+    return JsonResponse(response)
 
 @csrf_exempt
 def player(request, command):
@@ -96,7 +107,7 @@ def player_complete(request):
     try:
         player = PlayerWrapper.getInstance()
         if complete_response['data']['complete']:
-            player.call("complete", success=complete_response['success'], message=complete_response['message'])
+            player.call("complete", success=complete_response['success'], message=complete_response['message'], data=complete_response['data'])
             _publish_event('clear_player_output')
         else:
             logger.debug("player output: %s" % complete_response['message'])

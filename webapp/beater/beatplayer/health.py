@@ -46,14 +46,17 @@ class BeatplayerRegistrar():
     def client_state(self, read_only=False):
         if read_only:                        
             client_state = self._get_client_state()
-            logger.debug("Client state (r/o yield): %s" % client_state.status_dump())
+            #logger.debug("Client state (r/o yield): %s" % client_state.status_dump())
             try:
                 yield client_state
             finally:
                 pass 
         else:        
             logger.debug("Client state R/W request")    
+            caller = traceback.format_stack()[-3].split(' ')[7].replace('\n', '')
+            logger.debug("%s wants to acquire client record lock.." % caller)
             self.lock.acquire()
+            logger.debug("%s has acquired client record lock" % caller)
             client_state = self._get_client_state()
             logger.debug("Client state (yield): %s" % client_state.status_dump())
             try:
@@ -99,11 +102,12 @@ class BeatplayerRegistrar():
                         client_state.reachable = True 
                         client_state.registered = response['data']['registered']
                         if client_state.registered:
-                            logger.info(" - application subscribed to beatplayer! (%s attempts)" % attempts)                        
+                            logger.info("  - application subscribed to beatplayer! (%s attempts)" % attempts)                        
                             client_state.registered_at = get_localized_now()
                         else:
-                            logger.debug(" - attempt %s - not yet registered: %s" % (attempts, response))
+                            logger.debug("  - attempt %s - not yet registered: %s" % (attempts, response))
                         if response['data']['retry'] == False:
+                            logger.info("  - quitting registration loop (registered: %s)" % client_state.registered)
                             break
                     except ConnectionRefusedError as cre:
                         client_state.reachable = False 
@@ -115,6 +119,7 @@ class BeatplayerRegistrar():
                         logger.error("Error registering with %s: %s" % (client_state.beatplayer_url, str(sys.exc_info()[1])))
                     self._set_and_show_status(client_state)
                     if client_state.registered:
+                        logger.info("  - quitting registration loop (registered: %s)" % client_state.registered)
                         break
                     wait = attempts*REGISTRATION_BACKOFF if attempts < 200 else 600
                     logger.debug(" - registration attempt: %s, waiting %s.." % (attempts, wait))

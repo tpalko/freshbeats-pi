@@ -34,8 +34,6 @@ class MPPlayer():
     player = None 
     health = None 
     server = False 
-    
-    play_thread = None 
 
     def __init__(self, *args, **kwargs):
         
@@ -50,16 +48,16 @@ class MPPlayer():
         logger_player.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
         for p in [ c for c in self.player_clients if c.executable_filename() == preferred_player or not preferred_player ]:
-            logger_player.info(" - testing %s" % p.__name__)
             if p.can_play():
+                logger_player.info(" - %s can play - choosing" % p.__name__)
                 self.player = BaseWrapper.getInstance(p)
-                logger_player.info("  - %s chosen" % (p.__name__))
                 break 
             else:
                 logger_player.info("  - %s cannot play" % p.__name__)
         
         if not self.player:
-            raise Exception("No suitable player exists")   
+            self.player = BaseWrapper.getInstance()
+            logger_player.warning("No suitable player could be found")
 
         self.health = PlayerHealth()
     
@@ -209,7 +207,6 @@ if __name__ == "__main__":
     
     parser = OptionParser(usage='usage: %prog [options]')
 
-    logger_player.debug("Adding options..")
     parser.add_option("-a", "--address", dest="address", default='0.0.0.0', help="IP address on which to listen")
     parser.add_option("-p", "--port", dest="port", default='9000', help="port on which to listen")
     parser.add_option("-t", "--smoke-test", action="store_true", dest="smoke_test", help="Smoke test")
@@ -218,8 +215,7 @@ if __name__ == "__main__":
 
     (options, args) = parser.parse_args()
     
-    logger_player.debug("Options:")
-    logger_player.debug(options)
+    logger_player.debug("Options: %s" % options)
     
     if options.smoke_test:
         try:

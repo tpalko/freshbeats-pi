@@ -26,22 +26,18 @@
   					<h2>Hy!asdf</h2>
   				</div>
   				<div class="col-md-3">
-            <div class="row">
+            <div class="row menu">
               <div class="col-md-12">
-                <h3>
-        					<a class="" href="{% url "search" %}">search</a>
-        					<a class="" href="{% url "mobile" %}">devices</a>
-        					<a class="" href="{% url "manage" %}">collection</a>
-        					<a class="" href="{% url "report" %}">report</a>
-                  <a class="" href="{% url "playlists" %}">playlists</a>
-        					<a class="" href="{% url "survey" %}">survey</a>
-                </h3>
+                <h4>
+                  {% for menu_item in menu %}
+        					     <a class="{% if url_name == menu_item.url %}current{% endif %}" href="{% url menu_item.url %}">{{ menu_item.display }}</a>
+                  {% endfor %}        					
+                </h4>
               </div>
             </div>
-            <div class="row status">
+            <div class="row ">
               <div class="col-md-12">
-                <div id="beatplayer_status" class="btn btn-warning d-inline">B:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" /></div>
-                <div id="switchboard_status" class="btn btn-warning d-inline">S:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
+                
               </div>
             </div>
             <div class="row status">
@@ -52,27 +48,30 @@
   				</div>
   				<div class="col-md-5">
             <div class="row">
-              <!-- cursor-fill or columns-gutters could also work for shuffle -->
-              <a class="btn btn-default player player-state" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
-    					<a class="btn btn-default player player-state" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
-              <a class="btn btn-default player player-state" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
-              <a class="btn btn-default player player-state" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
-    					<a class="btn btn-danger player player-state" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
-    					<a class="btn btn-default player player-state" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
-    					<a class="btn btn-default player player-state" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
-              <a class="btn btn-default player player-state" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
-              <a class="btn btn-default btn-sm player player-state" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
-              <a class="btn btn-default btn-sm player player-state" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
-              <a class="btn btn-default btn-sm player player-state" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
-              <span id="player_volume"></span>            
-              <a class="btn btn-default btn-sm player player-state" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
-            </div>            
-            <div class="row">
-              <div class="col-md-3">
-                <h2 style="font-size: 2em;display:inline;"><span id="player_time_pos"></span>s / <span id="player_time_remaining"></span>s</h2>
+              <div class="col-md-12">
+                <!-- cursor-fill or columns-gutters could also work for shuffle -->
+                <a class="btn btn-default player player-state" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
+      					<a class="btn btn-default player player-state" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
+                <a class="btn btn-default player player-state" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
+                <a class="btn btn-default player player-state" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
+      					<a class="btn btn-danger player player-state" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
+      					<a class="btn btn-default player player-state" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
+      					<a class="btn btn-default player player-state" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
+                <a class="btn btn-default player player-state" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
+                <a class="btn btn-default btn-sm player player-state" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
+                <a class="btn btn-default btn-sm player player-state" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
+                <a class="btn btn-default btn-sm player player-state" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
+                <span id="player_volume"></span>            
+                <a class="btn btn-default btn-sm player player-state" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
               </div>
-              <div class="col-md-3">
-                <h2 style="font-size: 2em;display:inline;"><span id="player_percent_pos"></span></h2>
+            </div>            
+            <div class="row status">
+              <div class="col-md-4">
+                <h2 style="font-size: 2em;display:inline;"><span id="player_time_pos"></span> / <span id="player_time_remaining"></span></h2> <h4 style="display:inline;"><span id="player_percent_pos"></span></h4>
+              </div>
+              <div class="col-md-6">
+                <div id="beatplayer_status" class="btn btn-warning d-inline">B:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" /></div>
+                <div id="switchboard_status" class="btn btn-warning d-inline">S:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
               </div>
             </div>
             <div class="row" id="player_status"></div>

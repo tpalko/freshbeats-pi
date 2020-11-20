@@ -2,8 +2,12 @@ h1, h2, h3, h4, h5, h6 {
 	margin: 0;
 }
 
-a {
+a, a:hover {
   text-decoration: none;
+}
+
+a:hover {
+  color: #ccc;
 }
 
 .btn-warning, .btn-danger {
@@ -12,12 +16,17 @@ a {
 
 .title {
 	background-color: #633;
-	color: #3cf;
+	color: #3fc;
 	padding: 1em;
 }
 
 .title h2 {
 	margin: 0;
+}
+
+.menu .current {
+  color: #ccc;
+  font-weight: bold;
 }
 
 .result_type_header_container {

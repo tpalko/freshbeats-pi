@@ -6,6 +6,11 @@ import threading
 import traceback 
 from datetime import datetime 
 
+logging.basicConfig(
+    level=logging.WARN,
+    format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s',
+    filename='processmonitor.log'
+)
 logger = logging.getLogger(__name__)
 
 class ProcessMonitor():
@@ -77,7 +82,7 @@ class ProcessMonitor():
         logger.debug("out: %s" % out)
         logger.debug("err: %s" % err)
         if callback_url:
-            callback_response = {'success': returncode == 0, 'message': '', 'data': {'complete': True, 'out': out, 'err': err}}
+            callback_response = {'success': True, 'message': '', 'data': {'complete': True, 'returncode': returncode, 'out': out, 'err': err}}
             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
         return
 
@@ -86,7 +91,8 @@ class ProcessMonitor():
         return (ProcessMonitor.play_thread and ProcessMonitor.play_thread.is_alive()) or (ProcessMonitor.expired_at is not None and (datetime.now() - ProcessMonitor.expired_at).total_seconds() < 5)
 
     @staticmethod 
-    def process(ps, callback_url):
+    def process(ps, callback_url, log_level='INFO'):
+        logger.setLevel(level=logging._nameToLevel[log_level.upper()])
         ProcessMonitor.expired_at = None 
         ProcessMonitor.play_thread = threading.Thread(target=ProcessMonitor.run_in_thread, args=(ps, callback_url,)) #, command, force))
         ProcessMonitor.play_thread.start()

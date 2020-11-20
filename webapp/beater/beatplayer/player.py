@@ -1,11 +1,13 @@
-from django.conf import settings
-from django.template.loader import render_to_string
-import threading
-from contextlib import contextmanager 
-from ..models import Album, Artist, Player
-from xmlrpc import client
 import logging
 import json
+import math
+import traceback 
+import threading
+from xmlrpc import client
+from contextlib import contextmanager 
+from django.conf import settings
+from django.template.loader import render_to_string
+from ..models import Album, Artist, Player
 from ..common.switchboard import _publish_event
 from .playlist import Playlist 
 from .health import BeatplayerRegistrar
@@ -49,18 +51,20 @@ class PlayerWrapper():
     def player(self, read_only=False, command=None, args=None):
         if read_only:
             player = self._get_last()
-            logger.debug("Player state (R/O - yield): %s" % player.status_dump())
-            try:
-                yield player
-            except:
-                pass 
+            #logger.debug("Player state (R/O - yield): %s" % player.status_dump())
+            yield player
         else:
+            # -- File "/media/storage/development/github.com/freshbeats-pi/webapp/beater/beatplayer/player.py", line 170, in parse_state
+            caller = traceback.format_stack()[-3].split(' ')[7].replace('\n', '')
+            logger.debug("%s wants to acquire player record lock.." % caller)
             self.lock.acquire()
+            logger.debug("%s has acquired player record lock" % caller)
             player = self._get_last()
             logger.debug("Player state (R/W - yield): %s" % player.status_dump())
             try:
                 yield player
             finally:
+                logger.debug("Player yield returned from %s, cleaning up and saving" % caller)
                 player.preceding_command = command 
                 player.preceding_command_args = args
                 
@@ -77,8 +81,9 @@ class PlayerWrapper():
                     logger.info("Player state (R/W - save): %s" % player.status_dump())
                     player.save()
                 else:
-                    logger.info("Player state (R/W - not saving)")
+                    logger.debug("Player state (R/W - not saving)")
                 self.lock.release()
+                logger.debug("Caller %s released lock" % caller)
     
     # def _load(self):         
     #     player = self._get_last()
@@ -164,6 +169,7 @@ class PlayerWrapper():
     
     def parse_state(self, health_data):
         with self.player() as player:
+            logger.debug("Parsing health data")
             if 'ps' in health_data:
                 if not health_data['ps']['is_alive']:
                     player.state = Player.PLAYER_STATE_STOPPED
@@ -174,9 +180,14 @@ class PlayerWrapper():
             player.volume = health_data['volume'] if 'volume' in health_data else player.volume
             player.state = Player.PLAYER_STATE_PAUSED if 'paused' in health_data and health_data['paused'] else player.state
             player.mute = health_data['muted'] == 'True' if 'muted' in health_data else player.mute
-            player.time_remaining = health_data['time_remaining'] if 'time_remaining' in health_data else 0
-            player.time_pos = health_data['time_pos'] if 'time_pos' in health_data else 0
-            player.percent_pos = health_data['percent_pos'] if 'percent_pos' in health_data else 0
+            if 'time' in health_data:
+                player.time_pos = health_data['time'][0]
+                player.time_remaining = health_data['time'][1]
+                player.percent_pos = 100*player.time_pos / (player.time_pos + player.time_remaining)
+            else:
+                player.time_remaining = health_data['time_remaining'] if 'time_remaining' in health_data and health_data['time_remaining'] else 0
+                player.time_pos = health_data['time_pos'] if 'time_pos' in health_data and health_data['time_pos'] else 0
+                player.percent_pos = health_data['percent_pos'] if 'percent_pos' in health_data and health_data['percent_pos'] else 0
         self.show_player_status()
         
     def get_current_song(self):
@@ -184,17 +195,17 @@ class PlayerWrapper():
         
     # def set_volume(self, **kwargs):
     #     with self.player() as player:
-    #         player.volume = kwargs['volume'] if 'volume' in kwargs else player.volume
+    #         player.volume = kwargs['volume'] if 'responsevolume' in kwargs else player.volume
         
     # def clear_state(self, state=None):
     #     with self.player() as player:
     
-    def complete(self, success=True, message=''):   
+    def complete(self, success=True, message='', data={}):   
         response = {'success': False, 'message': ''}
         with self.player() as player:
             if not success:
                 #player.state = Player.PLAYER_STATE_STOPPED
-                response['message'] = message 
+                response['message'] = "%s (returncode: %s)" % (message, data['returncode'])
             else:
                 if player.state != Player.PLAYER_STATE_STOPPED:
                     if player.cursor_mode == Player.CURSOR_MODE_NEXT:
@@ -210,6 +221,7 @@ class PlayerWrapper():
         return response 
     
     def show_player_status(self):
+        logger.debug("Showing player status..")
         #logger.info("Rendering current song..")
         current_song_html = render_to_string('_current_song.html', {'song': self.get_current_song()})
         #logger.info("Stringing playlist..")
@@ -218,6 +230,8 @@ class PlayerWrapper():
         player_dump = {}
         with self.player(read_only=True) as player:
             player_dump = { k: str(player.__getattribute__(k)) for k in ['shuffle', 'mute', 'state', 'volume', 'time_remaining', 'time_pos', 'percent_pos'] }
+            player_dump['time_pos_display'] = "%.0f:%.0f%.0f" % (math.floor(player.time_pos/60), math.floor((player.time_pos%60)/10), math.floor((player.time_pos%60)%10))
+            player_dump['time_remaining_display'] = "%.0f:%.0f%.0f" % (math.floor(player.time_remaining/60), math.floor((player.time_remaining%60)/10), math.floor((player.time_remaining%60)%10))
         _publish_event('player_status', json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist}))
         
     ## -- BEGIN CLIENT CALLS -- ## 

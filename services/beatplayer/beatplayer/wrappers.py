@@ -28,40 +28,44 @@ class BaseWrapper():
     __instance = None 
     
     volume = None 
-    music_folder = None 
-    mpv_socket = None 
+    music_folder = None     
     
     ps = None 
     
-    muted = False  
+    muted = False # -- subclasses must manage this state 
     current_command = None 
     
     play_thread = None 
     
     @staticmethod 
     def getInstance(t=None):
-        if t and BaseWrapper.__instance == None:
-            t()
+        if BaseWrapper.__instance == None:
+            if t:
+                t()
+            else:
+                BaseWrapper()
         return BaseWrapper.__instance 
         
     def __init__(self, *args, **kwargs):
         if BaseWrapper.__instance != None:
             raise Exception("Already exists!")
         else:
+            logger_wrapper.info("Creating BaseWrapper/%s singleton" % self.__class__.__name__)
             self.volume = int(BEATPLAYER_INITIAL_VOLUME)
-            self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')
-            self.mpv_socket = os.getenv('MPV_SOCKET', '/tmp/mpv.sock')
-            logger_wrapper.info("music folder: %s" % self.music_folder)
+            self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')            
+            logger_wrapper.info("  - music folder: %s" % self.music_folder)            
+            logger_wrapper.info("  - volume: %s" % self.volume)
             for k in kwargs:
                 val = kwargs[k]
                 # -- handling comma-separated strings as lists 
                 if type(kwargs[k]) == str and kwargs[k].count(",") > 0:
                     val = kwargs[k].split(',')
-                logger_wrapper.debug("setting %s: %s" % (k, val))
+                logger_wrapper.debug("  - setting %s: %s" % (k, val))
                 self.__setattr__(k, val)
             BaseWrapper.__instance = self 
     
     def _issue_command(self, command):
+        logger_wrapper.debug("Issuing command: %s" % command)
         response = {'success': False, 'message': '', 'data': {}}
         try:
             if not self.ps or self.ps.poll() is not None:
@@ -87,20 +91,6 @@ class BaseWrapper():
                 response['success'] = True
             else:
                 response['message'] = "No process is running"
-        except:
-            response['message'] = str(sys.exc_info()[1])
-            logger_wrapper.error(response['message'])
-            logger_wrapper.error(sys.exc_info()[0])
-            traceback.print_tb(sys.exc_info()[2])
-        return response 
-    
-    def _send_to_socket(self, command):
-        
-        response = {'success': False, 'message': '', 'data': ""}
-        try:
-            talker = MpvSocketTalker.getInstance(self.mpv_socket)
-            response['data'] = talker.send(command)
-            response['success'] = True 
         except:
             response['message'] = str(sys.exc_info()[1])
             logger_wrapper.error(response['message'])
@@ -139,12 +129,21 @@ class BaseWrapper():
         full_path = os.path.join(self.music_folder, filepath)
         if not os.path.exists(full_path):
             raise Exception("The file path %s does not exist" % full_path)    
-            
+    
+    def is_muted(self):
+        return self.muted
+        
+    def player_volume(self):
+        return self.volume 
+     
+    def is_paused(self):
+        return self.paused 
+     
     @abstractmethod
     def play(self, filepath, callback_url=None):
         if callback_url:
             logger_wrapper.info("New thread to handle play: %s" % filepath)
-            self.play_thread = ProcessMonitor.process(self.ps, callback_url)
+            self.play_thread = ProcessMonitor.process(self.ps, callback_url, log_level=WRAPPER_LOG_LEVEL)
             # if not self.server:
             #     logger.player.info("Not running in server mode. Joining thread when done.")
             #     play_thread.join()
@@ -182,10 +181,11 @@ class MPlayerWrapper(BaseWrapper):
         return self._send_to_process("stop")
         
     def pause(self):
+        self.paused = not self.paused 
         return self._send_to_process("pause")
 
     def mute(self):
-        self.muted = False if self.muted else True
+        self.muted = not self.muted
         return self._send_to_process("mute %s" % ("1" if self.muted else "0"))
     
     def set_volume(self):
@@ -201,13 +201,19 @@ class MPVWrapper(BaseWrapper):
     '''
     
     player_path = "mpv"
-    paused = False
+    paused = False # - mpv works on a toggle, as opposed to mplayer, which needs not track this state 
+    socket_talker = None 
+    mpv_socket = None 
     
     def executable_filename():
         return "mpv"
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        logger_wrapper.info("Creating MPVWrapper")
+        self.mpv_socket = os.getenv('MPV_SOCKET', '/tmp/mpv.sock')
+        logger_wrapper.info("  - mpv socket: %s" % self.mpv_socket)
+        self.socket_talker = MpvSocketTalker.getInstance(socket_file=self.mpv_socket, log_level=WRAPPER_LOG_LEVEL)
         
     def _play_command(self, filepath):
         command_line = "%s --quiet=yes --no-video --volume=%s --input-ipc-server=%s" % (self.player_path, self.volume, self.mpv_socket)
@@ -224,7 +230,7 @@ class MPVWrapper(BaseWrapper):
             
     def stop(self):
         command = { 'command': [ "stop" ] }
-        return self._send_to_socket(command)
+        return self.socket_talker.send(command)
         
     def set_system_volume(self, volume):
         self._set_property("ao-volume", volume)
@@ -245,44 +251,25 @@ class MPVWrapper(BaseWrapper):
     
     def get_time_pos(self):
         return self._get_property("time-pos")
+        
+    def get_time(self):
+        time_pos = self.get_time_pos()
+        time_remaining = self.get_time_remaining()
+        return (time_pos, time_remaining)
     
     def get_percent_pos(self):
         return self._get_property("percent-pos")
-        
-    def is_paused(self):
-        return self._get_property("pause")
-    
-    def is_muted(self):
-        return self._get_property("mute")
-        
-    def player_volume(self):
-        return self._get_property("volume")
     
     def _set_property(self, property, value):
-        logger_wrapper.info("Set property: %s <- %s" % (property, value))
-        command = { 'command': [ "set_property", property, value ] }
-        return self._send_to_socket(command)
-   
+        return self._send_to_socket({ 'command': [ "set_property", property, value ] })
+        
     def _get_property(self, property):
-        command = { 'command': [ "get_property", property ] }
-        socket_response = self._send_to_socket(command)
-        logger_wrapper.debug(socket_response)
-        # -- {'data': '{"event":"tracks-changed"}\n{"event":"end-file"}\n', 'success': True, 'message': ''}
-        # --{'data': '{"data":false,"error":"success"}\n{"event":"audio-reconfig"}\n{"event":"tracks-changed"}\n{"event":"end-file"}\n', 'success': True, 'message': ''}
-        datas = [ json.loads(r) for r in socket_response['data'].split('\n') if r ]
-        events = ",".join([ d['event'] for d in datas if 'event' in d ])
-        if events != "":
-            logger_wrapper.warning("Events from socket: %s" % events)
-        data = datas[0]['data'] if len(datas) > 0 and 'data' in datas[0] else False
-        return data
-    
-    def properties_available(self):
-        command = { 'command': [ "get_property", "volume" ] }
-        socket_response = self._send_to_socket(command)
-        logger_wrapper.debug(socket_response)
-        if socket_response['success'] and socket_response['data'] != '':
-            socket_data = json.loads(socket_response['data'])
-            return socket_data['error'] == "success"
-        return False 
-    
-   
+        return self._send_to_socket({ 'command': [ "get_property", property ] })
+        
+    def _send_to_socket(self, command):
+        socket_responses = self.socket_talker.send(command)
+        logger_wrapper.debug("command: %s, response: %s" % (command, socket_responses))
+        return self._normalize_socket_output(socket_responses)
+            
+    def _normalize_socket_output(self, socket_output):
+        return socket_output[0] if len(socket_output) > 0 else None 

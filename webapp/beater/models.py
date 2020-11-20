@@ -284,6 +284,7 @@ class Player(models.Model):
             'volume': self.volume,
             'playlistsong': self.playlistsong.song.name,
             'state': self.state,
+            'time_remaining': float(self.time_remaining),
             'cursor_mode': self.cursor_mode,
             'repeat_song': self.repeat_song,
             'beatplayer_status': self.beatplayer_status,
