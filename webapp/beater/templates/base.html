@@ -2,23 +2,23 @@
 
 <html>
 
-	<head>
-		<title>FreshBeats</title>
+  <head>
+  <title>FreshBeats</title>
 
-		<script type="text/javascript" src="{% static "bower_components/jquery/dist/jquery.min.js" %}"></script>
-		<script type="text/javascript" src="{% static "bower_components/datatables/media/js/jquery.dataTables.min.js" %}"></script>
-		<script type="text/javascript" src="{% static "spin.min.js" %}"></script>
+  <script type="text/javascript" src="{% static "bower_components/jquery/dist/jquery.min.js" %}"></script>
+  <script type="text/javascript" src="{% static "bower_components/jquery-ui/jquery-ui.min.js" %}"></script>
+  <script type="text/javascript" src="{% static "bower_components/datatables/media/js/jquery.dataTables.min.js" %}"></script>
+  <script type="text/javascript" src="{% static "spin.min.js" %}"></script>
 
-		<link rel="stylesheet" type="text/css" href="{% static "bootstrap/css/bootstrap.min.css" %}" />
-		<link rel="stylesheet" type="text/css" href="{% static "bower_components/jquery-ui/jquery-ui.min.js" %}" />
-		<link rel="stylesheet" type="text/css" href="{% static "bower_components/datatables/media/css/dataTables.jqueryui.min.css" %}" />
-		<link rel="stylesheet" type="text/css" href="{% static "beater.css" %}" />
+  <link rel="stylesheet" type="text/css" href="{% static "bootstrap/css/bootstrap.min.css" %}" />
+  <link rel="stylesheet" type="text/css" href="{% static "bower_components/datatables/media/css/dataTables.jqueryui.min.css" %}" />
+  <link rel="stylesheet" type="text/css" href="{% static "beater.css" %}" />
 
-	</head>
+  </head>
 
-	<body>
+  <body>
 
-		<div class="container-fluid">
+  <div class="container-fluid">
 
       <div class="stickyheader">
   			<div class="row title">
@@ -89,12 +89,12 @@
   			{% block content %}{% endblock %}
       </div>
 
-		</div>
+  </div>
 
-		<script type="text/javascript" src="{% static "jquery/jquery-ui-1.11.1.custom/jquery-ui.min.js" %}"></script>
-		<script type="text/javascript" src="{% static "socket.io.slim.js" %}"></script>
+  <!--<script type="text/javascript" src="{% static "jquery/jquery-ui-1.11.1.custom/jquery-ui.min.js" %}"></script>-->
+  <script type="text/javascript" src="{% static "socket.io.slim.js" %}"></script>
 
-		<script type="text/javascript">
+  <script type="text/javascript">
     
       var type_headers = {};
       
@@ -113,339 +113,339 @@
       });
       
 
-			var spinner_opts = {
-				  lines: 5 // The number of lines to draw
-				, length: 56 // The length of each line
-				, width: 5 // The line thickness
-				, radius: 84 // The radius of the inner circle
-				, scale: 0.25 // Scales overall size of the spinner
-				, corners: 1 // Corner roundness (0..1)
-				, color: '#000' // #rgb or #rrggbb or array of colors
-				, opacity: 0.25 // Opacity of the lines
-				, rotate: 18 // The rotation offset
-				, direction: 1 // 1: clockwise, -1: counterclockwise
-				, speed: 0.5 // Rounds per second
-				, trail: 100 // Afterglow percentage
-				, fps: 20 // Frames per second when using setTimeout() as a fallback for CSS
-				, zIndex: 2e9 // The z-index (defaults to 2000000000)
-				, className: 'spinner' // The CSS class to assign to the spinner
-				, top: '50%' // Top position relative to parent
-				, left: '50%' // Left position relative to parent
-				, shadow: false // Whether to render a shadow
-				, hwaccel: false // Whether to use hardware acceleration
-				, position: 'absolute' // Element positioning
-			};
+  var spinner_opts = {
+    lines: 5 // The number of lines to draw
+  , length: 56 // The length of each line
+  , width: 5 // The line thickness
+  , radius: 84 // The radius of the inner circle
+  , scale: 0.25 // Scales overall size of the spinner
+  , corners: 1 // Corner roundness (0..1)
+  , color: '#000' // #rgb or #rrggbb or array of colors
+  , opacity: 0.25 // Opacity of the lines
+  , rotate: 18 // The rotation offset
+  , direction: 1 // 1: clockwise, -1: counterclockwise
+  , speed: 0.5 // Rounds per second
+  , trail: 100 // Afterglow percentage
+  , fps: 20 // Frames per second when using setTimeout() as a fallback for CSS
+  , zIndex: 2e9 // The z-index (defaults to 2000000000)
+  , className: 'spinner' // The CSS class to assign to the spinner
+  , top: '50%' // Top position relative to parent
+  , left: '50%' // Left position relative to parent
+  , shadow: false // Whether to render a shadow
+  , hwaccel: false // Whether to use hardware acceleration
+  , position: 'absolute' // Element positioning
+  };
 
-			var tabs;
-			var socket;
+  var tabs;
+  var socket;
 
-			function getCookie(name) {
-			    var cookieValue = null;
-			    if (document.cookie && document.cookie != '') {
-			        var cookies = document.cookie.split(';');
-			        for (var i = 0; i < cookies.length; i++) {
-			            var cookie = jQuery.trim(cookies[i]);
-			            // Does this cookie string begin with the name we want?
-			            if (cookie.substring(0, name.length + 1) == (name + '=')) {
-			                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-			                break;
-			            }
-			        }
-			    }
-			    return cookieValue;
-			}
+  function getCookie(name) {
+      var cookieValue = null;
+      if (document.cookie && document.cookie != '') {
+          var cookies = document.cookie.split(';');
+          for (var i = 0; i < cookies.length; i++) {
+              var cookie = jQuery.trim(cookies[i]);
+              // Does this cookie string begin with the name we want?
+              if (cookie.substring(0, name.length + 1) == (name + '=')) {
+                  cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                  break;
+              }
+          }
+      }
+      return cookieValue;
+  }
 
-			var csrftoken = getCookie('csrftoken');
+  var csrftoken = getCookie('csrftoken');
 
-			function csrfSafeMethod(method) {
-			    // these HTTP methods do not require CSRF protection
-			    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-			}
+  function csrfSafeMethod(method) {
+      // these HTTP methods do not require CSRF protection
+      return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+  }
 
-			function sameOrigin(url) {
-			    // test that a given url is a same-origin URL
-			    // url could be relative or scheme relative or absolute
-			    var host = document.location.host; // host + port
-			    var protocol = document.location.protocol;
-			    var sr_origin = '//' + host;
-			    var origin = protocol + sr_origin;
-			    // Allow absolute or scheme relative URLs to same origin
-			    return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
-			        (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
-			        // or any other URL that isn't scheme relative or absolute i.e relative.
-			        !(/^(\/\/|http:|https:).*/.test(url));
-			}
+  function sameOrigin(url) {
+      // test that a given url is a same-origin URL
+      // url could be relative or scheme relative or absolute
+      var host = document.location.host; // host + port
+      var protocol = document.location.protocol;
+      var sr_origin = '//' + host;
+      var origin = protocol + sr_origin;
+      // Allow absolute or scheme relative URLs to same origin
+      return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
+          (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
+          // or any other URL that isn't scheme relative or absolute i.e relative.
+          !(/^(\/\/|http:|https:).*/.test(url));
+  }
 
-			var album_songs_url = "{% url "album_songs" 0 %}";
+  var album_songs_url = "{% url "album_songs" 0 %}";
 
-			$(document).on('blur', "input.blurpost", function(e) {
-				e.preventDefault();
+  $(document).on('blur', "input.blurpost", function(e) {
+  e.preventDefault();
 
-				// -- grab the input and validate it
-				var input = $(this);
+  // -- grab the input and validate it
+  var input = $(this);
 
-				if(input.val().trim() == '') {
-					return false;
-				}
+  if(input.val().trim() == '') {
+  return false;
+  }
 
-				// -- grab the form and the callback function  to handle the edit response
-				var form = $(this).closest('form');
-				var callback = $(this).data("callback");
+  // -- grab the form and the callback function  to handle the edit response
+  var form = $(this).closest('form');
+  var callback = $(this).data("callback");
 
-				// -- grab the saved html to swap back in
-				var savedro = $(form).find(".savero");
-				var savedroEl;
+  // -- grab the saved html to swap back in
+  var savedro = $(form).find(".savero");
+  var savedroEl;
 
-				if (savedro.length > 0) {
-					var savedroEl = $.parseHTML(savedro.html().replace(/^<!--/, '').replace(/-->$/, ''));
-					$(savedro).remove();
-				}
+  if (savedro.length > 0) {
+  var savedroEl = $.parseHTML(savedro.html().replace(/^<!--/, '').replace(/-->$/, ''));
+  $(savedro).remove();
+  }
 
-				// -- make the update call
-				// -- swap the original thing back in (over the form)
-				// -- call the callback with the response data
-				$.ajax({
-					url: $(form).attr('action'),
-					data: $(form).serialize(),
-					type: $(form).attr("method"),
-					dataType: "json",
-					success: function(data, textStatus, jqXHR) {
-						if (savedroEl) {
-							$(form).replaceWith(savedroEl);
-						}
-						window[callback](data);
-						$(e.target).val("");
-					},
-					error: function(jqXHR, textStatus, errorThrown) {
-						$("<div />").addClass('error').text(errorThrown).appendTo($(form));
-					}
-				});
-				return false;
-			});
+  // -- make the update call
+  // -- swap the original thing back in (over the form)
+  // -- call the callback with the response data
+  $.ajax({
+  url: $(form).attr('action'),
+  data: $(form).serialize(),
+  type: $(form).attr("method"),
+  dataType: "json",
+  success: function(data, textStatus, jqXHR) {
+  if (savedroEl) {
+  $(form).replaceWith(savedroEl);
+  }
+  window[callback](data);
+  $(e.target).val("");
+  },
+  error: function(jqXHR, textStatus, errorThrown) {
+  $("<div />").addClass('error').text(errorThrown).appendTo($(form));
+  }
+  });
+  return false;
+  });
 
-			$(document).on('click', '.inline-edit', function(e){
+  $(document).on('click', '.inline-edit', function(e){
 
-				// -- get the html of the thing we're editing in a new div
-				var savero = $("<div />").append($(this).clone()).html();
+  // -- get the html of the thing we're editing in a new div
+  var savero = $("<div />").append($(this).clone()).html();
 
-				// -- create a new form to submit the edit
-				var newForm = $("<form />")
-					.attr("method", $(this).data("form-method"))
-					.attr("action", $(this).data("form-action"));
+  // -- create a new form to submit the edit
+  var newForm = $("<form />")
+  .attr("method", $(this).data("form-method"))
+  .attr("action", $(this).data("form-action"));
 
-				// -- add a form field to represent the value we're editing
-				var newInput = $("<input />")
-					.attr("type", "text")
-					.attr("name", $(this).data("input-name"))
-					.addClass("blurpost")
-					.addClass("col-md-3")
-					.attr("data-callback", $(this).data("callback"))
-					.attr("value", $(this).text());
-				$(newInput).appendTo(newForm);
+  // -- add a form field to represent the value we're editing
+  var newInput = $("<input />")
+  .attr("type", "text")
+  .attr("name", $(this).data("input-name"))
+  .addClass("blurpost")
+  .addClass("col-md-3")
+  .attr("data-callback", $(this).data("callback"))
+  .attr("value", $(this).text());
+  $(newInput).appendTo(newForm);
 
-				// -- add to the form a span with the commented, saved html
-				$("<span />").addClass('savero').html("<!--" + savero + "-->").appendTo(newForm);
+  // -- add to the form a span with the commented, saved html
+  $("<span />").addClass('savero').html("<!--" + savero + "-->").appendTo(newForm);
 
-				// -- swap the thing we're editing with the new form
-				$(this).replaceWith(newForm);
-				$(newInput).focus();
-			});
+  // -- swap the thing we're editing with the new form
+  $(this).replaceWith(newForm);
+  $(newInput).focus();
+  });
 
-			$(document).on('mouseover', '.album', function(e){
+  $(document).on('mouseover', '.album', function(e){
 
-				e.preventDefault();
+  e.preventDefault();
 
-				var album_id = $(this).closest("tr").data('id');
+  var album_id = $(this).closest("tr").data('id');
 
-				if(album_id == undefined){
-					album_id = $(this).data('id');
-				}
+  if(album_id == undefined){
+  album_id = $(this).data('id');
+  }
 
-				if(album_id == undefined){
-					return;
-				}
+  if(album_id == undefined){
+  return;
+  }
 
-				var row = $(this).closest("tr");
+  var row = $(this).closest("tr");
 
-				if(row.attr("title") != undefined){
-					return;
-				}
+  if(row.attr("title") != undefined){
+  return;
+  }
 
-				$.ajax({
-					url: album_songs_url.replace(/0/, album_id),
-					type: "GET",
-					dataType: "json",
-					success: function(data){
-						$(row).attr("title", data);
-					}
-				});
-			});
+  $.ajax({
+  url: album_songs_url.replace(/0/, album_id),
+  type: "GET",
+  dataType: "json",
+  success: function(data){
+  $(row).attr("title", data);
+  }
+  });
+  });
 
-			$.ajaxSetup({
-			    beforeSend: function(xhr, settings) {
-			        if (!csrfSafeMethod(settings.type) && !this.crossDomain) { //sameOrigin(settings.url)) {
-			            // Send the token to same-origin, relative URLs only.
-			            // Send the token only if the method warrants CSRF protection
-			            // Using the CSRFToken value acquired earlier
-			            xhr.setRequestHeader("X-CSRFToken", csrftoken);
-			        }
-			    },
-			    error: function(jqXHR, textStatus, errorThrown){
+  $.ajaxSetup({
+      beforeSend: function(xhr, settings) {
+          if (!csrfSafeMethod(settings.type) && !this.crossDomain) { //sameOrigin(settings.url)) {
+              // Send the token to same-origin, relative URLs only.
+              // Send the token only if the method warrants CSRF protection
+              // Using the CSRFToken value acquired earlier
+              xhr.setRequestHeader("X-CSRFToken", csrftoken);
+          }
+      },
+      error: function(jqXHR, textStatus, errorThrown){
 
-			    	if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
-			    		console.log("jqXHR.responseText does not have a value");
-			    		return;
-			    	}
+      	if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
+      		console.log("jqXHR.responseText does not have a value");
+      		return;
+      	}
 
-			    	console.log(errorThrown);
+      	console.log(errorThrown);
 
-			    	var a = jqXHR.responseText.split('\n');
+      	var a = jqXHR.responseText.split('\n');
 
-			    	showError(a[0] + "<br />" + a[1]);
-			    }
-			});
+      	showError(a[0] + "<br />" + a[1]);
+      }
+  });
 
-			function showError(message){
+  function showError(message){
 
-				$("#errors").append($("<div></div>").html(message));
-			}
+  $("#errors").append($("<div></div>").html(message));
+  }
 
-			function keepalbum_callback(response){
+  function keepalbum_callback(response){
 
-				album_id = response.albumid;
-				$("tr[albumid='" + album_id + "']").find(".album_action").html("");
-			}
+  album_id = response.albumid;
+  $("tr[albumid='" + album_id + "']").find(".album_action").html("");
+  }
 
-			$(document).on('change', "input[name='rating']", function(e){
+  $(document).on('change', "input[name='rating']", function(e){
 
-				var is_unrated = $(this).val() == "unrated";
-				$("input[name='keep']").prop("checked", is_unrated ? "checked" : "");
-			});
+  var is_unrated = $(this).val() == "unrated";
+  $("input[name='keep']").prop("checked", is_unrated ? "checked" : "");
+  });
 
-			$(document).on('change', "input[name='status']", function(e){
+  $(document).on('change', "input[name='status']", function(e){
 
-				var is_not_ok = $(this).val() != "ok";
-				$("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
-			});
+  var is_not_ok = $(this).val() != "ok";
+  $("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
+  });
 
-			$(document).on("click", "a.ajax", function(e){
+  $(document).on("click", "a.ajax", function(e){
 
-				e.preventDefault();
+  e.preventDefault();
 
-				var href = $(this).attr("href");
-				var action = $(this).data("action");
+  var href = $(this).attr("href");
+  var action = $(this).data("action");
 
-				$.ajax({
-					url: href,
-					data: { action: action },
-					type: "POST",
-					dataType: "json",
-					success: function(data){
+  $.ajax({
+  url: href,
+  data: { action: action },
+  type: "POST",
+  dataType: "json",
+  success: function(data){
 
-					},
-					error: function(error){
+  },
+  error: function(error){
 
-					}
-				});
-			});
+  }
+  });
+  });
 
-			var player_url = '{% url "player" "null" %}';
+  var player_url = '{% url "player" "null" %}';
 
-			$(document).on('click', "a.player", function(e){
+  $(document).on('click', "a.player", function(e){
 
-				var clickable = $(this);
-				var command = $(this).attr("command");
+  var clickable = $(this);
+  var command = $(this).attr("command");
         
-				var albumid = $(this).attr("albumid");
-				var songid = $(this).attr("songid");
+  var albumid = $(this).attr("albumid");
+  var songid = $(this).attr("songid");
         var artistid = $(this).attr("artistid");
         var playlistsongid = $(this).attr("playlistsongid");
 
-				var url = player_url.replace(/null/, command);
+  var url = player_url.replace(/null/, command);
 
         console.debug(url);
 
-				$.ajax({
-					url: url,
-					data: { albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
-					type: "POST",
-					datatype: "json",
-					success: function(data, textStatus, jqXHR){
-						var callback = $(clickable).attr('callback');
-						if(callback != undefined){
-							fn = window[callback];
-							fn(JSON.parse(data));
-						}
-					}
-				});
+  $.ajax({
+  url: url,
+  data: { albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
+  type: "POST",
+  datatype: "json",
+  success: function(data, textStatus, jqXHR){
+  var callback = $(clickable).attr('callback');
+  if(callback != undefined){
+  fn = window[callback];
+  fn(JSON.parse(data));
+  }
+  }
+  });
 
-				return false;
-			});
+  return false;
+  });
 
-			$(document).on('submit', 'form[id^="surveyalbum_"]', function(e){
+  $(document).on('submit', 'form[id^="surveyalbum_"]', function(e){
 
-				e.preventDefault();
+  e.preventDefault();
 
-				$.ajax({
+  $.ajax({
 
-					url: '{% url "survey_post" %}',
-					data: $(this).serialize(),
-					type: "POST",
-					datatype: "json",
-					success: function(data, textStatus, jqXHR){
-						location = location;
-					}
-				});
+  url: '{% url "survey_post" %}',
+  data: $(this).serialize(),
+  type: "POST",
+  datatype: "json",
+  success: function(data, textStatus, jqXHR){
+  location = location;
+  }
+  });
 
-				return false;
-			});
+  return false;
+  });
       
       function realignPage() {
         $(".content")[0].style.marginTop = $($(".stickyheader")[0]).height();
       }
 
-			$(document).ready(function(){
+  $(document).ready(function(){
         
         realignPage();
         
-				tabs = $("#tabs").tabs({
-					load: function(event, ui){
-						//console.log("here");
-					},
-					beforeLoad: function(event, ui){
-						//console.log("there");
-					},
-					beforeActivate: function(event, ui){
-						console.log('beforeactivate');
-						console.log(ui.newTab);
-					},
-					activate: function(event, ui){
-						console.log(ui);
-					},
-					active: 0
-				});
+  tabs = $("#tabs").tabs({
+  load: function(event, ui){
+  //console.log("here");
+  },
+  beforeLoad: function(event, ui){
+  //console.log("there");
+  },
+  beforeActivate: function(event, ui){
+  console.log('beforeactivate');
+  console.log(ui.newTab);
+  },
+  activate: function(event, ui){
+  console.log(ui);
+  },
+  active: 0
+  });
         
-				$.ajax({
-					url: '{% url "player_status_and_state" %}',
-					type: 'GET',
-					success: function(data, textStatus, jqXHR){}
-				});
+  $.ajax({
+  url: '{% url "player_status_and_state" %}',
+  type: 'GET',
+  success: function(data, textStatus, jqXHR){}
+  });
         
         $.ajax({
-					url: '{% url "beatplayer_status" %}',
-					type: 'GET',
-					success: function(data, textStatus, jqXHR){}
-				});
+  url: '{% url "beatplayer_status" %}',
+  type: 'GET',
+  success: function(data, textStatus, jqXHR){}
+  });
 
-			});
+  });
 
-			{% include 'js/common/socketio_client.js' %}
+  {% include 'js/common/socketio_client.js' %}
 
-			{% if page_script_path %}
-			{% include page_script_path %}
-			{% endif %}
+  {% if page_script_path %}
+  {% include page_script_path %}
+  {% endif %}
 
-		</script>
+  </script>
 
-	</body>
+  </body>
 </html>
