@@ -89,6 +89,10 @@ I don't know how big your collection is. This might take a while.
 
 First, see "Connecting to the database?" above. Then,
 
+```
+bower install jquery jquery-ui datatables
+```
+
 Containerized:
 ```
 docker-compose up --build
