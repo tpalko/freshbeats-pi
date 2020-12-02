@@ -1,14 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import sys
 import traceback
 import time
 import json
-try: #3
-    from xmlrpc.server import SimpleXMLRPCServer
-except: #2
-    from SimpleXMLRPCServer import SimpleXMLRPCServer
+from xmlrpc.server import SimpleXMLRPCServer
 import logging
 from optparse import OptionParser
 import requests
