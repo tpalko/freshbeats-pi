@@ -1,18 +1,20 @@
+import json
+import logging
+import os
+import random
+import re
+import sys
+import traceback
+from django.db.models import Q
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, QueryDict
 from django.shortcuts import render
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
-from django.http import HttpResponse, JsonResponse, QueryDict
-from django.db.models import Q
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
-from django.views.decorators.csrf import csrf_exempt
-import os
-import sys
-from .models import Album, Artist, Song, AlbumStatus, PlaylistSong
-import logging
-import traceback
-import json
-import random
-import re
+#from django.views.decorators.csrf import csrf_exempt
+from .forms import PlaylistForm, DeviceForm
+from .models import Album, Artist, Song, AlbumStatus, PlaylistSong, Playlist, Device
 
 logger = logging.getLogger(__name__)
 
@@ -25,23 +27,63 @@ def home(request):
     # alphabet = sorted(alphabet, cmp=lambda x,y: cmp(x.lower(), y.lower()))
     return render(request, 'home.html', {})
 
-@csrf_exempt
+def _standard_response(success=True, message='', body='', object={}):
+    return JsonResponse({
+        'success': success,
+        'message': message,
+        'body': body,
+        'object': object
+    })
+
+def _render_playlists(selected):
+    playlists = Playlist.objects.all()
+    return render_to_string('_playlists.html', { 'playlists': playlists, 'selected': selected })
+
+def playlists(request):
+    '''
+    Render playlists page 
+    '''
+    form = PlaylistForm()
+    return render(request, 'playlists.html', { 'playlist_form': form })
+
+def get_playlists(request, selected=None):
+    '''
+    Fetch playlist <select>
+    '''    
+    return _standard_response(body=_render_playlists(selected))
+
+def get_playlistsongs(request, playlist_id):
+    '''
+    Get playlistsongs for a playlist
+    '''
+    playlist = Playlist.objects.get(pk=playlist_id)
+    playlistsongs = PlaylistSong.objects.filter(playlist_id=playlist_id).order_by("queue_number")
+    return JsonResponse({'body': render_to_string('_playlistsongs.html', { 'playlistsongs': playlistsongs }), 'object': {'playlist_id': playlist_id}})
+
+def playlist(request):
+    '''
+    Create a new playlist 
+    '''
+    returnval = {'message': '', 'success': False, 'body': None, 'object': {}}
+    if request.method == 'POST':
+        form = PlaylistForm(request.POST)
+        if form.is_valid():
+            playlist = Playlist.objects.create(name=form.cleaned_data['name'])
+            returnval['body'] = _render_playlists(request, selected=playlist.id if request.POST['auto_select'] else None)
+            returnval['success'] = True 
+        else:
+            returnval['message'] = form.errors
+    return JsonResponse(returnval)
+
 def playlist_sort(request):
     logger.info(dir(request))
     logger.info(request.body)
     logger.info(request.is_ajax())
     return JsonResponse({ 'success': True })
 
-def playlists(request):
-    return render(request, 'playlists.html', {})
-
-def playlist(request):
-    playlistsongs = PlaylistSong.objects.all().order_by("queue_number")
-    return render(request, 'playlist.html', { 'playlistsongs': playlistsongs })
 
 def search(request):
     return render(request, 'search.html', {})
-
 
 def mobile(request):
 
@@ -68,7 +110,35 @@ def mobile(request):
         'other_album_action_sizes': other_album_action_sizes
     })
 
+def device_delete(request, device_id):
+    device = Device.objects.get(pk=device_id)
+    device.delete()
+    return redirect('devices')
 
+def device_edit(request, device_id):
+    device = Device.objects.get(pk=device_id)
+    if request.method == "POST":
+        form = DeviceForm(request.POST, instance=device)
+        if form.is_valid():
+            form.save()
+            return redirect('devices')
+    else:
+        form = DeviceForm(instance=device)
+    
+    return render(request, 'device.html', {'device': device, 'form': form})
+
+def device_new(request):
+    
+    form = DeviceForm()
+    
+    if request.method == "POST":
+        form = DeviceForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('devices')
+    
+    return render(request, 'device.html', {'form': form})
+    
 def devices(request):
     devices = Device.objects.all()
     return render(request, 'devices.html', {'devices': devices})
@@ -135,7 +205,6 @@ def album_filter(request, filter):
 # - AJAX ENDPOINTS
 
 
-@csrf_exempt
 def checkin(request, album_id):
 
     album = Album.objects.get(pk=album_id)
@@ -145,7 +214,6 @@ def checkin(request, album_id):
     return JsonResponse({'album_id': album_id, 'row': render_to_string("_album_row.html", {'album': album})})
 
 
-@csrf_exempt
 def checkout(request, album_id):
 
     album = Album.objects.get(pk=album_id)
@@ -169,7 +237,6 @@ def checkout(request, album_id):
     })
 
 
-@csrf_exempt
 def cancel(request, album_id):
 
     album = Album.objects.get(pk=album_id)
@@ -186,7 +253,6 @@ def cancel(request, album_id):
     return JsonResponse({'state': state, 'album_id': album_id, 'row': render_to_string(row_template, {'album': album})})
 
 
-@csrf_exempt
 def album_flag(request, album_id, album_status):
 
     album = Album.objects.get(pk=album_id)
@@ -223,14 +289,12 @@ def album_art(request, album_id):
     # album_path = os.path.join(settings.MUSIC_PATH, album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
 
 
-@csrf_exempt
 def album_songs(request, album_id):
     '''Album title: populate 'title' mouseover song list'''
     album = Album.objects.get(pk=album_id)
     return JsonResponse('\n'.join([s.name for s in album.song_set.all()]), safe=False)
 
 
-@csrf_exempt
 def fetch_remainder_albums(request):
     '''Mobile page: populate list of albums to choose from'''
     # -- does not have albumcheckout where return_at is null and action is not set
@@ -239,7 +303,6 @@ def fetch_remainder_albums(request):
     return JsonResponse({'rows': "".join([render_to_string("_album_row_checkedin.html", {'album': album}) for album in remainder_albums])})
 
 
-@csrf_exempt
 def fetch_manage_albums(request):
     '''Manage page: populate list'''
     albums = Album.objects.all()
@@ -257,7 +320,6 @@ def fetch_manage_albums(request):
     })
 
 
-@csrf_exempt
 def survey_post(request):
     '''Survey page: album post'''
     response = {'result': {}, 'success': False, 'message': ""}
@@ -296,7 +358,6 @@ def survey_post(request):
 
     return HttpResponse(json.dumps({'success': True}))
 
-@csrf_exempt
 def get_search_results(request):
     '''Search page: handle search'''
     record_shop_mode = bool(int(request.POST.get('record_shop_mode')))
@@ -354,7 +415,6 @@ def _get_artist_search_row(artist, search_string=''):
     })
 
 
-@csrf_exempt
 @require_POST
 def new_artist(request):
     '''Search page: adding new artist'''
@@ -365,7 +425,6 @@ def new_artist(request):
     return JsonResponse({'success': created, 'row': _get_artist_search_row(artist)})
 
 
-@csrf_exempt
 @require_POST
 def new_album(request, artist_id):
     '''Search page: adding new album'''
@@ -386,7 +445,6 @@ def get_album(request, albumid):
     return render(request, 'album.html', {'album': album, 'songs': album.song_set.all().order_by('name')})
 
 
-@csrf_exempt
 def update_album(request, album_id):
 
     album_name = QueryDict(request.body).get('album_name')

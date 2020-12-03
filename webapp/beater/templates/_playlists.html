@@ -1,0 +1,7 @@
+<form>
+  <select id="playlist_select" name="playlist_id">
+    {% for playlist in playlists %}    
+      <option value="{{ playlist.id }}" {% if selected|add:"0" == playlist.id|add:"0" %}selected{% endif %}>{{ playlist.name }} ({{ playlist.playlistsong_set.all|length }})</option>
+    {% endfor %}
+  </select>
+</form>

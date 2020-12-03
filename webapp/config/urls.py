@@ -40,20 +40,29 @@ if settings.FRESHBEATS_SERVING:
 urlpatterns = [
     url(r'^$', views.home, name='home'),
     url(r'^search/$', views.search, name='search'),
-    url(r'^mobile/$', views.mobile, name='mobile'),
+    url(r'^devices/(?P<device_id>[0-9]+)/delete$', views.device_delete, name='device_delete'),
+    url(r'^devices/(?P<device_id>[0-9]+)/$', views.device_edit, name='device_edit'),
     url(r'^devices/$', views.devices, name='devices'),
+    url(r'^device/$', views.device_new, name='device_new'),
+    url(r'^mobile/$', views.mobile, name='mobile'),
     url(r'^manage/$', views.manage, name='manage'),
-    url(r'^playlist/sort$', views.playlist_sort, name='playlist_sort'),
-    url(r'^playlists/$', views.playlists, name='playlists'),
-    url(r'^playlist/$', views.playlist, name='playlist'),
     url(r'^report/$', views.report, name='report'),
     url(r'^survey/$', views.survey, name='survey'),
+
+    url(r'^playlists/$', views.playlists, name='playlists'),
+    url(r'^playlist/$', views.playlist, name='playlist'),
+    url(r'^playlist/sort$', views.playlist_sort, name='playlist_sort'),
+    
+    url(r'^partials/playlists/selected/(?P<selected>[0-9]+)$', views.get_playlists, name='get_playlists'),
+    url(r'^partials/playlists/$', views.get_playlists, name='get_playlists'),
+    url(r'^partials/playlistsongs/(?P<playlist_id>[0-9]+)/$', views.get_playlistsongs, name='get_playlistsongs'),
     
 
     url(r'^player/(?P<command>[a-z\_A-Z]+)/$', beatplayer_handlers.player, name='player'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer_handlers.player, name='album_command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer_handlers.player, name='song_command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer_handlers.player, name='player'),
+    url(r'^player_select/$', beatplayer_handlers.player_select, name='player_select'),
     url(r'^player_complete/$', beatplayer_handlers.player_complete, name='player_complete'),
     url(r'^health_response/$', beatplayer_handlers.health_response, name='health_response'),
     url(r'^beatplayer_status/$', beatplayer_handlers.beatplayer_status, name='beatplayer_status'),

@@ -3,9 +3,20 @@
 {% block content %}
 
 <div class="row">
+  <div id="playlists" class="col-md-3"></div>
+  <div class="col-md-4">
+    <a href="#" id="new_playlist">new playlist</a>
+    <form id="new_playlist_form" style="display: none;">
+      {% csrf_token %}
+      {{ playlist_form }}          
+      <input type="submit" value="Save" />
+    </form>
+  </div>
+</div>
+<div class="row">  
 	<div class="col-md-12">
     <div id="overlay" style="min-height: 250px;">
-      <div id="playlist"></div>
+      <div id="playlist_songs" data-loaded=""></div>
     </div>
 	</div>  
 </div>

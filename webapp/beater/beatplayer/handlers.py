@@ -1,27 +1,26 @@
-from django.shortcuts import render
-from django.shortcuts import render_to_response
-from django.shortcuts import redirect
-from django.template import RequestContext
-from django.template.loader import render_to_string
-from django.http import HttpResponse, JsonResponse, QueryDict
+import json
+import logging
+import os
+import re
+import requests
+import socket
+import sys
+import threading
+import time
+import traceback
+from datetime import datetime, timedelta
+from xmlrpc import client
+
 from django.conf import settings
 from django.db.models import Q
+from django.http import HttpResponse, JsonResponse, QueryDict
+from django.shortcuts import render, render_to_response, redirect
+from django.template import RequestContext
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
-import os
-import sys
+
 from ..models import Album, Artist, AlbumCheckout, Song, AlbumStatus, PlaylistSong, Player
-from xmlrpc import client
-import logging
-import traceback
-import json
-import random
-import socket
-import requests
-from datetime import datetime, timedelta
-import threading
-import re
-import time
 from ..common.util import capture
 from ..common.switchboard import _publish_event
 from .player import PlayerWrapper 
@@ -111,7 +110,7 @@ def player_complete(request):
             _publish_event('clear_player_output')
         else:
             logger.debug("player output: %s" % complete_response['message'])
-            _publish_event('player_output', json.dumps(complete_response['message']))
+            _publish_event('append_player_output', json.dumps(complete_response['message']))
         response['success'] = True
 
     except:
@@ -122,7 +121,6 @@ def player_complete(request):
 
     return JsonResponse(response)
 
-@csrf_exempt
 def beatplayer_status(request):    
     response = {'result': {}, 'success': False, 'message': ""}
     try:
@@ -138,7 +136,6 @@ def beatplayer_status(request):
 
     return JsonResponse({'success': True})
 
-@csrf_exempt
 def player_status_and_state(request):
 
     response = {'result': {}, 'success': False, 'message': ""}

@@ -103,7 +103,7 @@ class PlayerHealth():
         except ConnectionRefusedError as cre:
             logger_health.warning("Connection refused while checking some stats: %s" % sys.exc_info()[1])
             response['data']['socket']['healthy'] = False
-            traceback.print_tb(sys.exc_info()[2])
+            #traceback.print_tb(sys.exc_info()[2])
         except OSError as oe:
             logger_health.warning("Fail while checking stats: %s" % sys.exc_info()[1])
             response['data']['socket']['healthy'] = False

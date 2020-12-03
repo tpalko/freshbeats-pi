@@ -1,6 +1,6 @@
 {% load static %}
 
-socket = io.connect("http://{{socketio_host}}:{{socketio_port}}");
+var socket = io.connect("http://{{socketio_host}}:{{socketio_port}}");
 
 var switchboard_status = 'down';
 var switchboard_freshness = undefined;
@@ -18,6 +18,7 @@ setInterval(function(){
 
 socket.on('health_response', function(data) {
   if (switchboard_status == 'down') {
+    // -- any news is good news 
     switchboard_status = 'up';
     $("#switchboard_status").removeClass("btn-warning").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';;
   }
@@ -30,7 +31,7 @@ socket.on('connect_response', function(data) {
 
 socket.on('player_status', function(player_status){
 
-  console.log(player_status);
+  // console.log(player_status);
   
   $("#player_status").html(player_status.current_song);
   
@@ -82,7 +83,7 @@ socket.on('beatplayer_status', function(beatplayer_status) {
   
 });
 
-socket.on('player_output', function(output) {
+socket.on('append_player_output', function(output) {
   $("#player_output").html($("#player_output").html() + output);
 });
 

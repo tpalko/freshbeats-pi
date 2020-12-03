@@ -7,7 +7,7 @@ a, a:hover {
 }
 
 a:hover {
-  color: #ccc;
+  color: rgb(192, 0, 255);
 }
 
 .btn-warning, .btn-danger {
@@ -15,7 +15,11 @@ a:hover {
 }
 
 .title {
-	background-color: #633;
+  /*
+  sparkles blue
+  background-color: rgb(61, 16, 255); 
+  */
+	background-color: rgb(61, 16, 255);
 	color: #3fc;
 	padding: 1em;
 }

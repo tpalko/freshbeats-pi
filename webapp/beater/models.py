@@ -7,13 +7,6 @@ from .common.util import get_localized_now
 
 logger = logging.getLogger(__name__)
 
-# class Device(models.Manager):
-#
-#     name = models.CharField(max_length=255)
-#     ip_address = models.IPAddress
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
-
 class CacheManager(models.Manager):
     
     stale = False 
@@ -32,7 +25,41 @@ class AlbumManager(models.Manager):
     def get_queryset(self):
         return super(AlbumManager, self).get_queryset().filter(deleted=False)
 
+class Device(models.Model):
+    
+    DEVICE_STATUS_READY = 'ready'
+    DEVICE_STATUS_NOTREADY = 'notready'
+    DEVICE_STATUS_DOWN = 'down'
+    
+    DEVICE_STATUS_CHOICES = (
+        (DEVICE_STATUS_READY, 'Ready'),
+        (DEVICE_STATUS_NOTREADY, 'Not Ready'),
+        (DEVICE_STATUS_DOWN, 'Down')
+    )
+    
+    name = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(protocol='IPv4')
+    agent_base_url = models.CharField(max_length=255)
+    registered_at = models.DateTimeField(null=True)
+    last_health_check = models.DateTimeField(null=True)
+    status = models.CharField(max_length=20, choices=DEVICE_STATUS_CHOICES, default=DEVICE_STATUS_DOWN, null=False)
+    reachable = models.BooleanField(null=False, default=False)
+    registered = models.BooleanField(null=False, default=False)
+    mounted = models.BooleanField(null=False, default=False)
+    selfreport = models.BooleanField(null=False, default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
+    def status_dump(self):
+        return json.dumps({
+            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S") if self.last_health_check else None, 
+            'status': self.status, 
+            'reachable': self.reachable,
+            'registered': self.registered,
+            'selfreport': self.selfreport,
+            'mounted': self.mounted
+        }, indent=4)
+        
 class Artist(models.Model):
 
     name = models.CharField(max_length=255)
@@ -43,7 +70,6 @@ class Artist(models.Model):
 
     def __unicode__(self):
         return self.name
-
 
 class Album(models.Model):
 
@@ -147,7 +173,6 @@ class Album(models.Model):
     def __unicode__(self):
         return self.name
 
-
 class AlbumStatus(models.Model):
 
     INCOMPLETE = 'incomplete'
@@ -169,7 +194,6 @@ class AlbumStatus(models.Model):
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=ALBUM_STATUS_CHOICES, null=False)
 
-
 class Song(models.Model):
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
@@ -186,12 +210,15 @@ class Song(models.Model):
     def __unicode__(self):
         return self.name
 
-
 class AlbumCheckout(models.Model):
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     checkout_at = models.DateTimeField()
     return_at = models.DateTimeField(null=True)
 
+class Playlist(models.Model):
+    name = models.CharField(max_length=50, null=True, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 class PlaylistSong(models.Model):
     song = models.ForeignKey(Song, on_delete=models.CASCADE)
@@ -200,39 +227,8 @@ class PlaylistSong(models.Model):
     play_count = models.IntegerField(null=False, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     last_played_at = models.DateTimeField(null=True)
+    playlist = models.ForeignKey(Playlist, null=True, on_delete=models.CASCADE)
     #objects = CacheManager()
-
-class BeatPlayerClient(models.Model):
-    
-    BEATPLAYER_STATUS_READY = 'ready'
-    BEATPLAYER_STATUS_NOTREADY = 'notready'
-    BEATPLAYER_STATUS_DOWN = 'down'
-    
-    BEATPLAYER_STATUS_CHOICES = (
-        (BEATPLAYER_STATUS_READY, 'Ready'),
-        (BEATPLAYER_STATUS_NOTREADY, 'Not Ready'),
-        (BEATPLAYER_STATUS_DOWN, 'Down')
-    )
-    
-    beatplayer_url = models.CharField(max_length=255, null=False)
-    freshbeats_callback_url = models.CharField(max_length=255, null=False)
-    registered_at = models.DateTimeField(null=True)
-    last_health_check = models.DateTimeField(null=True)
-    status = models.CharField(max_length=20, choices=BEATPLAYER_STATUS_CHOICES, default=BEATPLAYER_STATUS_DOWN, null=False)
-    reachable = models.BooleanField(null=False, default=False)
-    registered = models.BooleanField(null=False, default=False)
-    mounted = models.BooleanField(null=False, default=False)
-    selfreport = models.BooleanField(null=False, default=False)
-    
-    def status_dump(self):
-        return json.dumps({
-            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S") if self.last_health_check else None, 
-            'status': self.status, 
-            'reachable': self.reachable,
-            'registered': self.registered,
-            'selfreport': self.selfreport,
-            'mounted': self.mounted
-        }, indent=4)
 
 class Player(models.Model):
     PLAYER_STATE_STOPPED = 'stopped'
@@ -260,6 +256,8 @@ class Player(models.Model):
         (CURSOR_MODE_NEXT, 'Next'),
         (CURSOR_MODE_STATIC, 'Static')
     )
+    
+    device = models.ForeignKey(Device, null=True, on_delete=models.CASCADE)
     preceding_command = models.CharField(max_length=255, null=True)
     preceding_command_args = models.CharField(max_length=255, null=True)
     mute = models.BooleanField(null=False, default=False)
@@ -273,7 +271,7 @@ class Player(models.Model):
     beatplayer_status = models.CharField(max_length=20, null=True)
     beatplayer_registered = models.NullBooleanField()
     volume = models.IntegerField(null=True)
-    playlistsong = models.ForeignKey(PlaylistSong, null=True)
+    playlistsong = models.ForeignKey(PlaylistSong, null=True, on_delete=models.CASCADE)
     created_at = models.DateTimeField(default=get_localized_now)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -282,7 +280,7 @@ class Player(models.Model):
             'mute': self.mute, 
             'shuffle': self.shuffle,
             'volume': self.volume,
-            'playlistsong': self.playlistsong.song.name,
+            'playlistsong': self.playlistsong.song.name if self.playlistsong else None,
             'state': self.state,
             'time_remaining': float(self.time_remaining),
             'cursor_mode': self.cursor_mode,

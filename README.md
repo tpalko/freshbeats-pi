@@ -197,6 +197,92 @@ Note that this is a reference implementation. The web app and file share can
 ports that can run Python. The "home theater system" can be headphones. Everything
 can run on one box.
 
+## Security and Multi-tenancy 
+
+The system could be fully multi-tenant. The database collection can 
+obviously be multi-tenant, so the app must permit registration and selection of 
+ad-hoc devices to play the music (as long as the available music library matches the 
+information in the database). The "player" device and the music library accessible to it 
+are then associated with the tenant collection of music in the database. The 
+application can even spot check the player against database items to gain some 
+confidence that the association is valid, trusting in the device's positive response 
+of course. 
+
+The appearance of the music library database records in the local development case 
+is contrived, actually, and the initial ingestion would ultimately also be self-service.
+The ingestion tool would run on the device, more like an agent, and transmit synchronization
+messages to the application supposedly via the same channels as the general player 
+status/control messages. 
+
+With no information to start, the user would provision some device that has a) a 
+media player compatible with the agent or a custom connector implemented from 
+BaseWrapper and b) network or local access to a library of music files.
+
+The user would then 
+
+1. install the agent on the device and configure networking appropriately to make the agent available to the Freshbeats application 
+2. select "add device" in the freshbeats UI
+3. enter the base URL of the agent running on the device 
+
+With some prompting, maybe, then 
+
+4. the agent will begin scanning the device and transmitting synchronization messages to the Freshbeats application 
+5. Freshbeats will populate the database in association with the device (and, in turn, the tenant)
+
+
+Already, we have several authorization and authentication issues.
+
+* Authentication to Freshbeats (not immediately pertinent to ad-hoc device registration but as yet untouched)
+* Authorization of Freshbeats with the agent on the device 
+* Verification of the messages from the agent 
+
+The agent's presence on the device is strictly read-only by design. There is no reason 
+for any changes to be made, and therefore no reason to permit or enable the agent to do so.
+Regarding authorization of Freshbeats with the agent, there are the issues of privacy 
+and tampering - media should be playable only by the agent's origin server, i.e. 
+when the user installs the agent, they are implicitly permitting whatever service 
+backs the agent to control it. The agent needs a way of verifying the origin server.
+This is typically done either with a secret or with an asymmetric keypair.
+
+On behalf of the agent, it must be able to trust messages from Freshbeats. 
+If the agent was initiating the exchange, it might make sense for it to assume the 
+validity of Freshbeats and pass a random generated secret for Freshbeats to use 
+on future communications. Then again, Freshbeats must also be able to trust messages 
+from the agent, and Freshbeats supplying a key for the agent to use would also make 
+sense. But neither side should be able to be solicited for a secret without the 
+intervention of the user, who begins the chain of trust.
+
+Agent:
+* only Freshbeats can control and gain information
+
+Freshbeats:
+* only an agent identified by a user can synchronize the database and send status messages 
+
+Actor A doesn't tell B how to send messages to A, or ask how to send messages to B
+A asks B how B wants to send messages to A
+B replies with a token 
+Now A knows how to verify messages from B
+But B doesn't know how to verify messages from A 
+Can B ask A the same question? 
+A could be a jerk 
+B now knows about A, and asks A how A wants to send messages to B 
+A replies with a token 
+Now B knows how to verify messages from A, but that doesn't mean A is a good actor 
+B is a good actor to Freshbeats, because the user said so
+
+The Agent: "Here's How You Trust Me"
+The user registers the agent with Freshbeats 
+Freshbeats sends its public key and a callback URL to the agent at a special DMZ-type endpoint 
+The agent encrypts a generated token with the public key and sends it to the callback URL 
+Freshbeats can now accept messages from the agent
+
+The agent needs a way to verify substantive messages from Freshbeats
+Freshbeats: "I Know Your Secret"
+This actually takes care of both sides 
+User sets or agent generates a secret 
+That secret is provided to Freshbeats _by the user directly_ not via messaging 
+There is no soliciting the token from the agent
+
 ## Get Some Prompt
 
 import sys, os, django
@@ -276,3 +362,9 @@ The 'rpi' Vagrant VM is available for testing, however it is not currently confi
   \"build_cmd\": \"docker build -t freshbeats .\"
 }
 ```
+
+youtube-dl 
+
+http://ytdl-org.github.io/youtube-dl/download.html
+sudo curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
+sudo chmod a+rx /usr/local/bin/youtube-dl

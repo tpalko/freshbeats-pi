@@ -68,8 +68,6 @@ class PlayerWrapper():
                 player.preceding_command = command 
                 player.preceding_command_args = args
                 
-                player.playlistsong = self.playlist.get_current_playlistsong()
-                
                 beatplayer = BeatplayerRegistrar.getInstance()
                 with beatplayer.client_state(read_only=True) as client_state:
                     player.beatplayer_status = client_state.status
@@ -189,16 +187,6 @@ class PlayerWrapper():
                 player.time_pos = health_data['time_pos'] if 'time_pos' in health_data and health_data['time_pos'] else 0
                 player.percent_pos = health_data['percent_pos'] if 'percent_pos' in health_data and health_data['percent_pos'] else 0
         self.show_player_status()
-        
-    def get_current_song(self):
-        return self.playlist.get_current_playlistsong().song
-        
-    # def set_volume(self, **kwargs):
-    #     with self.player() as player:
-    #         player.volume = kwargs['volume'] if 'responsevolume' in kwargs else player.volume
-        
-    # def clear_state(self, state=None):
-    #     with self.player() as player:
     
     def complete(self, success=True, message='', data={}):   
         response = {'success': False, 'message': ''}
@@ -209,8 +197,7 @@ class PlayerWrapper():
             else:
                 if player.state != Player.PLAYER_STATE_STOPPED:
                     if player.cursor_mode == Player.CURSOR_MODE_NEXT:
-                        cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
-                        pass 
+                        cursor_set = self._advance(player)
                     else:
                         player.cursor_mode = Player.CURSOR_MODE_NEXT
                     response = self._beatplayer_play()
@@ -222,8 +209,11 @@ class PlayerWrapper():
     
     def show_player_status(self):
         logger.debug("Showing player status..")
-        #logger.info("Rendering current song..")
-        current_song_html = render_to_string('_current_song.html', {'song': self.get_current_song()})
+        current_playlistsong = self.playlist.get_current_playlistsong()
+        current_song_obj = {
+            'song': current_playlistsong.song if current_playlistsong else None
+        }
+        current_song_html = render_to_string('_current_song.html', current_song_obj)
         #logger.info("Stringing playlist..")
         playlist = str(self.playlist)
         #logger.info("stringed")        
@@ -236,11 +226,12 @@ class PlayerWrapper():
         
     ## -- BEGIN CLIENT CALLS -- ## 
     
-    def _beatplayer_play(self):
+    def _beatplayer_play(self):        
         song = self.playlist.get_current_playlistsong().song        
         song_filepath = "%s/%s/%s" % (song.album.artist.name, song.album.name, song.name)
         callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
-        logger.info("Calling beatplayer. song: %s callback: %s" % (song_filepath, callback))
+        with self.player(read_only=True) as player:
+            logger.info("Player state: %s. Calling beatplayer. song: %s callback: %s" % (player.state, song_filepath, callback))
         response = self.beatplayer_client.play(song_filepath, callback)
         logger.debug("play response: %s" % json.dumps(response))
         if response['success']:
@@ -321,9 +312,13 @@ class PlayerWrapper():
     # -- play_song can do it, because it's only one song, and we can trigger state change on complete or next 
     # -- play_album can't do that, so we splice it
     
+    def _advance(self, player, playlistsongid=None):
+        self.playlist.advance_cursor(shuffle=player.shuffle, playlistsongid=playlistsongid)
+        self.player.playlistsong = self.playlist.get_current_playlistsong()
+        
     def _advance_play(self, player):
         player.shuffle = False 
-        self.playlist.advance_cursor(shuffle=player.shuffle)
+        self._advance(player)
         response = self._beatplayer_play()
         if response['success']:
             player.state = Player.PLAYER_STATE_PLAYING   
@@ -350,14 +345,16 @@ class PlayerWrapper():
                 self.playlist.splice_artist(artist)
                 self._advance_play(player)
             elif 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
-                self.playlist.advance_cursor(kwargs['playlistsongid'])
+                self._advance(player, playlistsongid=kwargs['playlistsongid'])
                 response = self._beatplayer_play()
                 if response['success']:
                     player.state = Player.PLAYER_STATE_PLAYING                
             else:
                 if player.state == Player.PLAYER_STATE_STOPPED:
+                    logger.debug("Player is stopped, but playing now")
                     response = self._beatplayer_play()
                 elif player.state == Player.PLAYER_STATE_PAUSED:
+                    logger.debug("Player is paused, but pause-toggling now")
                     response = self._beatplayer_pause()
                 if response and response['success']:
                     player.state = Player.PLAYER_STATE_PLAYING
@@ -365,8 +362,8 @@ class PlayerWrapper():
     
     def next(self, **kwargs):
         response = None 
-        with self.player(read_only=True) as player:
-            cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
+        with self.player() as player:
+            cursor_set = self._advance(player)
             if player.state != Player.PLAYER_STATE_STOPPED:
                 self._beatplayer_play()
         return response 
@@ -374,9 +371,9 @@ class PlayerWrapper():
     def next_artist(self, **kwargs):        
         song = self.playlist.get_current_playlistsong().song
         current_artist = song.album.artist.id 
-        with self.player(read_only=True) as player:
+        with self.player() as player:
             while song.album.artist.id == current_artist:
-                cursor_set = self.playlist.advance_cursor(shuffle=player.shuffle)
+                cursor_set = self._advance(player)
                 song = self.playlist.get_current_playlistsong().song
             if player.state != Player.PLAYER_STATE_STOPPED:            
                 self._beatplayer_play()

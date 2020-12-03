@@ -1,8 +1,9 @@
+import random
+import logging
+from datetime import datetime, timedelta
 from django.db.models import Q
 from django.template.loader import render_to_string
 from ..models import PlaylistSong
-import logging
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class Playlist():
 
     def __init__(self, *args, **kwargs):
         if not self.get_current_playlistsong():
-            self.set_current_playlistsong(PlaylistSong.objects.all().order_by('queue_number').first())
+            self._set_current_playlistsong(PlaylistSong.objects.all().order_by('queue_number').first())
 
     def __str__(self):
         if self.playlist_stale:
@@ -46,7 +47,7 @@ class Playlist():
             self.playlist_stale = False 
         return self.playlist_html
     
-    def play_count_filter(self, playlistsongs):
+    def _play_count_filter(self, playlistsongs):
         if len(playlistsongs) > 0:
             play_count_array = [ s.song.play_count for s in playlistsongs ]
             avg = sum(play_count_array) / len(play_count_array)
@@ -54,7 +55,7 @@ class Playlist():
             return playlistsongs.filter(play_count__lte=avg)
         return playlistsongs 
         
-    def age_filter(self, playlistsongs):
+    def _age_filter(self, playlistsongs):
         if len(playlistsongs) > 0:
             now = datetime.now()                
             age_array = [ 0 if not s.last_played_at else (now - s.last_played_at).seconds for s in playlistsongs ]
@@ -62,41 +63,8 @@ class Playlist():
             logger.debug("average age in seconds: %s" % avg)
             return playlistsongs.filter(Q(last_played_at__lte=(now - timedelta(seconds=avg)))|Q(last_played_at__isnull=True))
         return playlistsongs 
-        
-    def advance_cursor(self, playlistsongid=None, shuffle=False):
-
-        cursor_set = False 
-        new_playlistsong = None 
-        
-        if playlistsongid:
-            new_playlistsong = PlaylistSong.objects.get(pk=playlistsongid)
-        elif shuffle:
-            valid_playlistsongs = PlaylistSong.objects.all()
-            current_playlistsong = self.get_current_playlistsong()
-            if current_playlistsong:
-                valid_playlistsongs = PlaylistSong.objects.filter(~Q(queue_number=current_playlistsong.queue_number))
-            logger.debug("%s valid playlistsongs" % len(valid_playlistsongs))
-            new_playlistsong = random.choice(self.age_filter(self.play_count_filter(valid_playlistsongs)))
-            if not new_playlistsong:
-                new_playlistsong = random.choice(valid_playlistsongs)
-        else:
-            new_playlistsong = self._get_remaining_playlistsongs().order_by('queue_number').first()
-        
-        if new_playlistsong:
-            self.set_current_playlistsong(new_playlistsong)
-            cursor_set = True 
-        
-        return cursor_set
     
-    def back_up_cursor(self):
-        cursor_set = False 
-        new_playlistsong = self._get_previous_playlistsongs().order_by('-queue_number').first()
-        if new_playlistsong:
-            self.set_current_playlistsong(new_playlistsong)
-            cursor_set = True         
-        return cursor_set
-        
-    def set_current_playlistsong(self, playlistsong):
+    def _set_current_playlistsong(self, playlistsong):
         current_playlistsong = self.get_current_playlistsong()
         if current_playlistsong:
             current_playlistsong.is_current = False
@@ -104,9 +72,6 @@ class Playlist():
         playlistsong.is_current = True
         playlistsong.save()
         self.playlist_stale = True
-        
-    def get_current_playlistsong(self):
-        return PlaylistSong.objects.filter(is_current=True).first()
     
     def _get_previous_playlistsongs(self):
         current_playlistsong = self.get_current_playlistsong()
@@ -123,17 +88,62 @@ class Playlist():
         if len(remaining) == 0:
             remaining = PlaylistSong.objects.all()
         return remaining
+    
+    def _bump_remaining_playlistsongs(self, bump_count=1):
+        # -- bump the queue number of all future songs
+        next_playlistsongs = self._get_remaining_playlistsongs()
+        for playlistsong in next_playlistsongs:
+            playlistsong.queue_number = playlistsong.queue_number + bump_count
+            playlistsong.save()        
+            self.playlist_stale = True
+            
+    def advance_cursor(self, playlistsongid=None, shuffle=False):
+
+        cursor_set = False 
+        new_playlistsong = None 
         
+        if playlistsongid:
+            new_playlistsong = PlaylistSong.objects.get(pk=playlistsongid)
+        elif shuffle:
+            valid_playlistsongs = PlaylistSong.objects.all()
+            current_playlistsong = self.get_current_playlistsong()
+            if current_playlistsong:
+                valid_playlistsongs = PlaylistSong.objects.filter(~Q(queue_number=current_playlistsong.queue_number))
+            logger.debug("%s valid playlistsongs" % len(valid_playlistsongs))
+            new_playlistsong = random.choice(self._age_filter(self._play_count_filter(valid_playlistsongs)))
+            if not new_playlistsong:
+                new_playlistsong = random.choice(valid_playlistsongs)
+        else:
+            new_playlistsong = self._get_remaining_playlistsongs().order_by('queue_number').first()
+        
+        if new_playlistsong:
+            self._set_current_playlistsong(new_playlistsong)
+            cursor_set = True 
+        
+        return cursor_set
+    
+    def back_up_cursor(self):
+        cursor_set = False 
+        new_playlistsong = self._get_previous_playlistsongs().order_by('-queue_number').first()
+        if new_playlistsong:
+            self._set_current_playlistsong(new_playlistsong)
+            cursor_set = True         
+        return cursor_set
+    
+    def get_current_playlistsong(self):
+        return PlaylistSong.objects.filter(is_current=True).first()        
+    
     def increment_current_playlistsong_play_count(self):
         current_playlistsong = self.get_current_playlistsong()
         if current_playlistsong:
+            logger.debug("Incrementing current song count and last played: %s (%s)" % (current_playlistsong.song.name, current_playlistsong.id))
             current_playlistsong.play_count = current_playlistsong.play_count + 1
             current_playlistsong.song.play_count = current_playlistsong.song.play_count + 1
             current_playlistsong.last_played_at = datetime.now()
             current_playlistsong.song.last_played_at = datetime.now()
             current_playlistsong.save()
             self.playlist_stale = True
-
+    
     def add_song_to_playlist(self, song, queue_number=None):
         if not queue_number:
             queue_number = PlaylistSong.objects.all().order_by('-queue_number').first().queue_number + 1
@@ -150,14 +160,6 @@ class Playlist():
             for j, song, in enumerate(album.song_set.all(), 1):
                 self.add_song_to_playlist(song)
     
-    def _bump_remaining_playlistsongs(self, bump_count=1):
-        # -- bump the queue number of all future songs
-        next_playlistsongs = self._get_remaining_playlistsongs()
-        for playlistsong in next_playlistsongs:
-            playlistsong.queue_number = playlistsong.queue_number + bump_count
-            playlistsong.save()        
-            self.playlist_stale = True
-        
     def splice_song(self, song):
         self._bump_remaining_playlistsongs(1)
         current_playlistsong = self.get_current_playlistsong()
@@ -180,3 +182,7 @@ class Playlist():
             for j, song, in enumerate(album.song_set.all(), 1):
                 bump = bump + 1
                 self.add_song_to_playlist(song, current_playlistsong.queue_number + bump)
+                
+    
+        
+    

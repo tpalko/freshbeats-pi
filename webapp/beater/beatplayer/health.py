@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from django.conf import settings
 from ..common.switchboard import _publish_event
 from ..common.util import get_localized_now
-from ..models import BeatPlayerClient
+from ..models import Device
 
 REGISTRATION_TIMEOUT = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_TIMEOUT', 30))
 REGISTRATION_BACKOFF = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_BACKOFF', 3))
@@ -37,9 +37,9 @@ class BeatplayerRegistrar():
             BeatplayerRegistrar.__instance = self 
     
     def _get_client_state(self):
-        client_state = BeatPlayerClient.objects.filter(beatplayer_url=settings.BEATPLAYER_URL).first()
+        client_state = Device.objects.filter(agent_base_url=settings.BEATPLAYER_URL).first()
         if not client_state:
-            client_state = BeatPlayerClient(beatplayer_url=settings.BEATPLAYER_URL, freshbeats_callback_url=settings.FRESHBEATS_CALLBACK_URL)
+            client_state = Device(agent_base_url=settings.BEATPLAYER_URL)
         return client_state
         
     @contextmanager
@@ -75,11 +75,11 @@ class BeatplayerRegistrar():
 
     def _set_and_show_status(self, client_state):
         if client_state.reachable and client_state.registered and client_state.selfreport and client_state.mounted:
-            client_state.status = BeatPlayerClient.BEATPLAYER_STATUS_READY
+            client_state.status = Device.DEVICE_STATUS_READY
         elif not client_state.reachable:
-            client_state.status = BeatPlayerClient.BEATPLAYER_STATUS_DOWN
+            client_state.status = Device.DEVICE_STATUS_DOWN
         else:
-            client_state.status = BeatPlayerClient.BEATPLAYER_STATUS_NOTREADY
+            client_state.status = Device.DEVICE_STATUS_NOTREADY
         self._show_beatplayer_status(client_state.status_dump())
     
     def _show_beatplayer_status(self, beatplayer_status):
@@ -94,11 +94,11 @@ class BeatplayerRegistrar():
             attempts = 0
             while True:
                 with self.client_state() as client_state:
-                    logger.info("Attempting to register at %s" % client_state.beatplayer_url)
+                    logger.info("Attempting to register at %s with %s" % (client_state.agent_base_url, settings.FRESHBEATS_CALLBACK_URL))
                     try:
                         attempts += 1
-                        beatplayer_client = client.ServerProxy(client_state.beatplayer_url)
-                        response = beatplayer_client.register_client(client_state.freshbeats_callback_url)
+                        beatplayer_client = client.ServerProxy(client_state.agent_base_url)
+                        response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_URL)
                         client_state.reachable = True 
                         client_state.registered = response['data']['registered']
                         if client_state.registered:
@@ -116,7 +116,7 @@ class BeatplayerRegistrar():
                         logger.error(sys.exc_info()[1])
                         #traceback.print_tb(sys.exc_info()[2])
                         client_state.reachable = False 
-                        logger.error("Error registering with %s: %s" % (client_state.beatplayer_url, str(sys.exc_info()[1])))
+                        logger.error("Error registering with %s: %s" % (client_state.agent_base_url, str(sys.exc_info()[1])))
                     self._set_and_show_status(client_state)
                     if client_state.registered:
                         logger.info("  - quitting registration loop (registered: %s)" % client_state.registered)

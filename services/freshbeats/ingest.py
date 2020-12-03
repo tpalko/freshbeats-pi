@@ -8,8 +8,13 @@ import traceback
 from configparser import ConfigParser
 import click
 import hashlib
+
 import django
+from django.conf import settings
 from django.db.models import Q
+
+# BUF_SIZE is totally arbitrary, change for your app!
+BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
 
 sys.path.append(join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
@@ -18,17 +23,22 @@ django.setup()
 from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
 from mutagen import easyid3, id3
-from .common import get_storage_path
 
-logger = logging.getLogger('FreshBeats')
+sys.path.append(os.path.dirname(__file__))
+from common import get_storage_path
+
+# logging.basicConfig(
+#     format='%(log_color)s[ %(levelname)7s ] %(asctime)s %(name)s %(filename)12s:%(lineno)-4d %(message)s'
+# )
+logger = logging.getLogger('services.ingest')
 logger.setLevel(logging.INFO)
 
-DJANGO_LOGGER = logging.getLogger('django')
-DJANGO_LOGGER.setLevel(logging.INFO)
-REQUESTS_LOGGER = logging.getLogger('requests')
-REQUESTS_LOGGER.setLevel(logging.INFO)
-URLLIB3_LOGGER = logging.getLogger('urllib3')
-URLLIB3_LOGGER.setLevel(logging.WARN)
+# DJANGO_LOGGER = logging.getLogger('django')
+# DJANGO_LOGGER.setLevel(logging.INFO)
+# REQUESTS_LOGGER = logging.getLogger('requests')
+# REQUESTS_LOGGER.setLevel(logging.INFO)
+# URLLIB3_LOGGER = logging.getLogger('urllib3')
+# URLLIB3_LOGGER.setLevel(logging.WARN)
 
 album_frame_types = [
     'album',
@@ -93,7 +103,6 @@ frame_types = {
 }
 song_frame_types = ['TIT2', 'TCOM', 'TRCK']
 easy_song_frame_types = ['title', 'musicbrainz_trackid', 'tracknumber']
-album_database_frame_types = ['date', 'musicbrainz_albumid', 'genre', 'organization', 'musicbrainz_trmid']
 artist_frame_types = ['musicbrainz_artistid']
 
 class Albummeta(object):
@@ -271,7 +280,7 @@ class Ingest(object):
                 logger.debug("Processing path %s" % sub_path)
 
                 if len(parts) < 2:
-                    logger.debug(" - artist only, no album name")
+                    logger.debug(" - folder depth of one, assuming artist name, no album name")
                     artist_name = parts[0]
                     album_name = 'no album'
                 elif len(parts) >= 2:
@@ -374,16 +383,25 @@ class Ingest(object):
                                         artist.encode('utf-8'),
                                         album.encode('utf-8'))                            
                                     song.save()
+                                    # -- only if we're not planning on showing the menu already 
                             
-                id3_tag_skew = False
-                if not self.tags_menu:
-                    if not skip_id3_tag_skew_check:
-                        for t in dist:
-                            if len(dist[t]) > 1 or len([ v for v in dist[t] if v is None ]) > 0:
-                                id3_tag_skew = True
-                                break
+                # -- and we care about tag skew 
+                # -- do we bother to check if...
+                
+                id3_tag_skew = any([ t for t in dist if len(dist[t]) > 1 or len(dist[t]) == 1 and dist[t][0] == None ])
+                
+                # id3_tag_skew = False
+                # if not self.tags_menu and not skip_id3_tag_skew_check:
+                #     # -- ...any found tags have more than one value?
+                #     for t in dist:
+                #         # -- the tag has more than one value 
+                #         # -- the tag has a 'None' value 
+                #         if len(dist[t]) > 1 or len([ v for v in dist[t] if v is None ]) > 0:
+                #             # -- and if so, show that menu
+                #             id3_tag_skew = True
+                #             break
 
-                if id3_tag_skew or self.tags_menu:
+                if not skip_id3_tag_skew_check and (id3_tag_skew or self.tags_menu):
                     while(True):
                         albummeta.printmeta()
                         print("Some discrepancies were detected in the MP3 file tags.")
@@ -410,9 +428,21 @@ class Ingest(object):
                             quit = True
                             break
                 
+                if quit:
+                    logger.info("Quitting!")
+                    break 
+                    
                 (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(root)
+                
+                # -- go through found tag values in the collection of files 
+                # -- and if there is consensus and we're tracking that tag in the database 
+                # -- make sure the database has the correct value 
+                # -- TODO: should we track the non-consensus state in the database.. just say "uncertain" in the field 
+                logger.info("Updating database for consensus tag values:")
                 for t in [ t for t in files_per_val_per_frame if t in album_database_frame_types ]:
                     values = files_per_val_per_frame[t].keys()
+                    # -- if there is only one value among all files and this is NOT the value represented in the database
+                    # -- go ahead and save it 
                     if len(values) == 1 and list(values)[0] is not None and album.__dict__[t] != list(values)[0]:
                         value = list(values)[0]
                         logger.info(" - album frame type %s is consistently '%s', writing to album.." % (t, value))
@@ -426,7 +456,7 @@ class Ingest(object):
                         artist.__setattr__(t, value)
                         artist.save()
                     
-            if purge:
+            if self.purge:
                 # -- when we're all said and done adding,
                 # -- delete albums that cannot be found on disk
                 # -- (if they've never been checked-out)
@@ -435,24 +465,27 @@ class Ingest(object):
                     albumcheckout__isnull=True
                 )
                 logger.info("Hard deleting non-existant albums (never checked-out)..")
+                logger.info("  - found %s total albums not marked 'wanted' and never checked out" % len(albums))
                 for album in albums:
                     if not os.path.exists(join(self.music_path, get_storage_path(album))):
+                        logger.info("  - %s/%s missing, would actually hard-delete album from database", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
                         # a.delete()
-                        logger.info(" - would delete %s/%s", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
+                    else:
+                        logger.debug("  - %s/%s was found on disk, so not deleting" % (album.artist.name.encode('utf-8'), album.name.encode('utf-8')))
 
                 albums = Album.objects.filter(
                     ~Q(albumstatus__status=AlbumStatus.WANTED)
                 )
 
                 logger.info("Soft deleting other albums not found on disk..")
-
+                logger.info("  - found %s total albums not marked 'wanted' but may have been checked out" % len(albums))
                 for album in albums:
                     if not os.path.exists(join(self.music_path, get_storage_path(album))):
                         # a.deleted = True
                         # a.save()
-                        logger.info("    Soft-Deleted %s %s",
-                                    album.artist.name.encode('utf-8'),
-                                    album.name.encode('utf-8'))
+                        logger.info("  - %s/%s missing, would actually soft-delete in database", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
+                    else:
+                        logger.debug("  - %s/%s was found on disk, so not deleting" % (album.artist.name.encode('utf-8'), album.name.encode('utf-8')))
 
         except Exception as update_db_exception:
             message = str(sys.exc_info()[1])
@@ -541,7 +574,7 @@ class Ingest(object):
                     e = easyid3.EasyID3(filepath)
                     #m = mutagen.File(filepath)
                     if e:
-                        print(e)
+                        # print(e)
                         val_per_frame_per_file[filepath] = {}
                         logger.debug("   - scanning ID3 tag: %s" % f)
                         for t in album_frame_types:

@@ -36,8 +36,7 @@ from . import common
 sys.path.append(join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 
-# BUF_SIZE is totally arbitrary, change for your app!
-BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
+
 
 django.setup()
 

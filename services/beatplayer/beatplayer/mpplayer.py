@@ -17,7 +17,7 @@ from wrappers import BaseWrapper, MPVWrapper, MPlayerWrapper
 from health import PlayerHealth
 
 logging.basicConfig(
-    level=logging.WARN,
+    level=logging.DEBUG,
     format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s'
 )
 
@@ -68,10 +68,18 @@ class MPPlayer():
         response = None 
         for m in modules:
             try:
+                logger_player.debug("Looking for %s on %s" % (method, m.__class__.__name__))
                 f = getattr(m, method)
+                logger_player.debug(" -- found it..")
                 response = f(*params)
-            except:
-                pass 
+            except AttributeError as ae:
+                logger_player.error(sys.exc_info()[0])
+                logger_player.error(sys.exc_info()[1])
+                # -- but try another one..
+            except Exception as e:
+                logger_player.error(sys.exc_info()[0])
+                logger_player.error(sys.exc_info()[1])
+                raise e
         if not f:
             raise Exception("Cannot dispatch %s: not found")
         return response
