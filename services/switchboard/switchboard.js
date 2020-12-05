@@ -61,9 +61,16 @@ function rootHandler(req, res) {
 
 // take inbound generic event requests from django app and pass on to client
 function pushEventHandler(req, res, next) {
+  
+  if(req.params.connectionId != undefined) {
+    // io.sockets[req.params.connectionId]
+    console.log(io.sockets);
+  } else {
+    io.sockets.emit(req.params.event, req.body);
+  }
   //console.log(req.params.event);
   //console.log(req.body);
-  io.sockets.emit(req.params.event, req.body);
+  
 
   res.send(200, "OK");
   next();
@@ -94,6 +101,7 @@ server.use(restify.plugins.bodyParser());
 
 //server.get('/', rootHandler);
 server.post('/pushevent/:event', pushEventHandler);
+server.post('/pushevent/:event/:connectionId', pushEventHandler);
 server.get('/healthz', healthz)
 
 server.listen(3333, function(){
@@ -110,16 +118,16 @@ io.sockets.on('connection', function (socket) {
 
   console.log(socket.handshake.time + ': Connection attempt - ' + socket.client.conn.remoteAddress);
   console.log(socket.handshake.time + ': ' + socket.handshake.headers['user-agent']);
-
+  
   /*
   cookie_data = socket.handshake.headers.cookie;//['sessionid'];
   parsed_cookie = cookie.parse(cookie_data);
   sockets[parsed_cookie.io] = socket;
   */
 
-  socket.emit('connect_response', { message: 'Socket.IO connection made' });
+  socket.emit('connect_response', { message: 'Socket.IO connection made', connectionId: socket.conn.id, userAgent: socket.handshake.headers['user-agent'], remoteAddress: socket.client.conn.remoteAddress });
   
   setInterval(function() {
-    io.sockets.emit('health_response', {})
+    io.sockets.emit('health_response', { health: 'ok' })
   }, 5000);
 });

@@ -283,6 +283,142 @@ User sets or agent generates a secret
 That secret is provided to Freshbeats _by the user directly_ not via messaging 
 There is no soliciting the token from the agent
 
+## Loosely Coupled Components 
+
+### Desired Behavior 
+
+Any number of devices may be operated by different users through a single 
+instance of the application. If a user selects a device and plays a song, the device 
+will begin playback on that song, regardless of what it might have been doing at 
+that moment. By default, selection of different devices does not affect the user's selected 
+playlist: the playlist comes along with the user for whatever device is selected. However,
+the user can see what playlist and position a device is at, and choose to take on 
+control. Each device operates independently of each other, allowing a user to move 
+control freely between them or allowing multiple users to each control a device
+without interfering with each other. 
+
+Device selection by default is "auto": the first available (connected and ready)
+device is selected. Manually choosing a device gives the option of either "intrusive", 
+where the user's playlist, position, and other player state attributes are maintained,
+or "participatory", where the user takes on the device's current playlist, position, 
+and other player state attributes. When the device is automatically chosen 
+for the user, the default is "intrusive" when the device player is stopped and 
+"participatory" when the device player is playing. 
+
+If Alice is playing playlist "trigonometry" through auto-selected device A, but device 
+B is available but not playing anything at the moment, and device A then stops responding,
+device B is set to play "trigonometry" at the same position.
+
+In the same scenario, if device B happens to already be playing something, Alice's 
+view only reflects the down state of device A.
+
+In the original scenario, if neither device A or B aren't actively playing but 
+A becomes unavailable, B is automatically selected. If Alice were to press "play",
+device B would then begin playback. 
+
+Device selection: auto 
+
+Scenario 1: 
+Current device: stopped 
+Alternate device: stopped 
+  - whichever device is available will be selected for the user intrusively
+
+Scenario 2:
+Current device: playing 
+Alternate device: stopped 
+  - if current device becomes unavailable, the alternate device is intrusively selected and playback continues there 
+
+Scenario 3:
+Current device: playing 
+Alternate device: playing 
+  - if the current device becomes unavailable, no auto-selection occurs, current status is shown 
+
+Device selection: manual 
+
+Scenarios 1 and 2 are identical.
+Scenario 3 results in a participatory selection of whichever device is selected.
+
+By default:
+  If a device is playing and is selected either automatically or manually, the result is a participatory selection.
+  If stopped, intrusive.
+
+Player.device is global - whoever is looking at a device gets the same Player state. Users do not have player state, 
+but this value is reassignable based on user actions. It may make more sense for Device to have a Player FK than 
+for Player to have a Device FK.
+
+All devices are monitored by registering with the agent and accepting health reports.
+The selected device for all sessions is known via the Session model.
+If 
+  * a device changes state from ready to notready
+  * an alternative device is in ready state 
+    * for each session has this device selected on "auto": 
+       * the selected device is updated to the alternative device 
+
+When a selected device changes, one of two things will happen:
+
+* (device assigned is playing): the session selected Device is set and the UI reflects the existing Player state 
+  - nothing needs to change in the database or in any device calls - the updated selected device will causes the UI to be updated with any events or status changes relevant to the device
+* (device assigned is not playing): the session selected Device is set, and the Device Player is set to the user's previous Device Player 
+  - Device.player_id is reassigned 
+  - the session selected device is manipulated via the Session model and published to the UI 
+  - calls are made to the devices to match state  
+    - a generalized "state" call is made to set volume, shuffle, mute, etc.
+    - if player state is playing, the 'play' call is sent to the new device with the start position, volume, etc.
+
+
+A playlist remains selected for a user unless the user changes it.
+
+Different users can have different playlists selected.
+Player operations 
+A playlist should be navigable despite a lack of an available player. 
+Regardless of how a player is chosen, the current playlist 
+and position from the previously selected player is applied to the new one.
+
+
+Any number of beatplayer agents may be registered. 
+Any number of playlists may be created. 
+Any number of sessions may be interacting with the server. 
+Agent-to-playlist is many to many. 
+  - multiple agents can be operating on a given playlist 
+  - an agent can operate (have state) on multiple playlists
+An agent can only be active with one playlist at a time
+Only one agent may be active with a UI at a time - this drives the header player display 
+
+
+
+This means 
+if the active player is changed, the
+
+A Device/Player has an active Playlist, and a user session has an active Device/Player. 
+The user chooses the Device/Player or it is chosen automatically. The Playlist This is set by choosing a Device/Player through 
+the UI and then selecting a Playlist and playing a PlaylistSong. Once the 'play' command 
+has gone through to the Device/Player and the current PlaylistSong on the Player is 
+set, future selections of that Device/Player will load that Playlist. Selection of 
+a Playlist or playing a PlaylistSong have no effect if a Device/Player is not chosen. 
+Playing a Song will automatically splice or add it into the current Playlist. If there is 
+no Playlist, playing a Song will create a new Playlist and operate on it.
+
+The header player display shows all available devices and by default the first available 
+is selected (auto), though any may be chosen regardless of status. A selected device 
+will then drive the playlist display, that of the playlist currently associated with the player.
+
+Playlist 1 .. n Agent n .. 1 Session 
+
+Device: the physical component of the Agent 
+
+Player: the operational state component of the Agent 
+  - Device
+  - PlaylistSong: the current item for the Player, implies Playlist  
+
+Playlist 
+
+PlaylistSong 
+  - Playlist 
+
+PlaylistSong-Player: remembers a Player position on a Playlist 
+  - PlaylistSong 
+  - Player
+
 ## Get Some Prompt
 
 import sys, os, django

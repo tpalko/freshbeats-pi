@@ -2,7 +2,7 @@ import sys
 import os
 from django.conf import settings
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+#from django.views.decorators.csrf import csrf_exempt
 import logging
 import traceback
 import json
@@ -23,25 +23,21 @@ def _get_ingest(function_name):
     m = freshbeats.Ingest()
     return getattr(m, function_name)
     
-@csrf_exempt
 def apply_plan(request):
 
     _call_freshbeats(_get_freshbeats('apply_plan'), add_randoms=False)
     return JsonResponse({'success': True})
 
-@csrf_exempt
 def validate_plan(request):
 
     _call_freshbeats(_get_freshbeats('validate_plan'))
     return JsonResponse({'success': True})
 
-@csrf_exempt
 def plan_report(request):
 
     _call_freshbeats(_get_freshbeats('plan_report'))
     return JsonResponse({'success': True})
 
-@csrf_exempt
 def update_db(request):
 
     _call_freshbeats(_get_ingest('update_db'))

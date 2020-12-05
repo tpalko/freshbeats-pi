@@ -1,0 +1,24 @@
+{
+  "name": "freshbeats-pi",
+  "homepage": "https://github.com/tpalko/freshbeats-pi",
+  "authors": [
+    "Tim Palko <tim@palkosoftware.com>"
+  ],
+  "description": "",
+  "main": "",
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "./webapp/beater/static/bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "bootstrap": "^3.2.0",
+    "jquery-ui": "^1.12.1",
+    "datatables": "^1.10.21",
+    "jquery": "^3.4.5"
+  }
+}

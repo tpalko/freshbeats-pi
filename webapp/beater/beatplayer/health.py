@@ -36,16 +36,20 @@ class BeatplayerRegistrar():
             self.lock = threading.Lock()
             BeatplayerRegistrar.__instance = self 
     
-    def _get_client_state(self):
-        client_state = Device.objects.filter(agent_base_url=settings.BEATPLAYER_URL).first()
+    def _get_client_state(self, agent_base_url=None):
+        if not agent_base_url:
+            logger.info("Client state requested with no agent base URL, using settings value '%s'" % settings.BEATPLAYER_URL)
+            agent_base_url = settings.BEATPLAYER_URL 
+        client_state = Device.objects.filter(agent_base_url=agent_base_url).first()
         if not client_state:
-            client_state = Device(agent_base_url=settings.BEATPLAYER_URL)
+            logger.info("No device was found with agent_base_url '%s'" % agent_base_url)
+            client_state = Device(agent_base_url=agent_base_url)
         return client_state
         
     @contextmanager
-    def client_state(self, read_only=False):
+    def client_state(self, agent_base_url=None, read_only=False):
         if read_only:                        
-            client_state = self._get_client_state()
+            client_state = self._get_client_state(agent_base_url=agent_base_url)
             #logger.debug("Client state (r/o yield): %s" % client_state.status_dump())
             try:
                 yield client_state
@@ -67,7 +71,7 @@ class BeatplayerRegistrar():
                 self.lock.release()
     
     def log_health_response(self, health_data):
-        with self.client_state() as client_state:
+        with self.client_state(agent_base_url=health_data['agent_base_url']) as client_state:
             now = get_localized_now()            
             client_state.mounted = health_data['music_folder_mounted']
             client_state.last_health_check = now
@@ -98,7 +102,7 @@ class BeatplayerRegistrar():
                     try:
                         attempts += 1
                         beatplayer_client = client.ServerProxy(client_state.agent_base_url)
-                        response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_URL)
+                        response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_URL, client_state.agent_base_url)
                         client_state.reachable = True 
                         client_state.registered = response['data']['registered']
                         if client_state.registered:

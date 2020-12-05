@@ -19,3 +19,4 @@ services/freshbeats/config/settings.cfg
 webapp/config/settings_env.py
 webapp/src
 webapp/beater/static/icons-1.0.0-alpha2
+webapp/beater/static/bower_components

@@ -17,6 +17,7 @@ setInterval(function(){
 }, 5000);
 
 socket.on('health_response', function(data) {
+  console.log(data);
   if (switchboard_status == 'down') {
     // -- any news is good news 
     switchboard_status = 'up';
@@ -27,6 +28,18 @@ socket.on('health_response', function(data) {
 
 socket.on('connect_response', function(data) {
   console.log(data);
+  $.ajax({
+    url: '{% url "register_client" %}',
+    data: data,
+    dataType: 'json',
+    type: 'POST',
+    success: function(data, textStatus, jqXHR) {
+      console.log(data);
+    }, 
+    error: function(jqXHR, textStatus, errorThrown) {
+      console.log(errorThrown);
+    }
+  })
 });
 
 socket.on('player_status', function(player_status){
@@ -69,17 +82,18 @@ socket.on('player_status', function(player_status){
 });
 
 socket.on('beatplayer_status', function(beatplayer_status) {
-  console.log(beatplayer_status)
+  
+  // console.log(beatplayer_status)
   //$("#volume_display").html(player_status.player.beatplayer_volume + "%");
   
   if (beatplayer_status.status == 'ready') {
-    $("#beatplayer_status").removeClass("btn-warning").removeClass("btn-danger").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';
+    $("#beatplayer_status_" + beatplayer_status.id).removeClass("btn-warning").removeClass("btn-danger").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';
   } else if (beatplayer_status.status == 'notready') {
-    $("#beatplayer_status").removeClass("btn-success").removeClass("btn-danger").addClass("btn-warning").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
+    $("#beatplayer_status_" + beatplayer_status.id).removeClass("btn-success").removeClass("btn-danger").addClass("btn-warning").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
   } else if (beatplayer_status.status == 'down') {
-    $("#beatplayer_status").removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
+    $("#beatplayer_status_" + beatplayer_status.id).removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
   }
-  $("#beatplayer_status").find("img")[0].title = "reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered + ", selfreport: " + beatplayer_status.selfreport + ", mounted: " + beatplayer_status.mounted;
+  $("#beatplayer_status_" + beatplayer_status.id).find("img")[0].title = "reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered + ", selfreport: " + beatplayer_status.selfreport + ", mounted: " + beatplayer_status.mounted;
   
 });
 

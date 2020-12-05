@@ -132,7 +132,7 @@ class PlayerHealth():
             traceback.print_tb(sys.exc_info()[2])
         return response
         
-    def register_client(self, callback_url):
+    def register_client(self, callback_url, agent_base_url):
         response = {'success': False, 'message': '', 'data': {}}
         logger_health.debug("Registration request with callback %s" % callback_url)
         try:            
@@ -147,6 +147,7 @@ class PlayerHealth():
                     player_health = None 
                     try:                  
                         player_health = self.healthz()
+                        player_health['data']['agent_base_url'] = agent_base_url
                         logger_health.debug(" - %s" % player_health)
                         try:
                             logger_health.debug(" - calling %s.." % callback_url)

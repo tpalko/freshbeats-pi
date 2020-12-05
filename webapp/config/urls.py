@@ -13,6 +13,7 @@ Including another URLconf
     1. Import the include() function: from django.conf.urls import url, include
     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 """
+import logging 
 from django.conf.urls import url, include
 from django.contrib import admin
 from django.conf.urls.static import static
@@ -21,7 +22,6 @@ from beater import views
 from beater.beatplayer import handlers as beatplayer_handlers
 from beater.beatplayer.health import BeatplayerRegistrar
 from beater.freshbeats import freshbeats_client
-import logging 
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,7 @@ urlpatterns = [
     url(r'^health_response/$', beatplayer_handlers.health_response, name='health_response'),
     url(r'^beatplayer_status/$', beatplayer_handlers.beatplayer_status, name='beatplayer_status'),
     url(r'^player_status_and_state/$', beatplayer_handlers.player_status_and_state, name='player_status_and_state'),
+    url(r'^register_client/$', beatplayer_handlers.register_client, name='register_client'),
     
     url(r'^apply_plan/$', freshbeats_client.apply_plan, name='apply_plan'),
     url(r'^validate_plan/$', freshbeats_client.validate_plan, name='validate_plan'),

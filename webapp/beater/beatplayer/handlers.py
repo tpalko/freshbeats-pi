@@ -28,6 +28,17 @@ from .health import BeatplayerRegistrar
 
 logger = logging.getLogger(__name__)
 
+def register_client(request):
+    logger.debug(request.POST)
+    user_agent = request.POST.get('userAgent')
+    connection_id = request.POST.get('connectionId')
+    request.session['switchboard_connection_id'] = connection_id
+    request.session['user_agent'] = user_agent 
+    session_key = request.session.session_key
+    logger.debug(dir(request.session))
+    # -- add these values to the user session 
+    return JsonResponse({'success': True})
+
 @csrf_exempt
 def health_response(request):
     
@@ -61,7 +72,13 @@ def health_response(request):
     
     return JsonResponse(response)
 
-@csrf_exempt
+def player_select(request):
+    if request.method == "POST":
+        player_id = request.POST.get('player_id')
+        if player_id:
+            request.session['player_id'] = player_id 
+    return JsonResponse({'success': True})
+
 def player(request, command):
     response = {'result': {}, 'success': False, 'message': ""}
     

@@ -4,6 +4,8 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import resolve 
 
+from ..models import Device
+
 logger = logging.getLogger(__name__)
 
 def switchboard_processor(request_context):
@@ -25,7 +27,8 @@ def switchboard_processor(request_context):
     
     menu = [
         { 'url': 'search', 'display': 'search' },
-        { 'url': 'mobile', 'display': 'devices' },
+        { 'url': 'devices', 'display': 'devices' },
+        { 'url': 'mobile', 'display': 'mobile' },
         { 'url': 'manage', 'display': 'collection' },
         { 'url': 'report', 'display': 'report' },
         { 'url': 'playlists', 'display': 'playlists' },
@@ -37,5 +40,6 @@ def switchboard_processor(request_context):
         'socketio_port': settings.SWITCHBOARD_SERVER_PORT_BROWSER,
         'page_script_path': page_script_path,
         'url_name': resolve(request_context.path_info).url_name,
+        'devices': Device.objects.all(),
         'menu': menu
     }

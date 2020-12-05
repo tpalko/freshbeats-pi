@@ -3,103 +3,74 @@
 <html>
 
   <head>
-  <title>FreshBeats</title>
+    <title>FreshBeats</title>
 
-  <script type="text/javascript" src="{% static "bower_components/jquery/dist/jquery.min.js" %}"></script>
-  <script type="text/javascript" src="{% static "bower_components/jquery-ui/jquery-ui.min.js" %}"></script>
-  <script type="text/javascript" src="{% static "bower_components/datatables/media/js/jquery.dataTables.min.js" %}"></script>
-  <script type="text/javascript" src="{% static "spin.min.js" %}"></script>
+    <script type="text/javascript" src="{% static "bower_components/jquery/dist/jquery.min.js" %}"></script>
+    <script type="text/javascript" src="{% static "bower_components/jquery-ui/jquery-ui.min.js" %}"></script>
 
-  <link rel="stylesheet" type="text/css" href="{% static "bootstrap/css/bootstrap.min.css" %}" />
-  <link rel="stylesheet" type="text/css" href="{% static "bower_components/datatables/media/css/dataTables.jqueryui.min.css" %}" />
-  <link rel="stylesheet" type="text/css" href="{% static "beater.css" %}" />
+    <script type="text/javascript" src="{% static "bower_components/bootstrap/dist/js/bootstrap.min.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "bower_components/bootstrap/dist/css/bootstrap.min.css" %}" />
+    
+    <script type="text/javascript" src="{% static "bower_components/datatables/media/js/jquery.dataTables.min.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "bower_components/datatables/media/css/dataTables.jqueryui.min.css" %}" />
+    
+    <script type="text/javascript" src="{% static "spin.min.js" %}"></script>
+    
+    <link rel="stylesheet" type="text/css" href="{% static "beater.css" %}" />
 
   </head>
 
   <body>
 
-  <div class="container-fluid">
+    <div class="container-fluid">
 
-      <div class="stickyheader">
-  			<div class="row title">
-  				<div class="col-md-1">
-  					<h2>Hy!asdf</h2>
-  				</div>
-  				<div class="col-md-3">
-            <div class="row menu">
-              <div class="col-md-12">
-                <h4>
-                  {% for menu_item in menu %}
-        					     <a class="{% if url_name == menu_item.url %}current{% endif %}" href="{% url menu_item.url %}">{{ menu_item.display }}</a>
-                  {% endfor %}        					
-                </h4>
+        <div class="stickyheader">
+    			<div class="row title">
+    				<div class="col-md-1">
+    					<h2>Hy!asdf</h2>
+    				</div>
+    				<div class="col-md-3">
+              <div class="row menu">
+                <div class="col-md-12">
+                  <h4>
+                    {% for menu_item in menu %}
+          					     <a class="{% if url_name == menu_item.url %}current{% endif %}" href="{% url menu_item.url %}">{{ menu_item.display }}</a>
+                    {% endfor %}        					
+                  </h4>
+                </div>
               </div>
+              <div class="row status">
+                <div class="col-md-12">
+                  <div id="player_output"></div>
+                </div>
+              </div>
+    				</div>
+    				<div class="col-md-5">
+              {% include '_player.html' %}
             </div>
-            <div class="row ">
-              <div class="col-md-12">
-                
-              </div>
+            <div class="col-md-3">
+              <div class="playlist"></div>
             </div>
-            <div class="row status">
-              <div class="col-md-12">
-                <div id="player_output"></div>
-              </div>
-            </div>
-  				</div>
-  				<div class="col-md-5">
-            <div class="row">
-              <div class="col-md-12">
-                <!-- cursor-fill or columns-gutters could also work for shuffle -->
-                <a class="btn btn-default player player-state" command="toggle_mute" href="#"><img src="{% static "icons/volume-mute-fill.svg" %}" alt="" width="32" height="32" title="Mute"></a>
-      					<a class="btn btn-default player player-state" command="pause" href="#"><img src="{% static "icons/pause-fill.svg" %}" alt="" width="32" height="32" title="Pause"></a>
-                <a class="btn btn-default player player-state" command="previous" href="#"><img src="{% static "icons/skip-end-fill.svg" %}" alt="" width="32" height="32" title="Previous"></a>
-                <a class="btn btn-default player player-state" command="restart" href="#"><img src="{% static "icons/skip-start-fill.svg" %}" alt="" width="32" height="32" title="Restart"></a>
-      					<a class="btn btn-danger player player-state" command="stop" href="#"><img src="{% static "icons/stop-fill.svg" %}" alt="" width="32" height="32" title="Stop"></a>
-      					<a class="btn btn-default player player-state" command="play" href="#"><img src="{% static "icons/play-fill.svg" %}" alt="" width="32" height="32" title="Play"></a>
-      					<a class="btn btn-default player player-state" command="next" href="#"><img src="{% static "icons/skip-forward-fill.svg" %}" alt="" width="32" height="32" title="Next"></a>
-                <a class="btn btn-default player player-state" command="next_artist" href="#"><img src="{% static "icons/reply-fill.svg" %}" alt="" width="32" height="32" title="Next Artist"></a>
-                <a class="btn btn-default btn-sm player player-state" command="toggle_shuffle" href="#"><img src="{% static "icons/option.svg" %}" alt="" title="Shuffle"></a>
-                <a class="btn btn-default btn-sm player player-state" command="toggle_repeat_song" href="#"><img src="{% static "icons/arrow-counterclockwise.svg" %}" alt="" title="Repeat Song"></a>
-                <a class="btn btn-default btn-sm player player-state" command="volume_down" href="#"><img src="{% static "icons/volume-down-fill.svg" %}" alt="" title="Volume Down"></a>
-                <span id="player_volume"></span>            
-                <a class="btn btn-default btn-sm player player-state" command="volume_up" href="#"><img src="{% static "icons/volume-up-fill.svg" %}" alt="" title="Volume Up"></a>            
-              </div>
-            </div>            
-            <div class="row status">
-              <div class="col-md-4">
-                <h2 style="font-size: 2em;display:inline;"><span id="player_time_pos"></span> / <span id="player_time_remaining"></span></h2> <h4 style="display:inline;"><span id="player_percent_pos"></span></h4>
-              </div>
-              <div class="col-md-6">
-                <div id="beatplayer_status" class="btn btn-warning d-inline">B:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" /></div>
-                <div id="switchboard_status" class="btn btn-warning d-inline">S:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
-              </div>
-            </div>
-            <div class="row" id="player_status"></div>
-  				</div>
-          <div class="col-md-3">
-            <div class="playlist"></div>
           </div>
         </div>
-      </div>
-      
-      <div class="content">
-        <div class="row errors" style="height:1em; margin-bottom: 0em;">
-  				<div class="col-md-12" id="errors"></div>
-  			</div>
-  			{% block content %}{% endblock %}
-      </div>
+        
+        <div class="content">
+          <div class="row errors" style="height:1em; margin-bottom: 0em;">
+    				<div class="col-md-12" id="errors"></div>
+    			</div>
+    			{% block content %}{% endblock %}
+        </div>
 
-  </div>
+    </div>
 
-  <!--<script type="text/javascript" src="{% static "jquery/jquery-ui-1.11.1.custom/jquery-ui.min.js" %}"></script>-->
-  <script type="text/javascript" src="{% static "socket.io.slim.js" %}"></script>
+    <script type="text/javascript" src="{% static "socket.io.slim.js" %}"></script>
 
-  <script type="text/javascript">
+    <script type="text/javascript">
     
       var type_headers = {};
-      
+
       $(document).ready(function(){
-        
+
         window.onscroll = function (){
           $(Object.keys(type_headers)).each(function(i,k){
             var h = type_headers[k];
@@ -108,344 +79,306 @@
             } else {
               $(h.el).removeClass("sticky").removeClass("result_type");
             }
-          })
-        }
+          });
+        };
       });
-      
 
-  var spinner_opts = {
-    lines: 5 // The number of lines to draw
-  , length: 56 // The length of each line
-  , width: 5 // The line thickness
-  , radius: 84 // The radius of the inner circle
-  , scale: 0.25 // Scales overall size of the spinner
-  , corners: 1 // Corner roundness (0..1)
-  , color: '#000' // #rgb or #rrggbb or array of colors
-  , opacity: 0.25 // Opacity of the lines
-  , rotate: 18 // The rotation offset
-  , direction: 1 // 1: clockwise, -1: counterclockwise
-  , speed: 0.5 // Rounds per second
-  , trail: 100 // Afterglow percentage
-  , fps: 20 // Frames per second when using setTimeout() as a fallback for CSS
-  , zIndex: 2e9 // The z-index (defaults to 2000000000)
-  , className: 'spinner' // The CSS class to assign to the spinner
-  , top: '50%' // Top position relative to parent
-  , left: '50%' // Left position relative to parent
-  , shadow: false // Whether to render a shadow
-  , hwaccel: false // Whether to use hardware acceleration
-  , position: 'absolute' // Element positioning
-  };
+      var spinner_opts = {
+        lines: 5, // The number of lines to draw
+        length: 56, // The length of each line
+        width: 5, // The line thickness
+        radius: 84, // The radius of the inner circle
+        scale: 0.25, // Scales overall size of the spinner
+        corners: 1, // Corner roundness (0..1)
+        color: '#000', // #rgb or #rrggbb or array of colors
+        opacity: 0.25, // Opacity of the lines
+        rotate: 18, // The rotation offset
+        direction: 1, // 1: clockwise, -1: counterclockwise
+        speed: 0.5, // Rounds per second
+        trail: 100, // Afterglow percentage
+        fps: 20, // Frames per second when using setTimeout() as a fallback for CSS
+        zIndex: 2e9, // The z-index (defaults to 2000000000)
+        className: 'spinner', // The CSS class to assign to the spinner
+        top: '50%', // Top position relative to parent
+        left: '50%', // Left position relative to parent
+        shadow: false, // Whether to render a shadow
+        hwaccel: false, // Whether to use hardware acceleration
+        position: 'absolute' // Element positioning
+      };
 
-  var tabs;
-  var socket;
+      // var tabs;
 
-  function getCookie(name) {
-      var cookieValue = null;
-      if (document.cookie && document.cookie != '') {
+      function getCookie(name) {
+        var cookieValue = null;
+        if (document.cookie && document.cookie != '') {
           var cookies = document.cookie.split(';');
           for (var i = 0; i < cookies.length; i++) {
-              var cookie = jQuery.trim(cookies[i]);
-              // Does this cookie string begin with the name we want?
-              if (cookie.substring(0, name.length + 1) == (name + '=')) {
-                  cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                  break;
-              }
+            var cookie = jQuery.trim(cookies[i]);
+            // Does this cookie string begin with the name we want?
+            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+              cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+              break;
+            }
           }
+        }
+        return cookieValue;
       }
-      return cookieValue;
-  }
 
-  var csrftoken = getCookie('csrftoken');
+      var csrftoken = getCookie('csrftoken');
 
-  function csrfSafeMethod(method) {
-      // these HTTP methods do not require CSRF protection
-      return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-  }
+      function csrfSafeMethod(method) {
+        // these HTTP methods do not require CSRF protection
+        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+      }
 
-  function sameOrigin(url) {
-      // test that a given url is a same-origin URL
-      // url could be relative or scheme relative or absolute
-      var host = document.location.host; // host + port
-      var protocol = document.location.protocol;
-      var sr_origin = '//' + host;
-      var origin = protocol + sr_origin;
-      // Allow absolute or scheme relative URLs to same origin
-      return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
+      function sameOrigin(url) {
+        // test that a given url is a same-origin URL
+        // url could be relative or scheme relative or absolute
+        var host = document.location.host; // host + port
+        var protocol = document.location.protocol;
+        var sr_origin = '//' + host;
+        var origin = protocol + sr_origin;
+        // Allow absolute or scheme relative URLs to same origin
+        return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
           (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
           // or any other URL that isn't scheme relative or absolute i.e relative.
           !(/^(\/\/|http:|https:).*/.test(url));
-  }
-
-  var album_songs_url = "{% url "album_songs" 0 %}";
-
-  $(document).on('blur', "input.blurpost", function(e) {
-  e.preventDefault();
-
-  // -- grab the input and validate it
-  var input = $(this);
-
-  if(input.val().trim() == '') {
-  return false;
-  }
-
-  // -- grab the form and the callback function  to handle the edit response
-  var form = $(this).closest('form');
-  var callback = $(this).data("callback");
-
-  // -- grab the saved html to swap back in
-  var savedro = $(form).find(".savero");
-  var savedroEl;
-
-  if (savedro.length > 0) {
-  var savedroEl = $.parseHTML(savedro.html().replace(/^<!--/, '').replace(/-->$/, ''));
-  $(savedro).remove();
-  }
-
-  // -- make the update call
-  // -- swap the original thing back in (over the form)
-  // -- call the callback with the response data
-  $.ajax({
-  url: $(form).attr('action'),
-  data: $(form).serialize(),
-  type: $(form).attr("method"),
-  dataType: "json",
-  success: function(data, textStatus, jqXHR) {
-  if (savedroEl) {
-  $(form).replaceWith(savedroEl);
-  }
-  window[callback](data);
-  $(e.target).val("");
-  },
-  error: function(jqXHR, textStatus, errorThrown) {
-  $("<div />").addClass('error').text(errorThrown).appendTo($(form));
-  }
-  });
-  return false;
-  });
-
-  $(document).on('click', '.inline-edit', function(e){
-
-  // -- get the html of the thing we're editing in a new div
-  var savero = $("<div />").append($(this).clone()).html();
-
-  // -- create a new form to submit the edit
-  var newForm = $("<form />")
-  .attr("method", $(this).data("form-method"))
-  .attr("action", $(this).data("form-action"));
-
-  // -- add a form field to represent the value we're editing
-  var newInput = $("<input />")
-  .attr("type", "text")
-  .attr("name", $(this).data("input-name"))
-  .addClass("blurpost")
-  .addClass("col-md-3")
-  .attr("data-callback", $(this).data("callback"))
-  .attr("value", $(this).text());
-  $(newInput).appendTo(newForm);
-
-  // -- add to the form a span with the commented, saved html
-  $("<span />").addClass('savero').html("<!--" + savero + "-->").appendTo(newForm);
-
-  // -- swap the thing we're editing with the new form
-  $(this).replaceWith(newForm);
-  $(newInput).focus();
-  });
-
-  $(document).on('mouseover', '.album', function(e){
-
-  e.preventDefault();
-
-  var album_id = $(this).closest("tr").data('id');
-
-  if(album_id == undefined){
-  album_id = $(this).data('id');
-  }
-
-  if(album_id == undefined){
-  return;
-  }
-
-  var row = $(this).closest("tr");
-
-  if(row.attr("title") != undefined){
-  return;
-  }
-
-  $.ajax({
-  url: album_songs_url.replace(/0/, album_id),
-  type: "GET",
-  dataType: "json",
-  success: function(data){
-  $(row).attr("title", data);
-  }
-  });
-  });
-
-  $.ajaxSetup({
-      beforeSend: function(xhr, settings) {
-          if (!csrfSafeMethod(settings.type) && !this.crossDomain) { //sameOrigin(settings.url)) {
-              // Send the token to same-origin, relative URLs only.
-              // Send the token only if the method warrants CSRF protection
-              // Using the CSRFToken value acquired earlier
-              xhr.setRequestHeader("X-CSRFToken", csrftoken);
-          }
-      },
-      error: function(jqXHR, textStatus, errorThrown){
-
-      	if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
-      		console.log("jqXHR.responseText does not have a value");
-      		return;
-      	}
-
-      	console.log(errorThrown);
-
-      	var a = jqXHR.responseText.split('\n');
-
-      	showError(a[0] + "<br />" + a[1]);
       }
-  });
 
-  function showError(message){
+      var album_songs_url = "{% url "album_songs" 0 %}";
 
-  $("#errors").append($("<div></div>").html(message));
-  }
+      $(document).on('blur', "input.blurpost", function(e) {
+        e.preventDefault();
 
-  function keepalbum_callback(response){
+        // -- grab the input and validate it
+        var input = $(this);
 
-  album_id = response.albumid;
-  $("tr[albumid='" + album_id + "']").find(".album_action").html("");
-  }
+        if(input.val().trim() == '') {
+          return false;
+        }
 
-  $(document).on('change', "input[name='rating']", function(e){
+        // -- grab the form and the callback function  to handle the edit response
+        var form = $(this).closest('form');
+        var callback = $(this).data("callback");
 
-  var is_unrated = $(this).val() == "unrated";
-  $("input[name='keep']").prop("checked", is_unrated ? "checked" : "");
-  });
+        // -- grab the saved html to swap back in
+        var savedro = $(form).find(".savero");
+        var savedroEl;
 
-  $(document).on('change', "input[name='status']", function(e){
+        if (savedro.length > 0) {
+        var savedroEl = $.parseHTML(savedro.html().replace(/^<!--/, '').replace(/-->$/, ''));
+        $(savedro).remove();
+        }
 
-  var is_not_ok = $(this).val() != "ok";
-  $("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
-  });
-
-  $(document).on("click", "a.ajax", function(e){
-
-  e.preventDefault();
-
-  var href = $(this).attr("href");
-  var action = $(this).data("action");
-
-  $.ajax({
-  url: href,
-  data: { action: action },
-  type: "POST",
-  dataType: "json",
-  success: function(data){
-
-  },
-  error: function(error){
-
-  }
-  });
-  });
-
-  var player_url = '{% url "player" "null" %}';
-
-  $(document).on('click', "a.player", function(e){
-
-  var clickable = $(this);
-  var command = $(this).attr("command");
+        // -- make the update call
+        // -- swap the original thing back in (over the form)
+        // -- call the callback with the response data
+        $.ajax({
+          url: $(form).attr('action'),
+          data: $(form).serialize(),
+          type: $(form).attr("method"),
+          dataType: "json",
+          success: function(data, textStatus, jqXHR) {
+            if (savedroEl) {
+              $(form).replaceWith(savedroEl);
+            }
+            window[callback](data);
+            $(e.target).val("");
+          },
+          error: function(jqXHR, textStatus, errorThrown) {
+            $("<div />").addClass('error').text(errorThrown).appendTo($(form));
+          }
+        });
         
-  var albumid = $(this).attr("albumid");
-  var songid = $(this).attr("songid");
-        var artistid = $(this).attr("artistid");
-        var playlistsongid = $(this).attr("playlistsongid");
+        return false;
+      });
 
-  var url = player_url.replace(/null/, command);
+      $(document).on('click', '.inline-edit', function(e){
 
-        console.debug(url);
+        // -- get the html of the thing we're editing in a new div
+        var savero = $("<div />").append($(this).clone()).html();
 
-  $.ajax({
-  url: url,
-  data: { albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
-  type: "POST",
-  datatype: "json",
-  success: function(data, textStatus, jqXHR){
-  var callback = $(clickable).attr('callback');
-  if(callback != undefined){
-  fn = window[callback];
-  fn(JSON.parse(data));
-  }
-  }
-  });
+        // -- create a new form to submit the edit
+        var newForm = $("<form />")
+          .attr("method", $(this).data("form-method"))
+          .attr("action", $(this).data("form-action"));
 
-  return false;
-  });
+        // -- add a form field to represent the value we're editing
+        var newInput = $("<input />")
+          .attr("type", "text")
+          .attr("name", $(this).data("input-name"))
+          .addClass("blurpost")
+          .addClass("col-md-3")
+          .attr("data-callback", $(this).data("callback"))
+          .attr("value", $(this).text());
+        $(newInput).appendTo(newForm);
 
-  $(document).on('submit', 'form[id^="surveyalbum_"]', function(e){
+        // -- add to the form a span with the commented, saved html
+        $("<span />").addClass('savero').html("<!--" + savero + "-->").appendTo(newForm);
 
-  e.preventDefault();
+        // -- swap the thing we're editing with the new form
+        $(this).replaceWith(newForm);
+        $(newInput).focus();
+      });
 
-  $.ajax({
+      $(document).on('mouseover', '.album', function(e){
 
-  url: '{% url "survey_post" %}',
-  data: $(this).serialize(),
-  type: "POST",
-  datatype: "json",
-  success: function(data, textStatus, jqXHR){
-  location = location;
-  }
-  });
+        e.preventDefault();
 
-  return false;
-  });
+        var album_id = $(this).closest("tr").data('id');
+
+        if(album_id == undefined){
+          album_id = $(this).data('id');
+        }
+
+        if(album_id == undefined){
+          return;
+        }
+
+        var row = $(this).closest("tr");
+
+        if(row.attr("title") != undefined){
+          return;
+        }
+
+        $.ajax({
+          url: album_songs_url.replace(/0/, album_id),
+          type: "GET",
+          dataType: "json",
+          success: function(data){
+            $(row).attr("title", data);
+          }
+        });
+      });
+
+      $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+          var is_safe = csrfSafeMethod(settings.type);
+          var is_crossdomain = this.crossDomain;
+          // console.log("AJAX beforeSend: settings.type: " + settings.type + ", is_safe: " + is_safe + ", is_crossdomain: " + is_crossdomain);
+          // console.log("CSRFToken found in 'csrftoken' cookie: " + csrftoken);
+          if (!is_safe && !is_crossdomain && csrftoken != null) { //sameOrigin(settings.url)) {
+            // Send the token to same-origin, relative URLs only.
+            // Send the token only if the method warrants CSRF protection
+            // Using the CSRFToken value acquired earlier
+            xhr.setRequestHeader("X-CSRFToken", csrftoken);
+          }
+        },
+        success: function(data, textStatus, jqXHR) {
+          console.log("AJAX Success:");
+          console.log(data);
+          console.log(textStatus);
+          console.log(jqXHR);
+        },
+        error: function(jqXHR, textStatus, errorThrown){
+
+          if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
+            console.log("AJAX Error: jqXHR.responseText does not have a value");
+            return;
+          }
+
+          console.log("AJAX Error:");
+          console.log(errorThrown);
+
+          showError(jqXHR.responseText.replace(/\n/, "<br />"));
+        }
+      });
+
+      function clearErrors() {
+        $("#errors").html("");
+      }
       
+      function showError(message){
+        $("#errors").append($("<div></div>").html(message));
+      }
+
+      function keepalbum_callback(response){
+
+        album_id = response.albumid;
+        $("tr[albumid='" + album_id + "']").find(".album_action").html("");
+      }
+
+      $(document).on('change', "input[name='rating']", function(e){
+
+        var is_unrated = $(this).val() == "unrated";
+        $("input[name='keep']").prop("checked", is_unrated ? "checked" : "");
+      });
+
+      $(document).on('change', "input[name='status']", function(e){
+
+        var is_not_ok = $(this).val() != "ok";
+        $("input[name='keep']").prop("checked", is_not_ok ? "" : "checked");
+      });
+
+      // $(document).on("click", "a.ajax", function(e){
+      // 
+      //   e.preventDefault();
+      // 
+      //   var href = $(this).attr("href");
+      //   var action = $(this).data("action");
+      // 
+      //   $.ajax({
+      //     url: href,
+      //     data: { action: action },
+      //     type: "POST",
+      //     dataType: "json",
+      //     success: function(data){
+      // 
+      //     },
+      //     error: function(error){
+      // 
+      //     }
+      //   });
+      // });
+
       function realignPage() {
         $(".content")[0].style.marginTop = $($(".stickyheader")[0]).height();
       }
 
-  $(document).ready(function(){
-        
+      $(document).ready(function(){
+
         realignPage();
-        
-  tabs = $("#tabs").tabs({
-  load: function(event, ui){
-  //console.log("here");
-  },
-  beforeLoad: function(event, ui){
-  //console.log("there");
-  },
-  beforeActivate: function(event, ui){
-  console.log('beforeactivate');
-  console.log(ui.newTab);
-  },
-  activate: function(event, ui){
-  console.log(ui);
-  },
-  active: 0
-  });
-        
-  $.ajax({
-  url: '{% url "player_status_and_state" %}',
-  type: 'GET',
-  success: function(data, textStatus, jqXHR){}
-  });
-        
+
+        // tabs = $("#tabs").tabs({
+        //   load: function(event, ui){
+        //     //console.log("here");
+        //   },
+        //   beforeLoad: function(event, ui){
+        //     //console.log("there");
+        //   },
+        //   beforeActivate: function(event, ui){
+        //     console.log('beforeactivate');
+        //     console.log(ui.newTab);
+        //   },
+        //   activate: function(event, ui){
+        //     console.log(ui);
+        //   },
+        //   active: 0
+        // });
+
         $.ajax({
-  url: '{% url "beatplayer_status" %}',
-  type: 'GET',
-  success: function(data, textStatus, jqXHR){}
-  });
+          url: '{% url "player_status_and_state" %}',
+          type: 'GET',
+          success: function(data, textStatus, jqXHR){}
+        });
 
-  });
+        $.ajax({
+          url: '{% url "beatplayer_status" %}',
+          type: 'GET',
+          success: function(data, textStatus, jqXHR){}
+        });
 
-  {% include 'js/common/socketio_client.js' %}
+      });
 
-  {% if page_script_path %}
-  {% include page_script_path %}
-  {% endif %}
+      {% include 'js/common/socketio_client.js' %}
 
-  </script>
+      {% if page_script_path %}
+        /* PAGE SCRIPT PATH BEGIN */
+        {% include page_script_path %}
+        /* PAGE SCRIPT PATH END */
+      {% endif %}
+
+    </script>
 
   </body>
 </html>
