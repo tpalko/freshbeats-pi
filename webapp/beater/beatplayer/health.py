@@ -20,39 +20,42 @@ logger = logging.getLogger(__name__)
 
 class BeatplayerRegistrar():
     
-    __instance = None 
+    __instances = {} 
     lock = None 
     
     @staticmethod
-    def getInstance():
-        if BeatplayerRegistrar.__instance == None:
-            BeatplayerRegistrar()
-        return BeatplayerRegistrar.__instance 
+    def getInstance(agent_base_url=None):
+        if not agent_base_url:
+            logger.info("BeatplayerRegistrar instance requested with no agent base URL, using settings value '%s'" % settings.BEATPLAYER_URL)
+            agent_base_url = settings.BEATPLAYER_URL
+        if agent_base_url not in BeatplayerRegistrar.__instances or BeatplayerRegistrar.__instances[agent_base_url] == None:
+            BeatplayerRegistrar(agent_base_url=agent_base_url)
+        return BeatplayerRegistrar.__instances[agent_base_url] 
         
     def __init__(self, *args, **kwargs):
-        if BeatplayerRegistrar.__instance != None:
+        if kwargs['agent_base_url'] in BeatplayerRegistrar.__instances and BeatplayerRegistrar.__instances[kwargs['agent_base_url']] != None:
             raise Exception("Singleton instance exists!")
         else:
             self.lock = threading.Lock()
-            BeatplayerRegistrar.__instance = self 
+            BeatplayerRegistrar.__instances[kwargs['agent_base_url']] = self 
     
-    def _get_client_state(self, agent_base_url=None):
+    def _get_device(self, agent_base_url=None):
         if not agent_base_url:
             logger.info("Client state requested with no agent base URL, using settings value '%s'" % settings.BEATPLAYER_URL)
             agent_base_url = settings.BEATPLAYER_URL 
-        client_state = Device.objects.filter(agent_base_url=agent_base_url).first()
-        if not client_state:
+        device = Device.objects.filter(agent_base_url=agent_base_url).first()
+        if not device:
             logger.info("No device was found with agent_base_url '%s'" % agent_base_url)
-            client_state = Device(agent_base_url=agent_base_url)
-        return client_state
+            device = Device(agent_base_url=agent_base_url)
+        return device
         
     @contextmanager
-    def client_state(self, agent_base_url=None, read_only=False):
+    def device(self, agent_base_url=None, read_only=False):
         if read_only:                        
-            client_state = self._get_client_state(agent_base_url=agent_base_url)
-            #logger.debug("Client state (r/o yield): %s" % client_state.status_dump())
+            device = self._get_device(agent_base_url=agent_base_url)
+            #logger.debug("Client state (r/o yield): %s" % device.status_dump())
             try:
-                yield client_state
+                yield device
             finally:
                 pass 
         else:        
@@ -61,69 +64,70 @@ class BeatplayerRegistrar():
             logger.debug("%s wants to acquire client record lock.." % caller)
             self.lock.acquire()
             logger.debug("%s has acquired client record lock" % caller)
-            client_state = self._get_client_state()
-            logger.debug("Client state (yield): %s" % client_state.status_dump())
+            device = self._get_device(agent_base_url=agent_base_url)
+            logger.debug("Client state (yield): %s" % device.status_dump())
             try:
-                yield client_state
+                yield device
+            except:
+                logger.error(sys.exc_info()[1])
             finally:
-                logger.debug("Client state (save): %s" % client_state.status_dump())
-                client_state.save()
+                self._set_and_show_status(device)
+                logger.debug("Client state (save): %s" % device.status_dump())
+                device.save()
                 self.lock.release()
     
     def log_health_response(self, health_data):
-        with self.client_state(agent_base_url=health_data['agent_base_url']) as client_state:
+        with self.device(agent_base_url=health_data['agent_base_url']) as device:
             now = get_localized_now()            
-            client_state.mounted = health_data['music_folder_mounted']
-            client_state.last_health_check = now
-            self._set_and_show_status(client_state)
+            device.mounted = health_data['music_folder_mounted']
+            device.last_health_check = now
 
-    def _set_and_show_status(self, client_state):
-        if client_state.reachable and client_state.registered and client_state.selfreport and client_state.mounted:
-            client_state.status = Device.DEVICE_STATUS_READY
-        elif not client_state.reachable:
-            client_state.status = Device.DEVICE_STATUS_DOWN
+    def _set_and_show_status(self, device):
+        if device.reachable and device.registered and device.selfreport and device.mounted:
+            device.status = Device.DEVICE_STATUS_READY
+        elif not device.reachable:
+            device.status = Device.DEVICE_STATUS_DOWN
         else:
-            client_state.status = Device.DEVICE_STATUS_NOTREADY
-        self._show_beatplayer_status(client_state.status_dump())
+            device.status = Device.DEVICE_STATUS_NOTREADY
+        self._show_beatplayer_status(device.status_dump())
     
     def _show_beatplayer_status(self, beatplayer_status):
         _publish_event('beatplayer_status', beatplayer_status)
         
     def show_status(self):
-        with self.client_state(read_only=True) as client_state:
-            self._show_beatplayer_status(client_state.status_dump())
+        with self.device(read_only=True) as device:
+            self._show_beatplayer_status(device.status_dump())
         
     def register(self):
         def register_client():
             attempts = 0
             while True:
-                with self.client_state() as client_state:
-                    logger.info("Attempting to register at %s with %s" % (client_state.agent_base_url, settings.FRESHBEATS_CALLBACK_URL))
+                with self.device() as device:
+                    logger.info("Attempting to register at %s with %s" % (device.agent_base_url, settings.FRESHBEATS_CALLBACK_URL))
                     try:
                         attempts += 1
-                        beatplayer_client = client.ServerProxy(client_state.agent_base_url)
-                        response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_URL, client_state.agent_base_url)
-                        client_state.reachable = True 
-                        client_state.registered = response['data']['registered']
-                        if client_state.registered:
+                        beatplayer_client = client.ServerProxy(device.agent_base_url)
+                        response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_URL, device.agent_base_url)
+                        device.reachable = True 
+                        device.registered = response['data']['registered']
+                        if device.registered:
                             logger.info("  - application subscribed to beatplayer! (%s attempts)" % attempts)                        
-                            client_state.registered_at = get_localized_now()
+                            device.registered_at = get_localized_now()
                         else:
                             logger.debug("  - attempt %s - not yet registered: %s" % (attempts, response))
                         if response['data']['retry'] == False:
-                            logger.info("  - quitting registration loop (registered: %s)" % client_state.registered)
+                            logger.info("  - quitting registration loop (registered: %s)" % device.registered)
                             break
                     except ConnectionRefusedError as cre:
-                        client_state.reachable = False 
+                        device.reachable = False 
                     except:
                         logger.error(sys.exc_info()[0])
                         logger.error(sys.exc_info()[1])
                         #traceback.print_tb(sys.exc_info()[2])
-                        client_state.reachable = False 
-                        logger.error("Error registering with %s: %s" % (client_state.agent_base_url, str(sys.exc_info()[1])))
-                    self._set_and_show_status(client_state)
-                    if client_state.registered:
-                        logger.info("  - quitting registration loop (registered: %s)" % client_state.registered)
+                        device.reachable = False 
+                        logger.error("Error registering with %s: %s" % (device.agent_base_url, str(sys.exc_info()[1])))
+                    if device.registered:
+                        logger.info("  - quitting registration loop (registered: %s)" % device.registered)
                         break
                     wait = attempts*REGISTRATION_BACKOFF if attempts < 200 else 600
                     logger.debug(" - registration attempt: %s, waiting %s.." % (attempts, wait))
@@ -136,32 +140,30 @@ class BeatplayerRegistrar():
             misses = 0
             while True:
                 now = get_localized_now()
-                with self.client_state() as client_state:
-                    if client_state.last_health_check is None:
+                with self.device() as device:
+                    if device.last_health_check is None:
                         misses += 1
                         logger.warn("No beatplayer report: %s/3" % misses)
                         if misses > 2:
-                            client_state.selfreport = False 
+                            device.selfreport = False 
                             break 
                     else:
-                        since_last = (now - client_state.last_health_check).total_seconds()
-                        logger.debug("Last health check response: %s seconds ago (%s)" % (since_last, datetime.strftime(client_state.last_health_check, "%Y-%m-%d %H:%M:%S")))
+                        since_last = (now - device.last_health_check).total_seconds()
+                        logger.debug("Last health check response: %s seconds ago (%s)" % (since_last, datetime.strftime(device.last_health_check, "%Y-%m-%d %H:%M:%S")))
                         misses = 0
                         if since_last > REGISTRATION_TIMEOUT:
-                            client_state.selfreport = False 
+                            device.selfreport = False 
                             logger.warn("Beatplayer down for %s seconds, assuming restart, quitting fresh check and attempting re-registration" % (since_last))
                             break
                         elif since_last > 15:
-                            client_state.selfreport = False 
+                            device.selfreport = False 
                             logger.warn("Beatplayer down for %s seconds, stale status" % since_last)
                         else:
-                            client_state.selfreport = True 
-                    self._set_and_show_status(client_state)
+                            device.selfreport = True 
                 time.sleep(5)
-            with self.client_state() as client_state:
+            with self.device() as device:
                 logger.warn("Self-deregistering..")
-                client_state.registered = False          
-                self._set_and_show_status(client_state)
+                device.registered = False          
             t = threading.Thread(target=register_client)
             t.start()
                     

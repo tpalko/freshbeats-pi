@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from xmlrpc import client
 
 from django.conf import settings
+from django.contrib.sessions.backends.db import SessionStore 
+from django.contrib.sessions.models import Session 
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import render, render_to_response, redirect
@@ -52,14 +54,28 @@ def health_response(request):
         health_data = health['data']
         
         logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
+        agent_base_url = health_data['agent_base_url']
+        
+        this_device = Device.objects.find(agent_base_url=agent_base_url)
         
         logger.debug("Parsing health response in PlayerWrapper..")
         player = PlayerWrapper.getInstance()
         player.parse_state(health_data)
             
         logger.debug("Parsing health response in BeatplayerRegistrar..")
-        beatplayer = BeatplayerRegistrar.getInstance()
+        beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=agent_base_url)
         beatplayer.log_health_response(health_data)
+        
+        if this_device:
+            all_sessions = Session.objects.all()
+            for session in all_sessions:
+                logger.debug(dir(session.session_data))
+                d = dict(base64.decode(session.session_data))
+                for session_key in d:
+                    values = d[session_key]
+                    player_id = values['player_id']
+                    if int(player_id) == this_device.id:
+                        switchboard_connection_id = values['switchboard_connection_id']
         
         response['success'] = True 
     except Exception as e:

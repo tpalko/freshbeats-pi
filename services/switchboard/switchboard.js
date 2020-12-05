@@ -125,7 +125,9 @@ io.sockets.on('connection', function (socket) {
   sockets[parsed_cookie.io] = socket;
   */
 
-  socket.emit('connect_response', { message: 'Socket.IO connection made', connectionId: socket.conn.id, userAgent: socket.handshake.headers['user-agent'], remoteAddress: socket.client.conn.remoteAddress });
+  var sessionInfo = { message: 'Socket.IO connection made', connectionId: socket.conn.id, userAgent: socket.handshake.headers['user-agent'], remoteAddress: socket.client.conn.remoteAddress };
+  console.log(sessionInfo);
+  socket.emit('connect_response', sessionInfo);
   
   setInterval(function() {
     io.sockets.emit('health_response', { health: 'ok' })
