@@ -140,10 +140,10 @@ class BaseWrapper():
         return self.paused 
      
     @abstractmethod
-    def play(self, filepath, callback_url=None):
+    def play(self, filepath, callback_url=None, agent_base_url=None):
         if callback_url:
             logger_wrapper.info("New thread to handle play: %s" % filepath)
-            self.play_thread = ProcessMonitor.process(self.ps, callback_url, log_level=WRAPPER_LOG_LEVEL)
+            self.play_thread = ProcessMonitor.process(self.ps, callback_url, agent_base_url, log_level=WRAPPER_LOG_LEVEL)
             # if not self.server:
             #     logger.player.info("Not running in server mode. Joining thread when done.")
             #     play_thread.join()
@@ -173,7 +173,7 @@ class MPlayerWrapper(BaseWrapper):
         command.append(os.path.join(self.music_folder, filepath))
         return command 
         
-    def play(self, filepath):
+    def play(self, filepath, callback_url=None, agent_base_url=None):
         self.validate_filepath(filepath)
         return self._issue_command(self._play_command(filepath))
     
@@ -222,7 +222,7 @@ class MPVWrapper(BaseWrapper):
         logger_wrapper.debug(' '.join(command))
         return self._issue_command(command)
     
-    def play(self, filepath, callback_url=None):
+    def play(self, filepath, callback_url=None, agent_base_url=None):
         self.validate_filepath(filepath)
         command_response = self._play_command(filepath)
         super().play(filepath, callback_url)

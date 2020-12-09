@@ -19,12 +19,12 @@ class ProcessMonitor():
     play_thread = None 
     expired_at = None 
     
-    def run_in_thread(ps, callback_url):#, command, force):
+    def run_in_thread(ps, callback_url, agent_base_url):#, command, force):
         '''Thread target'''
         logger.info("Waiting for self.ps..")                
         
         process_dead = False 
-        int_resp = {'success': True, 'message': '', 'data': {'complete': False}} 
+        int_resp = {'success': True, 'message': '', 'data': {'agent_base_url': agent_base_url, 'complete': False}} 
         '''
         order matters:
             read - post - break (don't lose data)
@@ -83,7 +83,7 @@ class ProcessMonitor():
         logger.debug("out: %s" % out)
         logger.debug("err: %s" % err)
         if callback_url:
-            callback_response = {'success': True, 'message': '', 'data': {'complete': True, 'returncode': returncode, 'out': out, 'err': err}}
+            callback_response = {'success': True, 'message': '', 'data': {'agent_base_url': agent_base_url, 'complete': True, 'returncode': returncode, 'out': out, 'err': err}}
             requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
         return
 
@@ -92,9 +92,9 @@ class ProcessMonitor():
         return (ProcessMonitor.play_thread and ProcessMonitor.play_thread.is_alive()) or (ProcessMonitor.expired_at is not None and (datetime.now() - ProcessMonitor.expired_at).total_seconds() < 5)
 
     @staticmethod 
-    def process(ps, callback_url, log_level='INFO'):
+    def process(ps, callback_url, agent_base_url, log_level='INFO'):
         logger.setLevel(level=logging._nameToLevel[log_level.upper()])
         ProcessMonitor.expired_at = None 
-        ProcessMonitor.play_thread = threading.Thread(target=ProcessMonitor.run_in_thread, args=(ps, callback_url,)) #, command, force))
+        ProcessMonitor.play_thread = threading.Thread(target=ProcessMonitor.run_in_thread, args=(ps, callback_url, agent_base_url,)) #, command, force))
         ProcessMonitor.play_thread.start()
         return ProcessMonitor.play_thread
