@@ -62,17 +62,28 @@ function rootHandler(req, res) {
 // take inbound generic event requests from django app and pass on to client
 function pushEventHandler(req, res, next) {
   
-  if(req.params.connectionId != undefined) {
-    // io.sockets[req.params.connectionId]
-    console.log(io.sockets);
-  } else {
-    io.sockets.emit(req.params.event, req.body);
-  }
-  //console.log(req.params.event);
-  //console.log(req.body);
+  var connectionId = req.params.connectionId;
   
+  console.log("Event: " + req.params.event + " -> " + (connectionId != undefined ? connectionId : "all"));
+  // console.log(req.body);
+  
+  try {
 
-  res.send(200, "OK");
+    if(connectionId != undefined) {
+      if (sockets[connectionId] != undefined) {
+        sockets[connectionId].emit(req.params.event, req.body);
+      } else {
+        console.log("Connection ID " + connectionId + " not registered here");
+      }
+    } else {
+      io.sockets.emit(req.params.event, req.body);
+    }
+
+    res.send(200, "OK");
+  } catch(e){
+    console.error(e);
+  }
+  
   next();
   /*
   var sessionid = req.params.sessionid;
@@ -95,6 +106,17 @@ function healthz(req, res, next) {
   res.send(200, 'OK');
   next();
 }
+
+setInterval(function() {
+  console.log("Sending health ping to " + Object.keys(sockets).length + " clients");
+  for (connectionId in sockets) {
+    var response = sockets[connectionId].emit('health_response', { health: 'ok' });
+    if (!response.connected) {
+      console.log("Removing " + connectionId + " from health pings - found disconnected");
+      delete sockets[connectionId];
+    }
+  }
+}, 5000);
 
 server.use(restify.plugins.queryParser());
 server.use(restify.plugins.bodyParser());
@@ -124,12 +146,10 @@ io.sockets.on('connection', function (socket) {
   parsed_cookie = cookie.parse(cookie_data);
   sockets[parsed_cookie.io] = socket;
   */
+  
+  sockets[socket.conn.id] = socket;
 
   var sessionInfo = { message: 'Socket.IO connection made', connectionId: socket.conn.id, userAgent: socket.handshake.headers['user-agent'], remoteAddress: socket.client.conn.remoteAddress };
   console.log(sessionInfo);
   socket.emit('connect_response', sessionInfo);
-  
-  setInterval(function() {
-    io.sockets.emit('health_response', { health: 'ok' })
-  }, 5000);
 });

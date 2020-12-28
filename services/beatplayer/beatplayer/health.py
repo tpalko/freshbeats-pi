@@ -27,7 +27,7 @@ class PlayerHealth():
     skip_mount_check = False 
     
     def __init__(self, *args, **kwargs):
-        signal.signal(signal.SIGINT, self._sigint_handler())
+        # signal.signal(signal.SIGINT, self._sigint_handler())
         self.skip_mount_check = os.getenv('BEATPLAYER_SKIP_MOUNT_CHECK', '0') == '1'
         
         self.api_clients = {}
@@ -81,15 +81,24 @@ class PlayerHealth():
             logger_health.debug("   - music folder mount check skipped")
             music_folder_mounted = True 
         
-        response = {'success': False, 'message': '', 'data': {}}
-        
-        response['data'] = {
-            'ps': {}, 
-            'socket': {},
-            'current_command': player.current_command, 
-            'music_folder_mounted': music_folder_mounted
+        response = {
+            'success': False, 
+            'message': '', 
+            'data': {
+                'time': (0,0,),
+                'ps': {
+                    'returncode': None,
+                    'pid': None,
+                    'is_alive': False 
+                },
+                'socket': {
+                    'healthy': False  
+                },
+                'current_command': player.current_command, 
+                'music_folder_mounted': music_folder_mounted
+            }
         }
-
+        
         try:
             logger_health.debug("  - checking player stats:")
             # response['data']['paused'] = player.is_paused()
@@ -102,15 +111,12 @@ class PlayerHealth():
             response['data']['socket']['healthy'] = True
         except ConnectionRefusedError as cre:
             logger_health.warning("Connection refused while checking some stats: %s" % sys.exc_info()[1])
-            response['data']['socket']['healthy'] = False
             #traceback.print_tb(sys.exc_info()[2])
         except OSError as oe:
             logger_health.warning("Fail while checking stats: %s" % sys.exc_info()[1])
-            response['data']['socket']['healthy'] = False
             traceback.print_tb(sys.exc_info()[2])
         except:
             logger_health.error("Big Fail while checking some stats")
-            response['data']['socket']['healthy'] = False
             logger_health.error(sys.exc_info()[0])
             logger_health.error(sys.exc_info()[1])
             traceback.print_tb(sys.exc_info()[2])
@@ -124,7 +130,8 @@ class PlayerHealth():
                     pid = player.ps.pid
             response['data']['ps']['returncode'] = returncode 
             response['data']['ps']['pid'] = pid
-            response['data']['ps']['is_alive'] = ProcessMonitor.is_alive()
+            process_monitor = ProcessMonitor.getInstance()
+            response['data']['ps']['is_alive'] = process_monitor.is_alive() or process_monitor.expired_less_than(seconds_ago=5)
             response['success'] = True
         except:
             response['message'] = str(sys.exc_info()[1])
@@ -148,7 +155,7 @@ class PlayerHealth():
                     try:                  
                         player_health = self.healthz()
                         player_health['data']['agent_base_url'] = agent_base_url
-                        logger_health.debug(" - %s" % player_health)
+                        logger_health.debug(json.dumps(player_health, indent=4))
                         try:
                             logger_health.debug(" - calling %s.." % callback_url)
                             callback_response = requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(player_health))

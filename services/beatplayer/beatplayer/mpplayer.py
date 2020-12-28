@@ -54,28 +54,29 @@ class MPPlayer():
         
         if not self.player:
             self.player = BaseWrapper.getInstance()
-            logger_player.warning("No suitable player could be found")
+            logger_player.warning("No suitable player could be found. BaseWrapper called without a wrapper type.")
 
         self.health = PlayerHealth()
     
     def _dispatch(self, method, params):
-        logger_player.debug("Attempting to dispatch %s" % method)
+        # logger_player.debug("Attempting to dispatch %s" % method)
         modules = [self.player, self.health, self]
         f = None 
         response = None 
         for m in modules:
             try:
-                logger_player.debug("Looking for %s on %s" % (method, m.__class__.__name__))
+                # logger_player.debug("Looking for %s on %s" % (method, m.__class__.__name__))
                 f = getattr(m, method)
-                logger_player.debug(" -- found it..")
+                logger_player.debug("Dispatching %s on %s" % (method, m.__class__.__name__))
                 response = f(*params)
             except AttributeError as ae:
-                logger_player.error(sys.exc_info()[0])
+                # logger_player.error(sys.exc_info()[0])
                 logger_player.error(sys.exc_info()[1])
                 # -- but try another one..
             except Exception as e:
                 logger_player.error(sys.exc_info()[0])
                 logger_player.error(sys.exc_info()[1])
+                traceback.print_tb(sys.exc_info()[2])
                 raise e
         if not f:
             raise Exception("Cannot dispatch %s: not found")

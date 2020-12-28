@@ -35,8 +35,6 @@ class BaseWrapper():
     muted = False # -- subclasses must manage this state 
     current_command = None 
     
-    play_thread = None 
-    
     @staticmethod 
     def getInstance(t=None):
         if BaseWrapper.__instance == None:
@@ -64,23 +62,30 @@ class BaseWrapper():
                 self.__setattr__(k, val)
             BaseWrapper.__instance = self 
     
-    def _issue_command(self, command):
-        logger_wrapper.debug("Issuing command: %s" % command)
+    def _issue_command(self, filepath, command_generator):
         response = {'success': False, 'message': '', 'data': {}}
-        try:
-            if not self.ps or self.ps.poll() is not None:
-                #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
-                self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
-                self.current_command = command 
-                logger_wrapper.debug(' '.join(self.current_command) if self.current_command else None)
-                response['success'] = True 
-            else:
-                response['message'] = "A process is running (%s), no action" % self.ps.pid
-        except:
-            response['message'] = str(sys.exc_info()[1])
-            logger_wrapper.error(response['message'])
-            logger_wrapper.error(sys.exc_info()[0])
-            traceback.print_tb(sys.exc_info()[2])
+        filepath_validation_message = self.validate_filepath(filepath)
+        if filepath_validation_message:
+            logger_wrapper.warning(filepath_validation_message)
+            response['message'] = filepath_validation_message
+        else:
+            command = command_generator(filepath)
+            logger_wrapper.debug("Issuing command: %s" % command)
+            try:
+                # -- TODO: double tap 
+                if not self.ps or self.ps.poll() is not None:
+                    #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
+                    self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
+                    self.current_command = command 
+                    logger_wrapper.debug(' '.join(self.current_command) if self.current_command else None)
+                    response['success'] = True 
+                else:
+                    response['message'] = "A process is running (%s), no action" % self.ps.pid
+            except:
+                response['message'] = str(sys.exc_info()[1])
+                logger_wrapper.error(response['message'])
+                logger_wrapper.error(sys.exc_info()[0])
+                traceback.print_tb(sys.exc_info()[2])
         return response 
     
     def _send_to_process(self, command):
@@ -109,6 +114,9 @@ class BaseWrapper():
             logger_wrapper.error(sys.exc_info()[1])                        
         return result
         
+    def is_playing(self):
+        return self.ps is not None and self.ps.poll() is None 
+        
     def volume_down(self):
         if self.volume >= 5:
             self.volume -= 5
@@ -126,9 +134,9 @@ class BaseWrapper():
         return self.set_volume()
         
     def validate_filepath(self, filepath):
-        full_path = os.path.join(self.music_folder, filepath)
-        if not os.path.exists(full_path):
-            raise Exception("The file path %s does not exist" % full_path)    
+        if not os.path.exists(os.path.join(self.music_folder, filepath)):
+            return "The filepath %s does not exist" % filepath 
+        return None
     
     def is_muted(self):
         return self.muted
@@ -138,15 +146,10 @@ class BaseWrapper():
      
     def is_paused(self):
         return self.paused 
-     
+        
     @abstractmethod
-    def play(self, filepath, callback_url=None, agent_base_url=None):
-        if callback_url:
-            logger_wrapper.info("New thread to handle play: %s" % filepath)
-            self.play_thread = ProcessMonitor.process(self.ps, callback_url, agent_base_url, log_level=WRAPPER_LOG_LEVEL)
-            # if not self.server:
-            #     logger.player.info("Not running in server mode. Joining thread when done.")
-            #     play_thread.join()
+    def play(self, filepath, callback_url, agent_base_url):
+        pass         
         
     @abstractmethod
     def stop(self):
@@ -167,15 +170,14 @@ class MPlayerWrapper(BaseWrapper):
     def executable_filename():
         return "mplayer"
     
-    def _play_command(self, filepath):
+    def _play_command_generator(self, filepath):
         command_line = "%s -ao alsa -slave -quiet" % self.player_path
         command = command_line.split(' ')
         command.append(os.path.join(self.music_folder, filepath))
         return command 
         
-    def play(self, filepath, callback_url=None, agent_base_url=None):
-        self.validate_filepath(filepath)
-        return self._issue_command(self._play_command(filepath))
+    def play(self, filepath, callback_url, agent_base_url):
+        return self._issue_command(filepath, self._play_command_generator)
     
     def stop(self):
         return self._send_to_process("stop")
@@ -215,20 +217,36 @@ class MPVWrapper(BaseWrapper):
         logger_wrapper.info("  - mpv socket: %s" % self.mpv_socket)
         self.socket_talker = MpvSocketTalker.getInstance(socket_file=self.mpv_socket, log_level=WRAPPER_LOG_LEVEL)
         
-    def _play_command(self, filepath):
+    def _play_command_generator(self, filepath):
         command_line = "%s --quiet=yes --no-video --volume=%s --input-ipc-server=%s" % (self.player_path, self.volume, self.mpv_socket)
         command = command_line.split(' ')
         command.append(os.path.join(self.music_folder, filepath))
         logger_wrapper.debug(' '.join(command))
-        return self._issue_command(command)
+        return command
     
-    def play(self, filepath, callback_url=None, agent_base_url=None):
-        self.validate_filepath(filepath)
-        command_response = self._play_command(filepath)
-        super().play(filepath, callback_url)
+    def play(self, filepath, callback_url, agent_base_url):
+        attempts = 0
+        process_monitor = ProcessMonitor.getInstance()
+        while True:
+            attempts += 1
+            if self.is_playing():
+                logger_wrapper.debug("Stopping play process (attempt %s).." % attempts)
+                self.stop()
+                time.sleep(1)
+            elif process_monitor.is_alive():
+                logger_wrapper.debug("Process monitor is still alive, waiting on that..")
+                time.sleep(0.5)
+            else:
+                break
+        
+        command_response = self._issue_command(filepath, self._play_command_generator)
+        process_monitor.process(self.ps, callback_url, agent_base_url)
+        
         return command_response 
             
     def stop(self):
+        process_monitor = ProcessMonitor.getInstance()
+        process_monitor.report_complete = False 
         command = { 'command': [ "stop" ] }
         return self.socket_talker.send(command)
         
@@ -267,9 +285,11 @@ class MPVWrapper(BaseWrapper):
         return self._send_to_socket({ 'command': [ "get_property", property ] })
         
     def _send_to_socket(self, command):
-        socket_responses = self.socket_talker.send(command)
+        multi_response = False 
+        socket_responses = self.socket_talker.send(command, multi_response=multi_response)
         logger_wrapper.debug("command: %s, response: %s" % (command, socket_responses))
-        return self._normalize_socket_output(socket_responses)
+        if multi_response:
+            return socket_responses[0] if len(socket_responses) > 0 else None
+        else:
+            return socket_responses
             
-    def _normalize_socket_output(self, socket_output):
-        return socket_output[0] if len(socket_output) > 0 else None 
