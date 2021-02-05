@@ -285,7 +285,84 @@ There is no soliciting the token from the agent
 
 ## Loosely Coupled Components 
 
-### Desired Behavior 
+Playlist: a collection of Songs 
+Player: the state of a Playlist playback on which users act 
+Device: a running instance of BeatPlayer agent with exactly one associated Player at any time 
+
+```
+Playlist 1-----n Player 1-----1 Device 1-----n User 
+                 1    (transient)     (session)   n
+                 |                                | 
+                 ----------(session)---------------
+```
+
+A user chooses a playlist and plays a song. This creates a new player state 
+and whichever device the user has selected is associated with it. As long as that 
+playlist is selected, any actions by the user constitute a historical record of 
+that player state, even across devices. A new and independent player state can also 
+be started on the current playlist. Starting a new player state by any means leaves 
+the previous player state and its history available in the system, and it can be 
+picked up again later or deleted. Deleting a playlist deletes all of its player 
+states. Multiple users can participate in the lifecycle of a playlist in the same 
+fashion - concurrently and over multiple devices. If multiple users controlling a 
+player state on the same device switch to different devices (one or both users switch 
+their device selection),the player state is copied as necessary to continue playback 
+on the users' respective devices. 
+
+* user chooses a playlist or otherwise takes action that promotes player state lifecycles
+* user chooses a device or sets device to auto select
+* the user's player state continues uninterrupted across device selections 
+* if a player state is playing, its device cannot be co-opted by another player state 
+* a user can select any device and begin participating in the promotion of its currently associated player state 
+* multiple users can concurrently promote the lifecycle of a player state 
+* a player state can be duplicated to accommodate the behavior described 
+  
+
+this is assumed        
+by device selection -->    PLAYER STATE   <-- and user actions also affect it
+                                |
+                                v
+system can change this -->    DEVICE      <-- or the user can select it 
+                          whatever device 
+                       the user has selected
+                       has a player state.
+                       this player state will 
+                      either be assumed by the 
+                     user's context, or the user 
+                   will apply their current player 
+                        state to the device.
+                     either way, from that point 
+                     forward, user actions will 
+                   be applied to that player state 
+                  which will then drive the device. 
+
+Player state can be applied to no devices and therefore appear to end, however 
+it's just as simple to pick up the end of the thread and continue it on any device 
+in the future. Since a player state history is kept intact across device changes,
+it is seekable, however parts of its history may be invalidated by changes to the 
+playlist.
+
+When a user's selected devices changes, the session takes on the new device ID, 
+and some determination is made about the resultant player state for that device.
+This determination must follow the rules as outlined earlier and rather complex 
+scenarios may be encountered. Ultimately, player state integrity reigns in both its ephemeral
+database record and its presence to the user. 
+
+Device.player is the current (typically latest) version of its Player, and it is 
+this value that is changed when player state from one device is applied to another 
+device. 
+
+If a user has "auto device" enabled, and they are controlling the only active (playing) 
+player state, the system will juggle that player state amongst any ready devices.
+If the user has a device preference selected, the player state shown only continues 
+as that device is available.
+
+While a user can (and should be able to) select their device to control how and where 
+playback occurs, player state is created as a result of those actions and it is
+the player state which takes priority when managing session stickiness. This should 
+continue uninterrupted whenever possible.
+
+### Desired Behavior (first draft, pre-loosely coupled components discussion)
 
 Any number of devices may be operated by different users through a single 
 instance of the application. If a user selects a device and plays a song, the device 
@@ -419,6 +496,127 @@ PlaylistSong-Player: remembers a Player position on a Playlist
   - PlaylistSong 
   - Player
 
+  
+### Service Responsibilities / Threads 
+
+  process monitor 
+    - creates thread, passing mpv process 
+      - reads mpv process stdout, reports to callback url  
+      - when process dies, reports complete and thread exits 
+
+  socket talker 
+    - relays commands to process socket file (SOCKET LOCK)
+    - creates thread
+      - reads and indexes socket file (SOCKET LOCK) output into response queue (QUEUE LOCK)
+    - serves items from response queue (QUEUE LOCK)
+
+  wrapper 
+    - creates mpv process on behalf of client 
+    - passes mpv process to process monitor 
+    - relays commands from client to socket talker
+
+  play:
+    - freshbeats issues a play call to wrapper 
+    - wrapper creates mpv process 
+    - wrapper gives process to monitor 
+    - monitor thread reads and reports process output and completion, then exits 
+    - completion triggers freshbeats to advance the playlist and issue a new call 
+
+  stop:
+    - freshbeats issues a stop call to wrapper 
+    - wrapper cancels completion report from monitor
+    - wrapper issues stop call to talker 
+    - talker sends stop command to socket 
+    - talker reads stop response and replies to wrapper
+    - wrapper checks process for return code
+
+### Play/Complete Cycle 
+
+  beatplayer.play 
+    - mpv process (blocks to stop process)
+    - process monitor thread (blocks to join/kill thread)
+      - player complete (partial/complete)
+
+  player complete 
+    - partial 
+      - publish message 
+    - complete 
+      - increment 
+      - beatplayer.play (blocks for response)
+
+  mpv process <-- monitor thread 
+
+### View Design 
+
+server side, tabled data is either generated by
+  1) joined comprehension of renders in the view, .html is a single record 
+  2) list of records passed to render, for loop in template 
+
+client side, data is presented either by
+  1) ajax to fetch tabled data generated by 1 or 2 above 
+  2) for loop around datatable TR .html include
+    - the include seems messy, declaring the loop var and relying on the include being in scope 
+  
+  
+search:
+  record shop mode 
+    \_artist_recordshop.html
+      - for each artist 
+        - show artist name, list of albums order by year, showing any statuses (owned, rip, etc) (albums collapsible to album count)
+        - form: add album: name, year
+        - set any status flags on an album         
+        - specifically no playlist buttons 
+  normal search 
+    \_album.html
+      - show name, artist, year, tracks (collapsible to track count), status flags 
+      - playlist buttons 
+    \_song.html
+      - show name, album, artist, included playlists 
+      - playlist buttons 
+    \_artist.html
+      - show name, albums w/ tracks, year, status flags (albums collapsible to album count)
+      - playlist buttons 
+      - detail page link 
+    
+mobile (mobile.html):
+  library 
+    \_album_row_checkedin.html (datatable TR)
+      - album, artist, track count, size on disk, album add date, status flags, hover track listing
+      - check-out request button 
+  checked out 
+    \_album_row_checkedout.html  (datatable TR)
+      - album, artist, size on disk
+      - check-in button 
+  the plan (to check-in, request check-out, to check-out, to refresh)
+    \_album_row.html  (datatable TR)
+      - album, artist, size on disk 
+      - cancel button (removes any action, moves to library or checked-out)
+  
+collection (manage.html):
+  \_album_row_manage.html (datatable TR)
+    - album, artist, track count, album add date, status flags, hover track listing 
+    - set any status flags on an album
+    - artist detail page link
+  
+playlists 
+  \_playlistsongs.html
+    - show queue number, song name, artist, album 
+    - remove X for song, all artist, all album 
+survey 
+  inline 
+  
+
+  \_album
+  \_album_row
+  \_album_row_checkedin
+  \_album_row_checkedout
+  \_album_row_manage
+  \_artist
+  manage
+  mobile
+  \_playlistsongs
+  \_song
+                      
 ## Get Some Prompt
 
 import sys, os, django
@@ -444,19 +642,31 @@ album = Album.manager.find(name='Rage Against the Machine')
   - testable components / single-node mode 
   - reference the 12 factor app, haha 
 * features 
-  * unified search and playback UX
-  * unified CLI/UI, central API 
-    * everything from the UI at the prompt (playback, search, mobile)
-    * everything from freshbeats.py in the UI (ingestion)
+  DONE:
   * admin dashboard
     * see beatplayer(s!), switchboard, devices + status
     * manage devices
   * record shop search mode
+  * full playlist CRUD 
+  * multiple playlists
+  
+  1/15/21:
+    - player output updates in browser should always replace, scraper appears to always pick up everything
+    - general device_id/playlist_id setting on a new session doesn't work well
+      - device selection doesn't work due to CSRF not set on search or devices pages - playlists works
+      - when selecting a device, the current playlist selection should follow 
+      - if no playlist on session, selecting a device doesn't show its playlist 
+      - only if a session has no playlist selection should selecting a device set this value?
+  TODO:
+  * better artist/album management, one page for focused view, setting flags, overall context, navigation
+  * better artist/album entry, lookups, duplication management
+  * unified search and playback UX
+  * unified CLI/UI, central API 
+    * everything from the UI at the prompt (playback, search, mobile)
+    * everything from freshbeats.py in the UI (ingestion)
   * (test this) prevent delete for shopping albums (in DB but not on disk)
   * implement separate 'back' and 'start over' controls 
   * snappy UI controls
-  * full playlist CRUD 
-  * multiple playlists
   * keyboard controls
   * track log of played songs, so 'previous' actually gets previous 
   * tagging 
@@ -464,7 +674,8 @@ album = Album.manager.find(name='Rage Against the Machine')
   * extract additional output from player, show in scrolling window 
   * devices integration / support 
   * allow playlist to be scrolled, don't reset to current if scrolling 
-  * artist/album grouping playlist display mode
+  * playlist cleanup/normalization: fix numbering, verify file existence, artist/album sort/group 
+  * playlist stats: artist/album representation, total time 
   * mobile CSS 
   * fix discrepancy between sync/async player updates (volume vs. everything else)
   * tabbed search results 
