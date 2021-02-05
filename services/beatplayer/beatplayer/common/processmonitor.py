@@ -1,3 +1,4 @@
+import sys 
 import logging 
 import time 
 import json 
@@ -20,8 +21,12 @@ class ProcessMonitor():
     
     monitor_thread = None     
     last_activity = None 
-    process_dead = True
     lines = None 
+    
+    ps = None 
+    
+    process_dead = True
+    let_thread_die = True 
     report_complete = True
     
     @staticmethod
@@ -35,83 +40,103 @@ class ProcessMonitor():
             raise Exception("Call ProcessMonitor.getInstance()")
         ProcessMonitor.__instance = self
     
-    def read_stream(self, ps):
+    def read_stream(self):
         while self.read_loop:
-            self.lines.append(ps.stdout.readline())
+            self.lines.append(self.ps.stdout.readline())
             time.sleep(0.3)
+    
+    def _post_callback_url(self, data):
+        response = None 
+        if self.callback_url:
+            logger.debug("Posting to %s.." % (self.callback_url))
+            response = requests.post(self.callback_url, headers={'content-type': 'application/json'}, data=json.dumps(data))
+            logger.debug("Response (%s): %s" %(response.status_code if response else "no response", json.dumps(data, indent=4)))
+        else:
+            logger.debug("Not posting to %s (no callback_url)" % (self.callback_url))
+        return response 
         
-    def report_stream(self, ps, callback_url, agent_base_url):#, command, force):
-        '''Thread target'''
-        logger.info("Waiting for self.ps..")                
+    def report_stream(self):#, command, force):
         
-        int_resp = {'success': True, 'message': '', 'data': {'agent_base_url': agent_base_url, 'complete': False}} 
-        '''
-        order matters:
-            read - post - break (don't lose data)
-            check - read - break (break on what we knew before the read)
-            start - break - sleep (so we don't sleep unnecessarily)
-        '''
-        
-        initial_callback_data = {
-            'agent_base_url': agent_base_url, 
-            'start': True,
-            'complete': False, 
-            'returncode': None, 
-            'out': None, 
-            'err': None
+        callback_data = {
+            'success': True, 
+            'message': '', 
+            'data': {
+                'agent_base_url': self.agent_base_url, 
+                'start': True,
+                'complete': False, 
+                'returncode': None, 
+                'out': None, 
+                'err': None
+            }
         }
-        callback_response = {'success': True, 'message': '', 'data': initial_callback_data}
-        requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
-        
+        self._post_callback_url(callback_data)
+         
         while True:
             try:
-                if ps.poll() is None:
-                    logger.debug('player process is running (%s)' % ps.pid)
+                if self.ps.poll() is None:
+                    logger.debug('player process is running (%s)' % self.ps.pid)
+                    self.process_dead = False 
                 else:
-                    logger.debug('player process is dead (exit %s)' % ps.returncode)
+                    logger.debug('player process is dead (exit %s)' % self.ps.returncode)
                     # -- realization of the fact here is potentially 3+ seconds late
                     self.process_dead = True 
                 
                 self.last_activity = datetime.now()
                 
                 self.read_loop = True 
-                read_thread = threading.Thread(target=self.read_stream, args=(ps,))
+                read_thread = threading.Thread(target=self.read_stream)
                 read_thread.start()
                 time.sleep(3)
                 self.read_loop = False 
                 read_thread.join()
                 
                 logger.debug(" - loop captured %s lines" % len(self.lines))
-                    
-                int_resp['message'] = '\n'.join(self.lines)
                 
-                if len(int_resp['message']) > 0:
-                    logger.debug('intermittent response has a message: %s' % int_resp["message"])
-                    if callback_url:
-                        requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(int_resp))
+                if len(self.lines) > 0:
+                    int_resp = {
+                        'success': True, 
+                        'message': '\n'.join(self.lines), 
+                        'data': {
+                            'agent_base_url': self.agent_base_url, 
+                            'complete': False
+                        }
+                    }
+                    self._post_callback_url(int_resp)
                 else:
                     logger.debug("stdout is empty")
-                
-                int_resp['message'] = ''
                 
             except:
                 logger.error(sys.exc_info()[0])
                 logger.error(sys.exc_info()[1])
                 traceback.print_tb(sys.exc_info()[2])
             finally:
-               if self.process_dead:
-                   logger.debug("process is dead, exiting stdout while loop")
+               if self.process_dead and self.let_thread_die:
+                   logger.debug("Exiting process monitor while loop (process_dead: %s, let_thread_die; %s)" % (self.process_dead, self.let_thread_die))
                    break
                    
         logger.debug("Waiting on player process..")
-        returncode = ps.wait()
-        (out, err) = ps.communicate(None)
+        returncode = self.ps.wait()
+        (out, err) = self.ps.communicate(None)
         logger.debug("returncode: %s" % returncode)
         logger.debug("out: %s" % out)
         logger.debug("err: %s" % err)
-        if callback_url and self.report_complete:
-            callback_response = {'success': True, 'message': '', 'data': {'agent_base_url': agent_base_url, 'complete': True, 'returncode': returncode, 'out': out, 'err': err}}
-            requests.post(callback_url, headers={'content-type': 'application/json'}, data=json.dumps(callback_response))
+        if self.report_complete:
+            complete_data = {
+                'success': True, 
+                'message': '', 
+                'data': {
+                    'agent_base_url': self.agent_base_url, 
+                    'complete': True, 
+                    'returncode': returncode, 
+                    'out': out, 
+                    'err': err
+                }
+            }
+            complete_response = self._post_callback_url(complete_data)
+        else:
+            logger.debug("Not calling complete response (callback_url: %s report_complete: %s)" % (self.callback_url, self.report_complete))
+        
+        logger.debug("Exiting monitor thread now")
 
     '''
     - start state: no thread, no process 
@@ -123,22 +148,37 @@ class ProcessMonitor():
     '''
     
     def expired_less_than(self, seconds_ago=0):
-        return (datetime.now() - self.last_activity).total_seconds() <= seconds_ago if self.last_activity is not None else False 
+        expiration_age = (datetime.now() - self.last_activity).total_seconds() if self.last_activity else None        
+        logger.debug("Process monitor expired %s seconds ago" % expiration_age)
+        return expiration_age <= seconds_ago if expiration_age is not None else False 
         
     def is_alive(self):
+        logger.debug("Process monitor thread is_alive: %s" % (self.monitor_thread.is_alive() if self.monitor_thread else "(doesn't exist)"))
         return (self.monitor_thread and self.monitor_thread.is_alive())
-
+    
     def process(self, ps, callback_url, agent_base_url, log_level='INFO'):
+        '''
+        A thread can continue monitoring a process for output and completeness if the parameters are the same.
+        Rather than the thread dying when it observes the process ending, it can honor a flag which cancels this response.
+        When a new play 
+        '''
         
         if self.is_alive():
             logger.debug("ProcessMonitor seems to be monitoring a process already.. waiting")
             self.monitor_thread.join()
             
         logger.setLevel(level=logging._nameToLevel[log_level.upper()])
-        self.process_dead = False 
         self.lines = []
+        self.process_dead = False 
         self.report_complete = True
-        self.monitor_thread = threading.Thread(target=self.report_stream, args=(ps, callback_url, agent_base_url,)) #, command, force))
-        self.monitor_thread.start()
+        self.let_thread_die = True 
+        
+        self.ps = ps
+        self.callback_url = callback_url 
+        self.agent_base_url = agent_base_url
+        
+        if not self.is_alive():
+            self.monitor_thread = threading.Thread(target=self.report_stream)
+            self.monitor_thread.start()
         
         return True 

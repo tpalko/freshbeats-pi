@@ -4,6 +4,7 @@ import json
 import time
 import subprocess
 import traceback
+import threading
 import socket
 import logging 
 try: #3
@@ -62,25 +63,28 @@ class BaseWrapper():
                 self.__setattr__(k, val)
             BaseWrapper.__instance = self 
     
-    def _issue_command(self, filepath, command_generator):
+    def _issue_command(self, url, filepath, callback_url, agent_base_url):
         response = {'success': False, 'message': '', 'data': {}}
-        filepath_validation_message = self.validate_filepath(filepath)
+        filepath_validation_message = self._validate_filepath(filepath)
         if filepath_validation_message:
             logger_wrapper.warning(filepath_validation_message)
             response['message'] = filepath_validation_message
         else:
-            command = command_generator(filepath)
+            command = self._command_generator(url, filepath)
             logger_wrapper.debug("Issuing command: %s" % command)
             try:
-                # -- TODO: double tap 
-                if not self.ps or self.ps.poll() is not None:
-                    #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
-                    self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
-                    self.current_command = command 
-                    logger_wrapper.debug(' '.join(self.current_command) if self.current_command else None)
-                    response['success'] = True 
-                else:
-                    response['message'] = "A process is running (%s), no action" % self.ps.pid
+                while self.is_playing():
+                    self.stop()
+                    time.sleep(1)
+                #self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #, stdout=self.f_outw, stderr=self.f_errw)
+                self.ps = subprocess.Popen(command, stdin=subprocess.PIPE, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) #stdout=self.f_outw, stderr=self.f_errw)
+                
+                process_monitor = ProcessMonitor.getInstance()
+                process_monitor.process(self.ps, callback_url, agent_base_url, log_level=WRAPPER_LOG_LEVEL)
+                
+                self.current_command = command 
+                logger_wrapper.debug(' '.join(self.current_command) if self.current_command else None)
+                response['success'] = True 
             except:
                 response['message'] = str(sys.exc_info()[1])
                 logger_wrapper.error(response['message'])
@@ -88,6 +92,11 @@ class BaseWrapper():
                 traceback.print_tb(sys.exc_info()[2])
         return response 
     
+    def _validate_filepath(self, filepath):
+        if not os.path.exists(os.path.join(self.music_folder, filepath)):
+            return "The filepath %s does not exist" % filepath 
+        return None
+        
     def _send_to_process(self, command):
         response = {'success': False, 'message': '', 'data': {}}
         try:
@@ -102,7 +111,11 @@ class BaseWrapper():
             logger_wrapper.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
-        
+    
+    @abstractmethod 
+    def _command_generator(self, url, filepath):
+        pass 
+                
     @classmethod
     def can_play(cls):
         result = False 
@@ -116,7 +129,18 @@ class BaseWrapper():
         
     def is_playing(self):
         return self.ps is not None and self.ps.poll() is None 
-        
+     
+    def is_muted(self):
+        return self.muted
+
+    def player_volume(self):
+        return self.volume 
+
+    def is_paused(self):
+        return self.paused 
+            
+    # -- exposed controls 
+    
     def volume_down(self):
         if self.volume >= 5:
             self.volume -= 5
@@ -133,22 +157,8 @@ class BaseWrapper():
         logger_wrapper.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
-    def validate_filepath(self, filepath):
-        if not os.path.exists(os.path.join(self.music_folder, filepath)):
-            return "The filepath %s does not exist" % filepath 
-        return None
-    
-    def is_muted(self):
-        return self.muted
-        
-    def player_volume(self):
-        return self.volume 
-     
-    def is_paused(self):
-        return self.paused 
-        
     @abstractmethod
-    def play(self, filepath, callback_url, agent_base_url):
+    def play(self, url, filepath, callback_url, agent_base_url):
         pass         
         
     @abstractmethod
@@ -170,14 +180,16 @@ class MPlayerWrapper(BaseWrapper):
     def executable_filename():
         return "mplayer"
     
-    def _play_command_generator(self, filepath):
+    def _command_generator(self, url, filepath):
         command_line = "%s -ao alsa -slave -quiet" % self.player_path
         command = command_line.split(' ')
         command.append(os.path.join(self.music_folder, filepath))
         return command 
         
-    def play(self, filepath, callback_url, agent_base_url):
-        return self._issue_command(filepath, self._play_command_generator)
+    # exposed controls 
+    
+    def play(self, url, filepath, callback_url, agent_base_url):
+        return self._issue_command(url, filepath, callback_url, agent_base_url)
     
     def stop(self):
         return self._send_to_process("stop")
@@ -217,52 +229,16 @@ class MPVWrapper(BaseWrapper):
         logger_wrapper.info("  - mpv socket: %s" % self.mpv_socket)
         self.socket_talker = MpvSocketTalker.getInstance(socket_file=self.mpv_socket, log_level=WRAPPER_LOG_LEVEL)
         
-    def _play_command_generator(self, filepath):
+    def _command_generator(self, url, filepath):
         command_line = "%s --quiet=yes --no-video --volume=%s --input-ipc-server=%s" % (self.player_path, self.volume, self.mpv_socket)
+        # mpv https://www.youtube.com/watch?v=e4TFD2PfVPw
         command = command_line.split(' ')
-        command.append(os.path.join(self.music_folder, filepath))
+        if url is not None:
+            command.append(url)
+        else:
+            command.append(os.path.join(self.music_folder, filepath))
         logger_wrapper.debug(' '.join(command))
         return command
-    
-    def play(self, filepath, callback_url, agent_base_url):
-        attempts = 0
-        process_monitor = ProcessMonitor.getInstance()
-        while True:
-            attempts += 1
-            if self.is_playing():
-                logger_wrapper.debug("Stopping play process (attempt %s).." % attempts)
-                self.stop()
-                time.sleep(1)
-            elif process_monitor.is_alive():
-                logger_wrapper.debug("Process monitor is still alive, waiting on that..")
-                time.sleep(0.5)
-            else:
-                break
-        
-        command_response = self._issue_command(filepath, self._play_command_generator)
-        process_monitor.process(self.ps, callback_url, agent_base_url)
-        
-        return command_response 
-            
-    def stop(self):
-        process_monitor = ProcessMonitor.getInstance()
-        process_monitor.report_complete = False 
-        command = { 'command': [ "stop" ] }
-        return self.socket_talker.send(command)
-        
-    def set_system_volume(self, volume):
-        self._set_property("ao-volume", volume)
-        
-    def set_volume(self):
-        self._set_property("volume", self.volume)
-
-    def pause(self):
-        self.paused = not self.paused 
-        return self._set_property("pause", "yes" if self.paused else "no")
-    
-    def mute(self):        
-        self.muted = not self.muted
-        return self._set_property("mute", "yes" if self.muted else "no")
     
     def get_time_remaining(self):
         return self._get_property("time-remaining")
@@ -293,3 +269,32 @@ class MPVWrapper(BaseWrapper):
         else:
             return socket_responses
             
+    # exposed controls 
+    
+    def play(self, url, filepath, callback_url, agent_base_url):
+        
+        command_thread = threading.Thread(target=self._issue_command, args=(url, filepath, callback_url, agent_base_url,))
+        command_thread.start()
+        
+        return {'success': True, 'message': '', 'data': {}}
+    
+    def stop(self):
+        process_monitor = ProcessMonitor.getInstance()
+        process_monitor.report_complete = False 
+        command = { 'command': [ "stop" ] }
+        return { "success": True, "data": self.socket_talker.send(command) }
+        
+    def set_system_volume(self, volume):
+        return { "success": True, "data": self._set_property("ao-volume", volume) }
+        
+    def set_volume(self):
+        return { "success": True, "data": self._set_property("volume", self.volume) }
+
+    def pause(self):
+        self.paused = not self.paused 
+        return { "success": True, "data": self._set_property("pause", "yes" if self.paused else "no") }
+    
+    def mute(self):        
+        self.muted = not self.muted
+        return { "success": True, "data": self._set_property("mute", "yes" if self.muted else "no") }
+    

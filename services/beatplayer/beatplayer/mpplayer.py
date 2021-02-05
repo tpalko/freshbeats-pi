@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
 
+import coloredlogs
+import logging
+coloredlogs.install(level='DEBUG', fmt='[ %(levelname)7s ] %(asctime)s %(name)s %(filename)12s:%(lineno)-4d %(message)s')
+
 import os
 import sys
 import traceback
 import time
 import json
 from xmlrpc.server import SimpleXMLRPCServer
-import logging
 from optparse import OptionParser
 import requests
-import threading
 from wrappers import BaseWrapper, MPVWrapper, MPlayerWrapper
 from health import PlayerHealth
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s'
-)
-
 PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
+
 logger_player = logging.getLogger(__name__)
 logger_player.setLevel(level=logging._nameToLevel[PLAYER_LOG_LEVEL.upper()])
 
 logger_urllib = logging.getLogger('urllib3')
 logger_urllib.setLevel(level=logging.WARN)
         
+
 class MPPlayer():
     
     player_clients = [MPVWrapper, MPlayerWrapper]

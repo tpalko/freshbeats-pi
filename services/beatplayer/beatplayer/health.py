@@ -101,9 +101,9 @@ class PlayerHealth():
         
         try:
             logger_health.debug("  - checking player stats:")
-            # response['data']['paused'] = player.is_paused()
-            # response['data']['volume'] = player.player_volume()
-            # response['data']['muted'] = player.is_muted()
+            response['data']['paused'] = player.is_paused()
+            response['data']['volume'] = player.player_volume()
+            response['data']['muted'] = player.is_muted()
             response['data']['time'] = player.get_time()
             # response['data']['time_remaining'] = player.get_time_remaining()
             # response['data']['time_pos'] = player.get_time_pos()
@@ -113,8 +113,8 @@ class PlayerHealth():
             logger_health.warning("Connection refused while checking some stats: %s" % sys.exc_info()[1])
             #traceback.print_tb(sys.exc_info()[2])
         except OSError as oe:
-            logger_health.warning("Fail while checking stats: %s" % sys.exc_info()[1])
-            traceback.print_tb(sys.exc_info()[2])
+            logger_health.warning("%s while checking stats: %s" % (sys.exc_info()[0].__class__, sys.exc_info()[1]))
+            #traceback.print_tb(sys.exc_info()[2])
         except:
             logger_health.error("Big Fail while checking some stats")
             logger_health.error(sys.exc_info()[0])
@@ -131,7 +131,7 @@ class PlayerHealth():
             response['data']['ps']['returncode'] = returncode 
             response['data']['ps']['pid'] = pid
             process_monitor = ProcessMonitor.getInstance()
-            response['data']['ps']['is_alive'] = process_monitor.is_alive() or process_monitor.expired_less_than(seconds_ago=5)
+            response['data']['ps']['is_alive'] = process_monitor.is_alive() or process_monitor.expired_less_than(seconds_ago=10)
             response['success'] = True
         except:
             response['message'] = str(sys.exc_info()[1])

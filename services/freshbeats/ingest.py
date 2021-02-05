@@ -19,6 +19,7 @@ BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
 sys.path.append(join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 
+print("setting up")
 django.setup()
 from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
