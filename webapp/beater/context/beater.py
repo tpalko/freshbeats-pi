@@ -34,6 +34,13 @@ def switchboard_processor(request_context):
         { 'url': 'playlists', 'display': 'playlists' },
         { 'url': 'survey', 'display': 'survey' }
     ]
+    
+    selected_device_id = None 
+    if 'device_id' in request_context.session:
+        selected_device_id = request_context.session['device_id']
+        logger.debug("device_id found on session: %s" % selected_device_id)
+    else:
+        logger.debug("device_id NOT found on session")
 
     return {
         'socketio_host': settings.SWITCHBOARD_SERVER_HOST_BROWSER,
@@ -41,5 +48,6 @@ def switchboard_processor(request_context):
         'page_script_path': page_script_path,
         'url_name': resolve(request_context.path_info).url_name,
         'devices': Device.objects.all(),
+        'selected_device_id': selected_device_id,
         'menu': menu
     }

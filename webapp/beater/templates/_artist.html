@@ -1,18 +1,22 @@
+{% load beater %}
+
 <div class="row album">
 	<div class="col-md-2">
     <div class="result_name_container">
 		    <strong>ARTIST</strong><h3>{{name_highlight|safe}}</h3>
     </div>
+  </div>
+  <div class="col-md-3">
     <a href="#" class="btn btn-artist player ajax" command="play" artistid="{{artist.id}}">play</a>
     <a href="#" class="btn btn-artist player ajax" command="splice" artistid="{{artist.id}}">splice</a>
     <a href="#" class="btn btn-artist player ajax" command="enqueue" artistid="{{artist.id}}">enqueue</a>
   </div>
 </div>
 <div id="artist_{{artist.id}}_album_container">
-  {% for album in albums %}
+  {% for album in artist.album_set.all %}
   <div class="row album">
     <div class="col-md-2 text-left align-middle">
-      <strong>ALBUM</strong><h4 class="align-middle">{{album.name}}</h4>
+      <strong>ALBUM</strong><h4 class="align-middle">{{album.name}} ({{ album.date|default_if_none:"(no date)" }}, {{ album.tracks }} tracks, {{ album|has_status:"owned"|yesno:"owned,not owned" }})</h4>
     </div>
     <div class="col-md-2">
       <a href="#" class="btn btn-primary btn-sm player ajax" command="play" albumid="{{album.id}}">play</a>

@@ -1,7 +1,10 @@
 <div id="playlistsong_sort">
 {% for playlistsong in playlistsongs %}
   <div id="playlistsong_{{ playlistsong.id }}" class="draggable ui-widget-content">
-    {{ playlistsong.queue_number }}: {{ playlistsong.song.name }} / {{ playlistsong.song.album.artist.name }} / {{ playlistsong.song.album.name }}        
+    {{ playlistsong.queue_number }}: 
+      {{ playlistsong.song.name }} <a href="#" class="player ajax" command="remove" playlistsongid="{{playlistsong.id}}" callback="load_playlists"><span class="glyphicon glyphicon-remove"></span></a>
+       by {{ playlistsong.song.album.artist.name }} <a href="#" class="player ajax" command="remove" artistid="{{playlistsong.song.album.artist.id}}" callback="load_playlists"><span class="glyphicon glyphicon-remove"></span></a>
+       on {{ playlistsong.song.album.name }} <a href="#" class="player ajax" command="remove" albumid="{{playlistsong.song.album.id}}" callback="load_playlists"><span class="glyphicon glyphicon-remove"></span></a> 
   </div>
 {% endfor %}
 </div>

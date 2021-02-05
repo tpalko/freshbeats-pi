@@ -1,9 +1,19 @@
 {% load beater %}
 
-{% for playlistsong in playlistsongs %}
-<div class="playlistsong {% if playlistsong.is_current %}current{% endif %}" id="playlist_queue_number_{{ playlistsong.queue_number }}">  
-  {% if playlistsong.is_current %}<strong>{% else %}<a class="player" command="play" playlistsongid="{{ playlistsong.id }}" href="#">{% endif %}
-  {{ playlistsong.queue_number }}: {{ playlistsong.song.title }} / {{ playlistsong.song.album.artist.name }} 
-  {% if playlistsong.is_current %}</strong>{% else %}</a>{% endif %}
-</div>
-{% endfor %}
+{% if playlistsongs %}
+  
+  <div>{{ playlist.name }}</div>
+  
+  {% for playlistsong in playlistsongs %}
+  <div class="playlistsong {% if current_playlistsong_id and current_playlistsong_id|add:0 == playlistsong.id|add:0 %}current{% endif %}" id="playlist_queue_number_{{ playlistsong.queue_number }}">  
+    {% if current_playlistsong_id and current_playlistsong_id|add:0 == playlistsong.id|add:0 %}<strong>{% else %}<a class="player" command="play" playlistsongid="{{ playlistsong.id }}" href="#">{% endif %}
+    {{ playlistsong.queue_number }}: {{ playlistsong.song.title }} by {{ playlistsong.song.album.artist.name }} on {{ playlistsong.song.album.name }}
+    {% if current_playlistsong_id and current_playlistsong_id|add:0 == playlistsong.id|add:0 %}</strong>{% else %}</a>{% endif %}
+  </div>
+  {% endfor %}
+
+{% else %}
+
+  <div>empty playlist ({{playlist.name}}) </div>
+
+{% endif %}

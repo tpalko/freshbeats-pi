@@ -12,8 +12,10 @@
           <th>Name</th>
           <th>IP Address</th>
           <th>Agent Base URL</th>
+          <th>Active?</th>
           <th>Last Health Check</th>
           <th>Status</th>
+          <th>Player</th>
           <th></th>
         </tr>
       </thead>
@@ -23,8 +25,10 @@
             <td>{{ device.name }}</td>
             <td>{{ device.ip_address }}</td>
             <td>{{ device.agent_base_url }}</td>
+            <td>{{ device.is_active }}</td>
             <td>{{ device.last_health_check }}</td>
             <td>{{ device.status }}</td>
+            <td>{{ device.player.state }} / {{ device.player.playlistsong.song.name }}</td>
             <td>
               <a href="{% url 'device_edit' device.id %}">edit</a>
               <a href="{% url 'device_delete' device.id %}">delete</a>

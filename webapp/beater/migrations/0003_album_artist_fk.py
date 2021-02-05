@@ -14,6 +14,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='album',
             name='artist_fk',
-            field=models.ForeignKey(to='beater.Artist', null=True),
+            field=models.ForeignKey(on_delete=models.CASCADE, to='beater.Artist', null=True),
         ),
     ]

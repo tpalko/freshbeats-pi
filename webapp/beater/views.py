@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET, require_POST
 #from django.views.decorators.csrf import csrf_exempt
 from .forms import PlaylistForm, DeviceForm
 from .models import Album, Artist, Song, AlbumStatus, PlaylistSong, Playlist, Device
+from .beatplayer.health import BeatplayerRegistrar
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,9 @@ def _standard_response(success=True, message='', body='', object={}):
         'object': object
     })
 
-def _render_playlists(selected):
-    playlists = Playlist.objects.all()
-    return render_to_string('_playlists.html', { 'playlists': playlists, 'selected': selected })
+def _render_playlists(selected_playlist_id):
+    playlists = Playlist.objects.all()    
+    return render_to_string('_playlists.html', { 'playlists': playlists, 'selected_playlist_id': selected_playlist_id })
 
 def playlists(request):
     '''
@@ -46,11 +47,12 @@ def playlists(request):
     form = PlaylistForm()
     return render(request, 'playlists.html', { 'playlist_form': form })
 
-def get_playlists(request, selected=None):
+def get_playlists(request):
     '''
     Fetch playlist <select>
     '''    
-    return _standard_response(body=_render_playlists(selected))
+    playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
+    return _standard_response(body=_render_playlists(selected_playlist_id=playlist_id))
 
 def get_playlistsongs(request, playlist_id):
     '''
@@ -69,7 +71,9 @@ def playlist(request):
         form = PlaylistForm(request.POST)
         if form.is_valid():
             playlist = Playlist.objects.create(name=form.cleaned_data['name'])
-            returnval['body'] = _render_playlists(request, selected=playlist.id if request.POST['auto_select'] else None)
+            if 'playlist_id' not in request.session:
+                request.session['playlist_id'] = playlist.id
+            returnval['body'] = _render_playlists(selected_playlist_id=request.session['playlist_id'])
             returnval['success'] = True 
         else:
             returnval['message'] = form.errors
@@ -118,10 +122,12 @@ def device_delete(request, device_id):
 def device_edit(request, device_id):
     device = Device.objects.get(pk=device_id)
     if request.method == "POST":
-        form = DeviceForm(request.POST, instance=device)
-        if form.is_valid():
-            form.save()
-            return redirect('devices')
+        beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=device.agent_base_url)
+        with beatplayer.device() as lockdevice:
+            form = DeviceForm(request.POST, instance=lockdevice)
+            if form.is_valid():
+                form.save()
+        return redirect('devices')
     else:
         form = DeviceForm(instance=device)
     
@@ -134,7 +140,8 @@ def device_new(request):
     if request.method == "POST":
         form = DeviceForm(request.POST)
         if form.is_valid():
-            form.save()
+            save_id = form.save()
+            logger.debug("save ID: %s" % save_id)
             return redirect('devices')
     
     return render(request, 'device.html', {'form': form})
@@ -187,20 +194,20 @@ def albums(request):
 # - PARTIALS
 
 
-def album_filter(request, filter):
-
-    search = request.GET.get('search')
-
-    albums = []
-
-    if filter == 'checkedout':
-        albums = Album.objects.order_by('artist', 'name').filter(albumcheckout__isnull=False, albumcheckout__return_at=None)
-    elif filter == AlbumStatus.INCOMPLETE:
-        albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.INCOMPLETE)
-    elif filter == AlbumStatus.MISLABELED:
-        albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.MISLABELED)
-
-    return render(request, '_albums.html', {'albums':albums})
+# def album_filter(request, filter):
+# 
+#     search = request.GET.get('search')
+# 
+#     albums = []
+# 
+#     if filter == 'checkedout':
+#         albums = Album.objects.order_by('artist', 'name').filter(albumcheckout__isnull=False, albumcheckout__return_at=None)
+#     elif filter == AlbumStatus.INCOMPLETE:
+#         albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.INCOMPLETE)
+#     elif filter == AlbumStatus.MISLABELED:
+#         albums = Album.objects.order_by('artist', 'name').filter(albumstatus__status=AlbumStatus.MISLABELED)
+# 
+#     return render(request, '_albums.html', {'albums':albums})
 
 # - AJAX ENDPOINTS
 
@@ -406,12 +413,9 @@ def _get_artist_search_row(artist, search_string=''):
     escaped_search_string = re.escape(search_string)
     first_letter_regex = re.compile("\\b%s" % escaped_search_string, re.IGNORECASE)
 
-    return render_to_string('_artist.html', {
+    return render_to_string('_artist_recordshop.html', {
         'artist': artist,
-        'name_highlight': first_letter_regex.sub("<span class='highlight'>%s</span>" % search_string, artist.name),
-        'albums': [render_to_string('_artist_album_row.html', {
-            'album': album
-        }) for album in Album.objects.filter(artist_id=artist.id)]
+        'name_highlight': first_letter_regex.sub("<span class='highlight'>%s</span>" % search_string, artist.name)
     })
 
 

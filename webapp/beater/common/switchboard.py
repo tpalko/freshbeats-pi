@@ -1,13 +1,43 @@
-from django.conf import settings
+import base64
 import logging
 import requests
 import json
 import time 
 import sys 
+from contextlib import contextmanager 
+from django.conf import settings
+from django.contrib.sessions.models import Session
 
-logger = logging.getLogger('FreshBeats')
-defLogger = logging.getLogger()
+logger = logging.getLogger(__name__)
+# defLogger = logging.getLogger()
 
+def session_data():
+    all_sessions = Session.objects.all()
+    for session in all_sessions:
+        decoded = base64.decodestring(session.session_data.encode()).decode('utf-8').partition(':')
+        session_data = json.loads(decoded[2])
+        yield session_data 
+
+def _get_playlist_id_for_switchboard_connection_id(connection_id):
+    playlist_id = None 
+    for data in session_data():
+        if 'switchboard_connection_id' in data and data['switchboard_connection_id'] == connection_id:
+            playlist_id = data['playlist_id'] if 'playlist_id' in data else None 
+            if playlist_id is not None:
+                break 
+    return playlist_id
+
+def _get_switchboard_connection_id_for_device_id():
+    device_switchboard_connection_ids = {}
+    for data in session_data():
+        if 'device_id' in data:
+            device_id = int(data['device_id'])
+            if device_id in device_switchboard_connection_ids:
+                device_switchboard_connection_ids[device_id].append(data['switchboard_connection_id'])
+            else:
+                device_switchboard_connection_ids[device_id] = [data['switchboard_connection_id']]
+    return device_switchboard_connection_ids
+    
 def _push(event, payload, connection_id=None):
     # j = json.loads(data)
     # if 'complete' in j:

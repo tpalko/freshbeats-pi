@@ -1,11 +1,23 @@
-from __future__ import unicode_literals
-from django.db import models
+#from __future__ import unicode_literals
 import logging 
+import time 
+import threading 
 import json
+import requests 
+from urllib import parse 
 from datetime import datetime
+from dirtyfields import DirtyFieldsMixin
+from django.db import models
+from django.shortcuts import reverse
+from django.conf import settings
 from .common.util import get_localized_now
 
 logger = logging.getLogger(__name__)
+
+# class PlayerPlaylistManager(models.Manager):
+# 
+#     def get_queryset(self):
+#         return super(PlayerPlaylistManager, self).get_queryset()
 
 class CacheManager(models.Manager):
     
@@ -24,42 +36,6 @@ class AlbumManager(models.Manager):
 
     def get_queryset(self):
         return super(AlbumManager, self).get_queryset().filter(deleted=False)
-
-class Device(models.Model):
-    
-    DEVICE_STATUS_READY = 'ready'
-    DEVICE_STATUS_NOTREADY = 'notready'
-    DEVICE_STATUS_DOWN = 'down'
-    
-    DEVICE_STATUS_CHOICES = (
-        (DEVICE_STATUS_READY, 'Ready'),
-        (DEVICE_STATUS_NOTREADY, 'Not Ready'),
-        (DEVICE_STATUS_DOWN, 'Down')
-    )
-    
-    name = models.CharField(max_length=255)
-    ip_address = models.GenericIPAddressField(protocol='IPv4')
-    agent_base_url = models.CharField(max_length=255)
-    registered_at = models.DateTimeField(null=True)
-    last_health_check = models.DateTimeField(null=True)
-    status = models.CharField(max_length=20, choices=DEVICE_STATUS_CHOICES, default=DEVICE_STATUS_DOWN, null=False)
-    reachable = models.BooleanField(null=False, default=False)
-    registered = models.BooleanField(null=False, default=False)
-    mounted = models.BooleanField(null=False, default=False)
-    selfreport = models.BooleanField(null=False, default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def status_dump(self):
-        return json.dumps({
-            'id': self.id,
-            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S") if self.last_health_check else None, 
-            'status': self.status, 
-            'reachable': self.reachable,
-            'registered': self.registered,
-            'selfreport': self.selfreport,
-            'mounted': self.mounted
-        }, indent=4)
         
 class Artist(models.Model):
 
@@ -108,7 +84,7 @@ class Album(models.Model):
 
     objects = AlbumManager()
 
-    artist = models.ForeignKey(Artist, null=True, on_delete=models.CASCADE)
+    artist = models.ForeignKey(Artist, null=True, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
     tracks = models.IntegerField(default=0)
     date = models.CharField(max_length=50, null=True)
@@ -196,12 +172,14 @@ class AlbumStatus(models.Model):
     status = models.CharField(max_length=20, choices=ALBUM_STATUS_CHOICES, null=False)
 
 class Song(models.Model):
-    album = models.ForeignKey(Album, on_delete=models.CASCADE)
+    
+    album = models.ForeignKey(Album, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
     sha1sum = models.CharField(max_length=40, null=True)
     tracknumber = models.IntegerField(null=True)
     title = models.CharField(max_length=255, null=True)
     musicbrainz_trackid = models.CharField(max_length=36, null=True)
+    url = models.URLField(max_length=2048, null=True)
     play_count = models.IntegerField(null=False, default=0)
     last_played_at = models.DateTimeField(null=True)
     
@@ -222,8 +200,7 @@ class Playlist(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 class PlaylistSong(models.Model):
-    song = models.ForeignKey(Song, on_delete=models.CASCADE)
-    is_current = models.BooleanField(null=False, default=False)
+    song = models.ForeignKey(Song, on_delete=models.PROTECT)
     queue_number = models.IntegerField(null=False, default=1)
     play_count = models.IntegerField(null=False, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -231,7 +208,8 @@ class PlaylistSong(models.Model):
     playlist = models.ForeignKey(Playlist, null=True, on_delete=models.CASCADE)
     #objects = CacheManager()
 
-class Player(models.Model):
+class Player(DirtyFieldsMixin, models.Model):
+       
     PLAYER_STATE_STOPPED = 'stopped'
     PLAYER_STATE_PLAYING = 'playing'
     PLAYER_STATE_PAUSED = 'paused'
@@ -246,7 +224,6 @@ class Player(models.Model):
     # -- but I prefer to leave the player out of it
     CURSOR_MODE_NEXT = 'next'
     CURSOR_MODE_STATIC = 'static'
-    
     PLAYER_STATE_CHOICES = (
         (PLAYER_STATE_STOPPED, 'Stopped'),
         (PLAYER_STATE_PLAYING, 'Playing'),
@@ -258,9 +235,11 @@ class Player(models.Model):
         (CURSOR_MODE_STATIC, 'Static')
     )
     
-    device = models.ForeignKey(Device, null=True, on_delete=models.CASCADE)
+    # playlist = PlayerPlaylistManager()
+    
+    parent = models.ForeignKey('Player', null=True, on_delete=models.PROTECT)
     preceding_command = models.CharField(max_length=255, null=True)
-    preceding_command_args = models.CharField(max_length=255, null=True)
+    preceding_command_args = models.CharField(max_length=1024, null=True)
     mute = models.BooleanField(null=False, default=False)
     shuffle = models.BooleanField(null=False, default=False)
     time_remaining = models.DecimalField(max_digits=4, decimal_places=0, default=0)
@@ -272,10 +251,42 @@ class Player(models.Model):
     beatplayer_status = models.CharField(max_length=20, null=True)
     beatplayer_registered = models.NullBooleanField()
     volume = models.IntegerField(null=True)
-    playlistsong = models.ForeignKey(PlaylistSong, null=True, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(default=get_localized_now)
+    playlistsong = models.ForeignKey(PlaylistSong, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    def save(self, *args, **kwargs):
+    
+        original_song = self._original_state['playlistsong'] # -- playlistsong ID 
+        current_song = self.playlistsong.id if self.playlistsong else None
+        song_changed = current_song != original_song
+        not_time_related_dirty_fields = [ f for f in self.get_dirty_fields() if f not in ['time_pos', 'percent_pos', 'time_remaining'] ]
+        save_triggering_fields = [ a for a in self.__dict__ if a not in ['created_at', 'parent_id', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state', '_original_state'] ]
+        insert_triggering_dirty_fields = [ s for s in save_triggering_fields if s in not_time_related_dirty_fields ]
+        other_dirty_fields = len(insert_triggering_dirty_fields) > 0
+        '''
+        >>> p._original_state.keys()
+        dict_keys(['created_at', 'beatplayer_status', 'beatplayer_registered', 'time_pos', 'parent', 'percent_pos', 'cursor_mode', 'mute', 'playlistsong', 'shuffle', 'preceding_command', 'volume', 'state', 'time_remaining', 'preceding_command_args', 'id', 'repeat_song', 'updated_at'])
+        >>> p.__dict__.keys()
+        dict_keys(['created_at', 'beatplayer_status', 'beatplayer_registered', 'time_pos', 'parent_id', 'percent_pos', 'cursor_mode', 'mute', 'playlistsong_id', 'shuffle', 'preceding_command', 'volume', 'state', 'time_remaining', 'preceding_command_args', 'id', 'repeat_song', 'updated_at', '_state', '_original_state'])
+        '''
+
+        if song_changed or other_dirty_fields:
+            logger.debug("Inserting a new player (new song? %s, other dirty fields? %s)" % (song_changed, ",".join(insert_triggering_dirty_fields)))
+            self.parent_id = self.id 
+            self.id = None         
+    
+        super(Player, self).save(*args, **kwargs)
+    
+        # -- if we inserted, this will go around back and make the connection 
+        # -- when self becomes a new record, self.device ostensibly comes along for the ride
+        # -- however the update for self.device.player is not seen in the database 
+        # -- there is probably some django model attribute that would fix this behavior
+        if song_changed or other_dirty_fields:
+            logger.debug("Moving device %s from player %s -> %s" % (self.device.id, self.parent_id, self.id))
+            self.device.player = self 
+            self.device.save()
+        
     def status_dump(self):
         return json.dumps({
             'mute': self.mute, 
@@ -290,15 +301,76 @@ class Player(models.Model):
             'beatplayer_registered': self.beatplayer_registered
         }, indent=4)
         
-    def compare(self, p1):
-        ps = p1.playlistsong
-        for a in [ a for a in self.__dict__ if a not in ['created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state'] ]:
-            ao = self.__dict__[a]
-            bo = None 
-            if a in p1.__dict__:
-                bo = p1.__dict__[a]
-            if ao != bo:
-                logger.debug("Comparing player states (%s): current %s != db %s" % (a, ao, bo))
-                return False 
-        #logger.debug("%s == %s" % (self.__dict__, p1.__dict__))                
-        return True 
+    # def compare(self, p1):
+    #     # -- may need to hit this due to lazy load and __dict__ access 
+    #     ps = p1.playlistsong
+    #     for a in [ a for a in self.__dict__ if a not in ['created_at', 'updated_at', 'preceding_command', 'preceding_command_args', 'id', '_state', '_device_cache'] ]:
+    #         ao = self.__dict__[a]
+    #         bo = None 
+    #         if a in p1.__dict__:
+    #             bo = p1.__dict__[a]
+    #         if ao != bo:
+    #             logger.debug("Comparing player states found a difference in property '%s': instance value '%s' != db value '%s'" % (a, ao, bo))
+    #             return False 
+    #     #logger.debug("%s == %s" % (self.__dict__, p1.__dict__))                
+    #     return True 
+    
+    # def save(self, *args, **kwargs):
+    #     self.parent_id = self.id 
+    #     self.id = None 
+    #     self.created_at = None 
+    #     self.updated_at = None 
+    #     super(Player, self).save(*args, **kwargs)
+
+   
+class Device(DirtyFieldsMixin, models.Model):
+    
+    DEVICE_STATUS_READY = 'ready'
+    DEVICE_STATUS_NOTREADY = 'notready'
+    DEVICE_STATUS_DOWN = 'down'
+    
+    DEVICE_STATUS_CHOICES = (
+        (DEVICE_STATUS_READY, 'Ready'),
+        (DEVICE_STATUS_NOTREADY, 'Not Ready'),
+        (DEVICE_STATUS_DOWN, 'Down')
+    )
+    
+    player = models.OneToOneField(Player, null=True, on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(protocol='IPv4')
+    agent_base_url = models.CharField(max_length=255)
+    registered_at = models.DateTimeField(null=True)
+    last_health_check = models.DateTimeField(null=True)
+    status = models.CharField(max_length=20, choices=DEVICE_STATUS_CHOICES, default=DEVICE_STATUS_DOWN, null=False)
+    reachable = models.BooleanField(null=False, default=False)
+    registered = models.BooleanField(null=False, default=False)
+    mounted = models.BooleanField(null=False, default=False)
+    selfreport = models.BooleanField(null=False, default=False)
+    is_active = models.BooleanField(null=False, default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+        
+    def save(self, *args, **kwargs):        
+        new_or_activating = self.id is None or (self.is_active and 'is_active' in self.get_dirty_fields())
+        super(Device, self).save(*args, **kwargs)
+        if new_or_activating:
+            headers = {'Content-type': 'application/json'}
+            data = json.dumps({'agent_base_url': self.agent_base_url})
+            time.sleep(1)
+            response = requests.post(parse.urljoin(settings.FRESHBEATS_CALLBACK_URL, reverse('device_health_loop')), headers=headers, data=data)
+
+    def status_dump(self):
+        return json.dumps({
+            'id': self.id,
+            'agent_base_url': self.agent_base_url,
+            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S") if self.last_health_check else None, 
+            'status': self.status, 
+            'reachable': self.reachable,
+            'registered': self.registered,
+            'selfreport': self.selfreport,
+            'mounted': self.mounted
+        }, indent=4)
+# class PlayerTemp(models.Model):
+# 
+#     updated_at = models.DateTimeField(auto_now=True)
+#     created_at = models.DateTimeField(default=get_localized_now)

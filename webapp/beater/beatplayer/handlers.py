@@ -1,28 +1,20 @@
 import json
 import logging
 import os
-import re
-import requests
-import socket
 import sys
-import threading
-import time
 import traceback
 from datetime import datetime, timedelta
-from xmlrpc import client
 
 from django.conf import settings
-from django.contrib.sessions.backends.db import SessionStore 
-from django.contrib.sessions.models import Session 
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import render, render_to_response, redirect
 from django.template import RequestContext
 from django.template.loader import render_to_string
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_http_methods #require_GET, require_POST, 
 from django.views.decorators.csrf import csrf_exempt
 
-from ..models import Album, Artist, AlbumCheckout, Song, AlbumStatus, PlaylistSong, Player
+from ..models import Album, Artist, AlbumCheckout, Song, AlbumStatus, PlaylistSong, Device
 from ..common.util import capture
 from ..common.switchboard import _publish_event
 from .player import PlayerWrapper 
@@ -30,16 +22,30 @@ from .health import BeatplayerRegistrar
 
 logger = logging.getLogger(__name__)
 
-def register_client(request):
-    logger.debug(request.POST)
+def register_client(request):    
     user_agent = request.POST.get('userAgent')
     connection_id = request.POST.get('connectionId')
     request.session['switchboard_connection_id'] = connection_id
     request.session['user_agent'] = user_agent 
     session_key = request.session.session_key
-    logger.debug(dir(request.session))
-    # -- add these values to the user session 
     return JsonResponse({'success': True})
+
+@csrf_exempt
+@require_http_methods(['POST'])
+def device_health_loop(request):
+    response = {'success': False, 'message': ''}
+    try:
+        body = json.loads(request.body.decode())
+        agent_base_url = body['agent_base_url'] # request.POST.get('agent_base_url')
+        if agent_base_url:
+            beatplayer = BeatplayerRegistrar.getInstance(agent_base_url)
+            beatplayer.check_if_health_loop()
+            response['success'] = True
+        else:
+            response['message'] = "agent_base_url is %s" % agent_base_url
+    except:
+        response['message'] = str(sys.exc_info()[1])
+    return JsonResponse(response)
 
 @csrf_exempt
 def health_response(request):
@@ -50,49 +56,56 @@ def health_response(request):
         
         if not health['success'] and health['message'] and len(health['message']) > 0:
             _publish_event('message', json.dumps(health['message']))
-            
+        
+        logger.debug("health response: %s" % json.dumps(health, indent=4))
         health_data = health['data']
         
-        logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
+        #logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
         agent_base_url = health_data['agent_base_url']
         
-        this_device = Device.objects.find(agent_base_url=agent_base_url)
-        
-        logger.debug("Parsing health response in PlayerWrapper..")
-        player = PlayerWrapper.getInstance()
-        player.parse_state(health_data)
-            
         logger.debug("Parsing health response in BeatplayerRegistrar..")
         beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=agent_base_url)
         beatplayer.log_health_response(health_data)
         
-        if this_device:
-            all_sessions = Session.objects.all()
-            for session in all_sessions:
-                logger.debug(dir(session.session_data))
-                d = dict(base64.decode(session.session_data))
-                for session_key in d:
-                    values = d[session_key]
-                    player_id = values['player_id']
-                    if int(player_id) == this_device.id:
-                        switchboard_connection_id = values['switchboard_connection_id']
+        with beatplayer.device(read_only=True) as device:
+            logger.debug("Parsing health response in PlayerWrapper..")
+            playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
+            player = PlayerWrapper.getInstance(device_id=device.id)
+            player.call('parse_state', playlist_id=playlist_id, health_data=health_data)
         
         response['success'] = True 
     except Exception as e:
-        response['message'] = sys.exc_info()[1]
-        logger.error(dir(sys.exc_info()[2]))
-        logger.error(sys.exc_info()[2].tb_frame.f_code)
-        logger.error(sys.exc_info()[2].tb_frame.f_lineno)
-        logger.error(sys.exc_info()[2].tb_frame.f_locals)
-        _publish_event('alert', json.dumps({'message': str(sys.exc_info()[1])}))
+        response['message'] = str(sys.exc_info()[1])
+        logger.error(sys.exc_info()[0])
+        logger.error(response['message'])
+        traceback.print_tb(sys.exc_info()[2])
+        # logger.error(dir(sys.exc_info()[2]))
+        # logger.error(sys.exc_info()[2].tb_frame.f_code)
+        # logger.error(sys.exc_info()[2].tb_frame.f_lineno)
+        # logger.error(sys.exc_info()[2].tb_frame.f_locals)
+        _publish_event('alert', json.dumps({'message': response['message']}))
     
+    logger.debug("Finished processing health response")
     return JsonResponse(response)
 
-def player_select(request):
+def playlist_select(request):
     if request.method == "POST":
-        player_id = request.POST.get('player_id')
-        if player_id:
-            request.session['player_id'] = player_id 
+        playlist_id = request.POST.get('playlist_id')
+        if playlist_id:
+            logger.debug("Setting playlist ID: %s" % playlist_id)
+            request.session['playlist_id'] = playlist_id 
+        else:
+            logger.debug("Setting playlist ID: playlist_id not found on the request")
+    return JsonResponse({'success': True})
+    
+def device_select(request):
+    if request.method == "POST":
+        device_id = request.POST.get('device_id')
+        if device_id:
+            logger.debug("Setting device ID: %s" % device_id)
+            request.session['device_id'] = device_id 
+        else:
+            logger.debug("Setting device ID: device_id not found on the request")
     return JsonResponse({'success': True})
 
 def player(request, command):
@@ -106,14 +119,17 @@ def player(request, command):
         songid = request.POST.get('songid', None)
         artistid = request.POST.get('artistid', None)
         playlistsongid = request.POST.get('playlistsongid', None)
-
-        player = PlayerWrapper.getInstance()
-        player.call(command, albumid=albumid, songid=songid, artistid=artistid, playlistsongid=playlistsongid)
+        
+        device = Device.objects.get(pk=request.session['device_id'])
+        playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
+        
+        player = PlayerWrapper.getInstance(device_id=device.id)
+        player.call(command, playlist_id=playlist_id, albumid=albumid, songid=songid, artistid=artistid, playlistsongid=playlistsongid)
             
         response['success'] = True
 
     except:
-        response['message'] = str(sys.exc_info()[1])
+        response['message'] = "%s: %s" % (str(sys.exc_info()[0].__name__), str(sys.exc_info()[1]))
         logger.error(response['message'])
         traceback.print_tb(sys.exc_info()[2])
         _publish_event('alert', json.dumps(response))
@@ -137,13 +153,25 @@ def player_complete(request):
     response = {'result': {}, 'success': False, 'message': ""}
 
     try:
-        player = PlayerWrapper.getInstance()
-        if complete_response['data']['complete']:
-            player.call("complete", success=complete_response['success'], message=complete_response['message'], data=complete_response['data'])
-            _publish_event('clear_player_output')
-        else:
+        health_data = complete_response['data']
+        
+        if 'start' in health_data and health_data['start']:
+            _publish_event('append_player_output', json.dumps({ 'message': '', 'data': {'clear': True}}))
+            
+        if health_data['complete']:
+            agent_base_url = health_data['agent_base_url']
+            logger.debug("Complete event received from %s" % agent_base_url)
+            device = Device.objects.filter(agent_base_url=agent_base_url).first()
+            playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
+            player = PlayerWrapper.getInstance(device_id=device.id)
+            player.call("complete", playlist_id=playlist_id, success=complete_response['success'], message=complete_response['message'], data=health_data)
+        
+        if complete_response['message']:
             logger.debug("player output: %s" % complete_response['message'])
-            _publish_event('append_player_output', json.dumps(complete_response['message']))
+            # -- \n are lost in the publish, so if we want newlines in the browser, the <br /> needs to replace here 
+            publish_output = { 'message': complete_response['message'].replace("\n\n", "\n").replace("\n", "<br />"), 'data': {'clear': True} }
+            _publish_event('append_player_output', json.dumps(publish_output))
+            
         response['success'] = True
 
     except:
@@ -158,24 +186,33 @@ def beatplayer_status(request):
     response = {'result': {}, 'success': False, 'message': ""}
     try:
         logger.info("/beatplayer_status called, triggering status display")
-        beatplayer = BeatplayerRegistrar.getInstance()        
-        beatplayer.show_status()
-        response['success'] = True
+        agent_base_url = None
+        if 'device_id' in request.session:
+            device = Device.objects.get(pk=request.session['device_id'])
+            agent_base_url = device.agent_base_url
+            beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=agent_base_url)        
+            beatplayer.check_if_health_loop()
+            response['success'] = True
     except:
         response['message'] = str(sys.exc_info()[1])
         logger.error(response['message'])
         traceback.print_tb(sys.exc_info()[2])
         _publish_event('message', json.dumps(response['message']))
 
-    return JsonResponse({'success': True})
+    return JsonResponse(response)
 
 def player_status_and_state(request):
 
     response = {'result': {}, 'success': False, 'message': ""}
 
     try:
-        player = PlayerWrapper.getInstance()
-        player.call("show_player_status")
+        if 'device_id' not in request.session:
+            raise Exception('device_id not found in session when attempting to trigger player show_player_status')
+            
+        device = Device.objects.get(pk=request.session['device_id'])            
+        #playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
+        player = PlayerWrapper.getInstance(device_id=device.id)
+        player.show_player_status()
         response['success'] = True
     except:
         response['message'] = str(sys.exc_info()[1])

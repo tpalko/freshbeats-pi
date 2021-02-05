@@ -1,0 +1,25 @@
+{% load beater %}
+
+<div class="row album">
+	<div class="col-md-2">
+    <div class="result_name_container">
+		    <strong>ARTIST</strong><h3>{{name_highlight|safe}}</h3>
+    </div>
+  </div>
+</div>
+<div class="row" id="artist_{{artist.id}}_album_container">
+  <div class="col-md-12">
+    <strong>ALBUMS</strong>
+    {% for album in artist.album_set.all %}
+      {% include '_artist_album_row.html' %}  
+  	{% endfor %}
+  </div>
+ </div>
+<form id="artist_{{artist.id}}_new_album_form" method="POST" action='{% url "new_album" artist.id %}'>
+   Add {{artist.name}} Album: <input id="artist_{{artist.id}}_album_name"
+			type="text"
+			name="album_name"
+			value="" />
+      Album Date: <input id="artist_{{artist.id}}_album_date" type="text" name="album_date" value="" />
+      <input type="submit" class="btn btn-sm" value="Save" />
+</form>

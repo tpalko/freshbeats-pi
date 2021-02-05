@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('checkout_at', models.DateTimeField()),
                 ('return_at', models.DateTimeField(null=True)),
-                ('album', models.ForeignKey(to='beater.Album')),
+                ('album', models.ForeignKey(on_delete=models.CASCADE, to='beater.Album')),
             ],
         ),
         migrations.CreateModel(
@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('status', models.CharField(max_length=20, choices=[(b'incomplete', b'The album is incomplete'), (b'mislabeled', b'The album is mislabeled'), (b'ripping problem', b'The album has ripping problems')])),
-                ('album', models.ForeignKey(to='beater.Album')),
+                ('album', models.ForeignKey(on_delete=models.CASCADE, to='beater.Album')),
             ],
         ),
         migrations.CreateModel(
@@ -57,12 +57,12 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('name', models.CharField(max_length=255)),
-                ('album', models.ForeignKey(to='beater.Album')),
+                ('album', models.ForeignKey(on_delete=models.CASCADE, to='beater.Album')),
             ],
         ),
         migrations.AddField(
             model_name='playlistsong',
             name='song',
-            field=models.ForeignKey(to='beater.Song'),
+            field=models.ForeignKey(on_delete=models.CASCADE, to='beater.Song'),
         ),
     ]

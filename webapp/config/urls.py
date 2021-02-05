@@ -14,14 +14,17 @@ Including another URLconf
     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 """
 import logging 
+
 from django.conf.urls import url, include
 from django.contrib import admin
 from django.conf.urls.static import static
 from django.conf import settings
+
 from beater import views
 from beater.beatplayer import handlers as beatplayer_handlers
 from beater.beatplayer.health import BeatplayerRegistrar
 from beater.freshbeats import freshbeats_client
+from beater.models import Device 
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +33,20 @@ logger = logging.getLogger(__name__)
 # -- webapp up first, exponential backoff call to beatplayer to register with some high max, refresh backoff on page requests 
 if settings.FRESHBEATS_SERVING:
     logger.info("")
-    logger.info("*********************************")
-    logger.info("* Starting up global beatplayer *")
-    logger.info("*********************************")
+    logger.info("*************************************")
+    logger.info("* Beatplayer subscriptions starting *")
+    logger.info("*************************************")
     logger.info("")
-    beatplayer = BeatplayerRegistrar.getInstance()
-    beatplayer.register()
+    for device in Device.objects.all():
+        beatplayer = BeatplayerRegistrar.getInstance(device.agent_base_url)
+        beatplayer.check_if_health_loop()
 
 urlpatterns = [
     url(r'^$', views.home, name='home'),
     url(r'^search/$', views.search, name='search'),
     url(r'^devices/(?P<device_id>[0-9]+)/delete$', views.device_delete, name='device_delete'),
     url(r'^devices/(?P<device_id>[0-9]+)/$', views.device_edit, name='device_edit'),
+    url(r'^devices/health_loop/$', beatplayer_handlers.device_health_loop, name='device_health_loop'),
     url(r'^devices/$', views.devices, name='devices'),
     url(r'^device/$', views.device_new, name='device_new'),
     url(r'^mobile/$', views.mobile, name='mobile'),
@@ -62,7 +67,8 @@ urlpatterns = [
     # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer_handlers.player, name='album_command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer_handlers.player, name='song_command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer_handlers.player, name='player'),
-    url(r'^player_select/$', beatplayer_handlers.player_select, name='player_select'),
+    url(r'^device_select/$', beatplayer_handlers.device_select, name='device_select'),
+    url(r'^playlist_select/$', beatplayer_handlers.playlist_select, name='playlist_select'),
     url(r'^player_complete/$', beatplayer_handlers.player_complete, name='player_complete'),
     url(r'^health_response/$', beatplayer_handlers.health_response, name='health_response'),
     url(r'^beatplayer_status/$', beatplayer_handlers.beatplayer_status, name='beatplayer_status'),
@@ -103,7 +109,7 @@ urlpatterns = [
 # -- adding static(STATIC_URL) allows gunicorn to find app static files, but not debug_toolbar 
 
 if settings.DEBUG:
-    print("IS DEBUG")
+    print("IS DEBUG -- loading debug toolbar")
     import debug_toolbar 
     urlpatterns = [
         url(r'^__debug__/', include(debug_toolbar.urls)),

@@ -21,6 +21,25 @@ function onAlbumUpdate(data) {
 	$("[data-album_id='" + album_id + "']").text(album_name);
 }
 
+$(document).on('submit', "form#new_album_form", function(e) {
+  e.preventDefault();
+  
+  $.ajax({
+    url: $(this).attr("action"),
+    type: $(this).attr("method"),
+    dataType: "json",
+    data: $(this).serialize(),
+    success: function(data, textStatus, jqXHR) {
+      console.log(data);
+      onAlbumAdd(data);
+    },
+    error: function(jqXHR, textStatus, errorThrown) {
+      console.error(textStatus);
+      console.error(errorThrown);
+    }
+  })
+})
+
 $(document).on('submit', "form#new_artist_form", function(e) {
 
 	e.preventDefault();
@@ -66,7 +85,7 @@ $(document).on('click', "button[id='record_shop_mode_btn']", function(e) {
 	// isRecordShopMode = localStorage.getItem('isRecordShopMode') === 'true';
 	setRecordShopMode(!isRecordShopMode);
 	// -- TODO: do we want to re-search on mode toggle?
-	// perform_search();
+	perform_search();
 	return false;
 });
 
@@ -83,14 +102,21 @@ $(document).ready(() => {
 	// perform_search();
 });
 
+var searchjqXHR;
+
 function perform_search() {
 
   var input_limit = $("#input_limit").val();
 	if(!isRecordShopMode && $("input#search").val().length < input_limit){
 		return;
 	}
+  
+  if (searchjqXHR !== undefined) {
+    console.log("aborting previous query..");
+    searchjqXHR.abort();
+  }
 
-	$.ajax({
+	searchjqXHR = $.ajax({
 		url: '{% url "get_search_results" %}',
 		data: $("form#search_form").serialize(),
 		type: "POST",
@@ -101,9 +127,9 @@ function perform_search() {
 
 			var keys = Object.keys(data);
 
-			if(isRecordShopMode) {
-				keys = keys.filter(key => key == 'artists');
-			}
+			// if(isRecordShopMode) {
+			// 	keys = keys.filter(key => key == 'artists');
+			// }
 
       // -- if we didn't find anything in a category, say so
 			$(keys.filter(key => data[key].length == 0))
@@ -116,9 +142,9 @@ function perform_search() {
 					$("#search_results").append("<div class='result_type_header_container'><h1 class='result_type_header'>" + key + "</h1></div>" + data[key]);
 				});
       
-        $(".result_type_header").each((i, h) => {
-          type_headers[h.innerText] = { el: h, top: h.offsetTop };
-        });
+      $(".result_type_header").each((i, h) => {
+        type_headers[h.innerText] = { el: h, top: h.offsetTop };
+      });
 		}
-	});
+	});  
 }

@@ -8,5 +8,5 @@ class PlaylistForm(forms.Form):
 class DeviceForm(ModelForm):
     class Meta:
         model = Device 
-        fields = ['name', 'ip_address', 'agent_base_url']
+        fields = ['name', 'ip_address', 'agent_base_url', 'is_active']
         

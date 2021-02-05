@@ -1,13 +1,20 @@
-<div class="row">
+{% load beater %}
+
+<div class="row album">
 	<div
-		class="col-md-3 inline-edit"
+		class="col-md-3 text-left inline-edit"
 		data-album_id="{{ album.id }}"
 		data-form-method="PUT"
 		data-form-action="{% url "update_album" album.id %}"
 		data-input-name="album_name"
-		data-callback="onAlbumUpdate">{{ album.name }}</div>
-	<div class="col-md-1">{% for status in album.albumstatus_set.all %}
-		<span class="label label-default">{{ status.status }}</span>
-	{% endfor %}
+		data-blurpost-callback="onAlbumUpdate">{{ album.name }}
+  </div>
+  <div class="col-md-3">
+    {{ album.date }} {{ album.tracks }} tracks, {{ album|has_status:"owned"|yesno:"owned,not owned" }}
+  </div>
+	<div class="col-md-1">
+    {% for status in album.albumstatus_set.all %}
+  		<span class="label label-default">{{ status.status }}</span>
+  	{% endfor %}
 	</div>
 </div>

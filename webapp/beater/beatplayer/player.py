@@ -1,3 +1,4 @@
+import sys
 import logging
 import json
 import math
@@ -7,16 +8,16 @@ from xmlrpc import client
 from contextlib import contextmanager 
 from django.conf import settings
 from django.template.loader import render_to_string
-from ..models import Album, Artist, Player
-from ..common.switchboard import _publish_event
-from .playlist import Playlist 
+from ..models import Album, Artist, Player, Device, Song
+from ..common.switchboard import _publish_event, _get_switchboard_connection_id_for_device_id, _get_playlist_id_for_switchboard_connection_id
+from .playlist import Playlist, PlaylistHelper
 from .health import BeatplayerRegistrar
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MUTE = False 
 DEFAULT_SHUFFLE = False
-DEFAULT_STATE= Player.PLAYER_STATE_STOPPED
+DEFAULT_STATE = Player.PLAYER_STATE_STOPPED
 DEFAULT_CURSOR_MODE = Player.CURSOR_MODE_NEXT
 DEFAULT_REPEAT_SONG = False 
 DEFAULT_VOLUME = 90
@@ -26,216 +27,260 @@ class PlayerWrapper():
     Player implements standard playback actions with a Playlist and additional logic and state.
     '''
     
-    playlist = None
+    player_lock = None 
+    device_id = None
     beatplayer_client = None 
+    playlist_id = None 
     
-    __instance = None 
-    lock = None 
+    __instances = {}
+    playlist_locks = {}
     
     @staticmethod
-    def getInstance():
-        if PlayerWrapper.__instance == None:
-            PlayerWrapper()
-        return PlayerWrapper.__instance 
+    def getInstance(device_id):
+        if device_id not in PlayerWrapper.__instances or PlayerWrapper.__instances[device_id] == None:
+            PlayerWrapper(device_id=device_id)
+        return PlayerWrapper.__instances[device_id] 
         
     def __init__(self, *args, **kwargs):
-        if PlayerWrapper.__instance != None:
+        if kwargs['device_id'] in PlayerWrapper.__instances and PlayerWrapper.__instances[kwargs['device_id']] != None:
             raise Exception("Call PlayerWrapper.getInstance() for singleton")
         else:
-            self.lock = threading.Lock()
-            self.playlist = Playlist()
-            self.beatplayer_client = client.ServerProxy(settings.BEATPLAYER_URL)
-            PlayerWrapper.__instance = self 
-    
+            self.player_lock = threading.Lock()
+            self.device_id = kwargs['device_id']
+            with self.player(read_only=True) as player:
+                if not player:
+                    logger.warning("There are no players for this device")
+                else:
+                    self.beatplayer_client = client.ServerProxy(player.device.agent_base_url, allow_none=True)
+            PlayerWrapper.__instances[self.device_id] = self 
+        
+    @contextmanager     
+    def playlist_context(self, playlist_id):
+        if playlist_id not in PlayerWrapper.playlist_locks:
+            logger.debug("Creating lock for playlist %s" % (playlist_id))
+            PlayerWrapper.playlist_locks[playlist_id] = threading.Lock()
+        logger.debug("Wanting playlist lock %s" % playlist_id)
+        PlayerWrapper.playlist_locks[playlist_id].acquire()
+        logger.debug("Acquired playlist lock %s" % playlist_id)
+        playlist = Playlist.getInstance(playlist_id)
+        try:
+            yield playlist
+        except:
+            logger.error(sys.exc_info()[0])
+            logger.error(sys.exc_info()[1])
+            traceback.print_tb(sys.exc_info()[2])
+        finally:
+            playlist._renumber_playlistsong_queue()
+            PlayerWrapper.playlist_locks[playlist_id].release()
+            logger.debug("Released playlist lock %s" % playlist_id)
+            
     @contextmanager
-    def player(self, read_only=False, command=None, args=None):
+    def player(self, read_only=False, playlist_id=None):
+        '''
+        The read-only context DOES NOT PROVIDE self.playlist 
+        '''
         if read_only:
-            player = self._get_last()
+            player = self._get_device_player(read_only=True)
             #logger.debug("Player state (R/O - yield): %s" % player.status_dump())
             yield player
         else:
             # -- File "/media/storage/development/github.com/freshbeats-pi/webapp/beater/beatplayer/player.py", line 170, in parse_state
             caller = traceback.format_stack()[-3].split(' ')[7].replace('\n', '')
             logger.debug("%s wants to acquire player record lock.." % caller)
-            self.lock.acquire()
+            self.player_lock.acquire()
             logger.debug("%s has acquired player record lock" % caller)
-            player = self._get_last()
+            player = self._get_device_player()
             logger.debug("Player state (R/W - yield): %s" % player.status_dump())
             try:
-                yield player
-            finally:
-                logger.debug("Player yield returned from %s, cleaning up and saving" % caller)
-                player.preceding_command = command 
-                player.preceding_command_args = args
-                
-                beatplayer = BeatplayerRegistrar.getInstance()
-                with beatplayer.client_state(read_only=True) as client_state:
-                    player.beatplayer_status = client_state.status
-                    player.beatplayer_registered = client_state.registered
-                
-                last_player = self._get_last()
-                
-                if not player.compare(last_player):
-                    logger.info("Player state (R/W - save): %s" % player.status_dump())
-                    player.save()
+                if playlist_id is None:
+                    if player.playlistsong is not None:
+                        playlist_id = player.playlistsong.playlist.id
+                        logger.warning("Player %s context given no playlist ID, inferring %s from current position %s" % (player.id, playlist_id, player.playlistsong.id))
+                    else:
+                        logger.warning("Player %s context given no playlist ID, and player has no current position from which to infer" % player.id)
                 else:
-                    logger.debug("Player state (R/W - not saving)")
-                self.lock.release()
-                logger.debug("Caller %s released lock" % caller)
+                    logger.debug("Player %s context given playlist ID %s" % (player.id, playlist_id))
+                with self.playlist_context(playlist_id=playlist_id) as playlist:                    
+                    self.playlist = playlist
+                    logger.debug("Yielding player %s / playlist %s" % (player.id, playlist_id))
+                    yield player
+                
+                logger.debug("Player yield returned from %s, cleaning up and saving" % caller)
+                
+                beatplayer = BeatplayerRegistrar.getInstance(player.device.agent_base_url)
+                with beatplayer.device(read_only=True) as device:
+                    player.beatplayer_status = device.status
+                    player.beatplayer_registered = device.registered
+                player.save()
+                
+            finally:
+                #logger.debug("Player state (R/W - not saving)")
+                self.player_lock.release()
+                #logger.debug("Caller %s released lock" % caller)
+                
+            self.show_player_status()
     
-    # def _load(self):         
-    #     player = self._get_last()
-    #     if player:
-    #         self.mute = player.mute
-    #         self.shuffle = player.shuffle
-    #         self.state = player.state
-    #         self.cursor_mode = player.cursor_mode
-    #         self.repeat_song = player.repeat_song
-    #         self.volume = player.volume
-    #     else:
-    #         self.mute = DEFAULT_MUTE 
-    #         self.shuffle = DEFAULT_SHUFFLE
-    #         self.state = DEFAULT_STATE 
-    #         self.cursor_mode = DEFAULT_CURSOR_MODE
-    #         self.repeat_song = DEFAULT_REPEAT_SONG
-    #         self.volume = DEFAULT_VOLUME
+    def _get_device_player(self, read_only=False):
+        '''
+        The player wrapper is requested by device ID.
+        There is presumably a Player record behind the Device record, which is where the device left off last time, its current state.
+        That's what we want. Not the very last Player record, which may have nothing to do with our device.
+        But a new device would not have a relationship, or player state. 
+        So by default we give it the very last Player record, a bit arbitrarily.
+        If the incoming command sends it off in a completely new direction, so be it. We'll capture that state after this.
+        '''
+        
+        device_player = None 
+        
+        lookupdevice = Device.objects.get(pk=self.device_id)
+        beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=lookupdevice.agent_base_url)
+        with beatplayer.device() as device:                
+            if device.player:
+                logger.debug("Device %s found with player %s" % (device.id, device.player.id))
+            else:
+                if read_only:
+                    logger.warning("Device %s had no player association, but in a read-only context so making no changes." % device.id)
+                else:
+                    device.player = Player.objects.order_by('-created_at').first()
+                    if device.player is not None:
+                        logger.info("Device %s had no player association, so associated the most recent record %s." % (device.id, device.player.id))
+                    else:
+                        device.player = Player.objects.create(
+                            mute = DEFAULT_MUTE,
+                            shuffle = DEFAULT_SHUFFLE,
+                            state = DEFAULT_STATE,
+                            cursor_mode = DEFAULT_CURSOR_MODE,
+                            repeat_song = DEFAULT_REPEAT_SONG,
+                            volume = DEFAULT_VOLUME
+                        )                        
+                        logger.warning("Device %s had no player association, but no player records were found. Created %s and associated it." % (device.id, device.player.id))
             
-    # def _save(self, player, command=None, args=None):
-    #     # select p.created_at, preceding_command, preceding_command_args, beatplayer_registered, beatplayer_status, s.name, volume, mute, shuffle, state, cursor_mode, repeat_song from beater_player p left join beater_playlistsong ps on ps.id = p.playlistsong_id left join beater_song s on s.id = ps.song_id order by created_at desc limit 20;
-    #     # player = Player()
-    #     # players = Player.objects.all()
-    #     # if len(players) > 0:
-    #     #     player = players[0]        
-    # 
-    #     # player.mute = self.mute
-    #     # player.shuffle = self.shuffle
-    #     # player.state = self.state
-    #     # player.cursor_mode = self.cursor_mode
-    #     # player.repeat_song = self.repeat_song 
-    #     # player.volume = self.volume
-    # 
-    #     # -- these bits are dynamic, we store for posterity not functionality 
-    #     player.preceding_command = command 
-    #     player.preceding_command_args = args
-    # 
-    #     player.playlistsong = self.playlist.get_current_playlistsong()
-    # 
-    #     beatplayer = BeatplayerRegistrar.getInstance()
-    #     with beatplayer.client_state(read_only=True) as client_state:
-    #         player.beatplayer_status = client_state.status
-    #         player.beatplayer_registered = client_state.registered
-    # 
-    #     last_player = self._get_last()
-    # 
-    #     if(not player.compare(last_player)):
-    #         player.save()
-    
-    def _get_last(self):
-        player = Player.objects.all().order_by('-created_at').first()
-        if not player:
-            player = Player()
-            player.mute = DEFAULT_MUTE 
-            player.shuffle = DEFAULT_SHUFFLE
-            player.state = DEFAULT_STATE 
-            player.cursor_mode = DEFAULT_CURSOR_MODE
-            player.repeat_song = DEFAULT_REPEAT_SONG
-            player.volume = DEFAULT_VOLUME
-            player.save()
-        return player
+            device_player = device.player 
+            
+        return device_player 
     
     def _vals(self):
         return { k: self.__dict__[k] for k in self.__dict__.keys() if type(self.__dict__[k]).__name__ in ['str','bool','int'] }
         
     def call(self, command, **kwargs):
         
-        logger.debug("handling player call - %s, kwargs: %s" % (command, json.dumps(kwargs)))
+        logger.debug("Handling player call - %s, kwargs: %s" % (command, json.dumps(kwargs)))
         
         f = self.__getattribute__(command)
-        response = f(**{ k: kwargs[k] for k in kwargs if kwargs[k] is not None})
+        
+        with self.player(playlist_id=kwargs['playlist_id']) as player:
+            player.preceding_command = command 
+            player.preceding_command_args = kwargs
+            response = f(player=player, **{ k: kwargs[k] for k in kwargs if kwargs[k] is not None})
             
-        if response:
-            logger.debug("(call) %s response: %s" % (command, response))
-        if response and not response['success'] and response['message']:
-            _publish_event('message', json.dumps(response['message']))
+            if response:
+                logger.debug("(call) %s response: %s" % (command, response))
+                if not response['success'] and response['message']:
+                    _publish_event('message', json.dumps(response['message']))
         
         #logger.debug("Saving state..")
         #self._save(command, kwargs)
         #logger.debug("Showing status..")
-        self.show_player_status()
-        beatplayer = BeatplayerRegistrar.getInstance()
-        beatplayer.show_status()
+        
+        # beatplayer = BeatplayerRegistrar.getInstance()
+        # beatplayer.show_status()
     
-    def parse_state(self, health_data):
-        with self.player() as player:
-            logger.debug("Parsing health data")
-            if 'ps' in health_data:
-                if not health_data['ps']['is_alive']:
-                    player.state = Player.PLAYER_STATE_STOPPED
-                    player.mute = False
-                else:
-                    player.state = Player.PLAYER_STATE_PLAYING
-                    
-            player.volume = health_data['volume'] if 'volume' in health_data else player.volume
-            player.state = Player.PLAYER_STATE_PAUSED if 'paused' in health_data and health_data['paused'] else player.state
-            player.mute = health_data['muted'] == 'True' if 'muted' in health_data else player.mute
-            if 'time' in health_data:
-                player.time_pos = health_data['time'][0]
-                player.time_remaining = health_data['time'][1]
-                player.percent_pos = 100*player.time_pos / (player.time_pos + player.time_remaining)
-            else:
-                player.time_remaining = health_data['time_remaining'] if 'time_remaining' in health_data and health_data['time_remaining'] else 0
-                player.time_pos = health_data['time_pos'] if 'time_pos' in health_data and health_data['time_pos'] else 0
-                player.percent_pos = health_data['percent_pos'] if 'percent_pos' in health_data and health_data['percent_pos'] else 0
-        self.show_player_status()
+    def parse_state(self, player, health_data):
+
+        logger.debug("Parsing health data -- %s --" % player.device.agent_base_url)
+        changelog = "Player changes: "
+        
+        to_state = Player.PLAYER_STATE_PLAYING if 'ps' in health_data and 'is_alive' in health_data['ps'] and health_data['ps']['is_alive'] else Player.PLAYER_STATE_STOPPED
+        to_state = Player.PLAYER_STATE_PAUSED if 'paused' in health_data and health_data['paused'] else to_state
+        
+        to_mute = health_data['muted'] == 'True' if 'muted' in health_data and to_state != Player.PLAYER_STATE_STOPPED else False 
+        
+        if to_state == Player.PLAYER_STATE_STOPPED:
+            _publish_event('clear_player_output')
+            to_mute = False 
+            
+        to_volume = health_data['volume'] if 'volume' in health_data else player.volume
+        
+        if to_state != player.state:
+            changelog += "state %s -> %s " % (player.state, to_state)
+            player.state = to_state
+        if to_volume != player.volume:
+            changelog += "volume %s -> %s " % (player.volume, to_volume)
+            player.volume = to_volume
+        if to_mute != player.mute:
+            changelog += "mute %s -> %s " % (player.mute, to_mute)
+            player.mute = to_mute
+        
+        logger.warning(changelog)
+        
+        player.time_pos = health_data['time'][0] or 0
+        player.time_remaining = health_data['time'][1] or 0
+        total_time = player.time_pos + player.time_remaining            
+        player.percent_pos = 100*player.time_pos / total_time if total_time > 0 else 0
     
-    def complete(self, success=True, message='', data={}):   
+    def complete(self, player, success=True, message='', data={}):   
         response = {'success': False, 'message': ''}
-        with self.player() as player:
-            if not success:
-                #player.state = Player.PLAYER_STATE_STOPPED
-                response['message'] = "%s (returncode: %s)" % (message, data['returncode'])
-            else:
-                if player.state != Player.PLAYER_STATE_STOPPED:
-                    if player.cursor_mode == Player.CURSOR_MODE_NEXT:
-                        cursor_set = self._advance(player)
-                    else:
-                        player.cursor_mode = Player.CURSOR_MODE_NEXT
-                    response = self._beatplayer_play()
-                    if response['success']:
-                        player.state = Player.PLAYER_STATE_PLAYING
-                else:
-                    response['success'] = True 
+        if not success:
+            #player.state = Player.PLAYER_STATE_STOPPED
+            response['message'] = "%s (returncode: %s)" % (message, data['returncode'])
+        else:
+            play_response = None 
+            if player.state != Player.PLAYER_STATE_STOPPED:
+                play_response = self._advance_play(player)                
+            if not play_response or play_response['success']:
+                response['success'] = True 
+            elif play_response:
+                response['message'] = play_response['message']
         return response 
     
     def show_player_status(self):
-        logger.debug("Showing player status..")
-        current_playlistsong = self.playlist.get_current_playlistsong()
-        current_song_obj = {
-            'song': current_playlistsong.song if current_playlistsong else None
-        }
-        current_song_html = render_to_string('_current_song.html', current_song_obj)
-        #logger.info("Stringing playlist..")
-        playlist = str(self.playlist)
-        #logger.info("stringed")        
-        player_dump = {}
+        
         with self.player(read_only=True) as player:
+            # -- READ ONLY PLAYER
+            connection_ids_by_device = _get_switchboard_connection_id_for_device_id()
+            if self.device_id not in connection_ids_by_device:
+                logger.debug("No clients for device %s, not updating status" % player.device.name)
+                return 
+                
+            #logger.info("stringed")        
             player_dump = { k: str(player.__getattribute__(k)) for k in ['shuffle', 'mute', 'state', 'volume', 'time_remaining', 'time_pos', 'percent_pos'] }
-            player_dump['time_pos_display'] = "%.0f:%.0f%.0f" % (math.floor(player.time_pos/60), math.floor((player.time_pos%60)/10), math.floor((player.time_pos%60)%10))
-            player_dump['time_remaining_display'] = "%.0f:%.0f%.0f" % (math.floor(player.time_remaining/60), math.floor((player.time_remaining%60)/10), math.floor((player.time_remaining%60)%10))
-        _publish_event('player_status', json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist}))
+            if player.time_pos:
+                player_dump['time_pos_display'] = "%.0f:%.0f%.0f" % (math.floor(player.time_pos/60), math.floor((player.time_pos%60)/10), math.floor((player.time_pos%60)%10))
+            if player.time_remaining:
+                player_dump['time_remaining_display'] = "%.0f:%.0f%.0f" % (math.floor(player.time_remaining/60), math.floor((player.time_remaining%60)/10), math.floor((player.time_remaining%60)%10))
+            
+            current_playlistsong = player.playlistsong if player.playlistsong else None 
+            
+            logger.debug("Showing player status (%s/%s). Current playlistsong: %s" % (player.id, player.device.id, current_playlistsong.song.name if current_playlistsong else "<no song>"))
+            
+            current_song_obj = {
+                'song': current_playlistsong.song if current_playlistsong else None
+            }            
+            current_song_html = render_to_string('_current_song.html', current_song_obj)
+            
+            for connection_id in connection_ids_by_device[self.device_id]:
+                playlist_id = _get_playlist_id_for_switchboard_connection_id(connection_id)
+                logger.debug("Found playlist %s for switchboard connection ID %s" % (playlist_id, connection_id))
+                playlist_data = {
+                    'playlist': PlaylistHelper.playlist(playlist_id=playlist_id) if playlist_id else None,
+                    'playlistsongs': PlaylistHelper.playlistsongs(playlist_id=playlist_id) if playlist_id else [], 
+                    'current_playlistsong_id': current_playlistsong.id if current_playlistsong else None
+                }
+                playlist_html = render_to_string("_playlist.html", playlist_data)
+                _publish_event(event='player_status', payload=json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist_html}), connection_id=connection_id)
         
     ## -- BEGIN CLIENT CALLS -- ## 
     
-    def _beatplayer_play(self):        
-        song = self.playlist.get_current_playlistsong().song        
+    def _beatplayer_play(self, player):        
+        # -- READ ONLY PLAYER
+        song = player.playlistsong.song        
         song_filepath = "%s/%s/%s" % (song.album.artist.name, song.album.name, song.name)
-        callback = "http://%s:%s/player_complete/" % (settings.FRESHBEATS_CALLBACK_HOST, settings.FRESHBEATS_CALLBACK_PORT)
-        with self.player(read_only=True) as player:
-            logger.info("Player state: %s. Calling beatplayer. song: %s callback: %s" % (player.state, song_filepath, callback))
-        response = self.beatplayer_client.play(song_filepath, callback)
+        logger.info("Playing. Player state: %s. Song: %s callback: %s" % (player.state, song_filepath, settings.FRESHBEATS_COMPLETE_CALLBACK_URL))
+        response = self.beatplayer_client.play(song.url, song_filepath, settings.FRESHBEATS_COMPLETE_CALLBACK_URL, player.device.agent_base_url)
         logger.debug("play response: %s" % json.dumps(response))
         if response['success']:
-            self.playlist.increment_current_playlistsong_play_count()
+            self.playlist.increment_current_playlistsong_play_count(player.playlistsong.id)
+            player.state = Player.PLAYER_STATE_PLAYING
         return response 
         
     def _beatplayer_stop(self):
@@ -259,52 +304,49 @@ class PlayerWrapper():
     
     ## -- BEGIN UI BUTTONS -- ## 
     
-    def toggle_mute(self, **kwargs):
+    def toggle_mute(self, player, **kwargs):
         response = self._beatplayer_mute()
         if response['success']:
-            with self.player() as player:
-                player.mute = not player.mute
+            player.mute = not player.mute
         return response 
     
-    def pause(self, **kwargs):
+    def pause(self, player, **kwargs):
         response = None 
-        with self.player() as player:
-            if player.state == Player.PLAYER_STATE_PAUSED:
-                response = self._beatplayer_pause()
-                if response['success']:
-                    player.state = Player.PLAYER_STATE_PLAYING
-            elif player.state == Player.PLAYER_STATE_PLAYING:
-                response = self._beatplayer_pause()
-                if response['success']:
-                    player.state = Player.PLAYER_STATE_PAUSED
+        if player.state == Player.PLAYER_STATE_PAUSED:
+            response = self._beatplayer_pause()
+            if response['success']:
+                player.state = Player.PLAYER_STATE_PLAYING
+        elif player.state == Player.PLAYER_STATE_PLAYING:
+            response = self._beatplayer_pause()
+            if response['success']:
+                player.state = Player.PLAYER_STATE_PAUSED
         return response 
     
-    def previous(self, **kwargs):
+    def previous(self, player, **kwargs):
+        # -- READ ONLY
         response = None 
-        with self.player(read_only=True) as player:
-            self.playlist.back_up_cursor()
-            if player.state != Player.PLAYER_STATE_STOPPED:
-                self._beatplayer_play()
+        player.playlistsong = self.playlist.back_up_cursor(player.playlistsong)
+        if player.state != Player.PLAYER_STATE_STOPPED:
+            response = self._beatplayer_play(player)
         return response 
     
-    def restart(self, **kwargs):
+    def restart(self, player, **kwargs):
+        # -- READ ONLY PLAYER
         response = None 
-        with self.player(read_only=True) as player:
-            if player.state != Player.PLAYER_STATE_STOPPED:
-                self._beatplayer_play()
+        if player.state != Player.PLAYER_STATE_STOPPED:
+            response = self._beatplayer_play(player)
         return response 
     
-    def stop(self, **kwargs):
+    def stop(self, player, **kwargs):
         response = None 
-        with self.player() as player:
-            if player.state != Player.PLAYER_STATE_STOPPED:
-                response = self._beatplayer_stop()
-                logger.debug("_beatplayer_stop response: %s" % response)
-                if response['success'] or 'Broken pipe' in response['message'] or 'no beatplayer process' in response['message']:
-                    logger.debug("(stop) stop response: %s" % response)
-                    player.state = Player.PLAYER_STATE_STOPPED
-                else:
-                    logger.debug("called stop, but did not set state to stopped for some reason")
+        if player.state != Player.PLAYER_STATE_STOPPED:
+            response = self._beatplayer_stop()
+            logger.debug("_beatplayer_stop response: %s" % response)
+            if not response or response['success'] or 'Broken pipe' in response['message'] or 'no beatplayer process' in response['message']:
+                logger.debug("(stop) stop response: %s" % response)
+                player.state = Player.PLAYER_STATE_STOPPED
+            else:
+                logger.debug("called stop, but did not set state to stopped for some reason")
         return response
         
     # -- play_song and play_album are both 'off playlist' operations
@@ -313,90 +355,15 @@ class PlayerWrapper():
     # -- play_album can't do that, so we splice it
     
     def _advance(self, player, playlistsongid=None):
-        self.playlist.advance_cursor(shuffle=player.shuffle, playlistsongid=playlistsongid)
-        self.player.playlistsong = self.playlist.get_current_playlistsong()
+        player.playlistsong = self.playlist.advance_cursor(current_playlistsong=player.playlistsong, to_playlistsongid=playlistsongid, shuffle=player.shuffle)
+        if not player.playlistsong:
+            logger.warning("Playlist advance resulted in no selection being made")
         
-    def _advance_play(self, player):
-        player.shuffle = False 
-        self._advance(player)
-        response = self._beatplayer_play()
-        if response['success']:
-            player.state = Player.PLAYER_STATE_PLAYING   
+    def _advance_play(self, player, playlistsongid=None):
+        self._advance(player, playlistsongid=playlistsongid)
+        return self._beatplayer_play(player)
             
-    def play(self, **kwargs):
-        song = None 
-        album = None 
-        artist = None 
-        response = None
-        with self.player() as player:            
-            if 'songid' in kwargs and kwargs['songid'] is not None:  
-                songid = kwargs['songid']
-                song = Song.objects.get(pk=songid)
-                self.playlist.splice_song(song)
-                self._advance_play(player)             
-            elif 'albumid' in kwargs and kwargs['albumid'] is not None:
-                albumid = kwargs['albumid']
-                album = Album.objects.get(pk=albumid)
-                self.playlist.splice_album(album)
-                self._advance_play(player)
-            elif 'artistid' in kwargs and kwargs['artistid'] is not None:
-                artistid = kwargs['artistid']
-                artist = Artist.objects.get(pk=artistid)
-                self.playlist.splice_artist(artist)
-                self._advance_play(player)
-            elif 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
-                self._advance(player, playlistsongid=kwargs['playlistsongid'])
-                response = self._beatplayer_play()
-                if response['success']:
-                    player.state = Player.PLAYER_STATE_PLAYING                
-            else:
-                if player.state == Player.PLAYER_STATE_STOPPED:
-                    logger.debug("Player is stopped, but playing now")
-                    response = self._beatplayer_play()
-                elif player.state == Player.PLAYER_STATE_PAUSED:
-                    logger.debug("Player is paused, but pause-toggling now")
-                    response = self._beatplayer_pause()
-                if response and response['success']:
-                    player.state = Player.PLAYER_STATE_PLAYING
-        return response
-    
-    def next(self, **kwargs):
-        response = None 
-        with self.player() as player:
-            cursor_set = self._advance(player)
-            if player.state != Player.PLAYER_STATE_STOPPED:
-                self._beatplayer_play()
-        return response 
-    
-    def next_artist(self, **kwargs):        
-        song = self.playlist.get_current_playlistsong().song
-        current_artist = song.album.artist.id 
-        with self.player() as player:
-            while song.album.artist.id == current_artist:
-                cursor_set = self._advance(player)
-                song = self.playlist.get_current_playlistsong().song
-            if player.state != Player.PLAYER_STATE_STOPPED:            
-                self._beatplayer_play()
-    
-    def toggle_shuffle(self, **kwargs):
-        with self.player() as player:
-            player.shuffle = not player.shuffle
-        
-    def toggle_repeat_song(self, **kwargs):
-        with self.player() as player:
-            player.repeat_song = not player.repeat_song 
-        
-    def volume_down(self, **kwargs):
-        response = self._beatplayer_volume_down()
-        #self.set_volume(volume=response['data']['volume'])
-        return response
-        
-    def volume_up(self, **kwargs):
-        response = self._beatplayer_volume_up()
-        #self.set_volume(volume=response['data']['volume'])
-        return response
-    
-    def splice(self, **kwargs):
+    def play(self, player, **kwargs):
         song = None 
         album = None 
         artist = None 
@@ -404,18 +371,102 @@ class PlayerWrapper():
         if 'songid' in kwargs and kwargs['songid'] is not None:  
             songid = kwargs['songid']
             song = Song.objects.get(pk=songid)
-            response = self.playlist.splice_song(song)
+            self.playlist.splice_song(song, player.playlistsong)
+            player.shuffle = False 
+            response = self._advance_play(player)             
         elif 'albumid' in kwargs and kwargs['albumid'] is not None:
             albumid = kwargs['albumid']
             album = Album.objects.get(pk=albumid)
-            response = self.playlist.splice_album(album)
+            self.playlist.splice_album(album, player.playlistsong)
+            player.shuffle = False 
+            response = self._advance_play(player)
         elif 'artistid' in kwargs and kwargs['artistid'] is not None:
             artistid = kwargs['artistid']
             artist = Artist.objects.get(pk=artistid)
-            response = self.playlist.splice_artist(artist)
+            self.playlist.splice_artist(artist, player.playlistsong)
+            player.shuffle = False 
+            response = self._advance_play(player)
+        elif 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
+            self._advance_play(player, playlistsongid=kwargs['playlistsongid'])
+            response = self._beatplayer_play(player)
+        else:
+            if player.state == Player.PLAYER_STATE_STOPPED:
+                logger.debug("Player is stopped, but playing now")
+                response = self._beatplayer_play(player)
+            elif player.state == Player.PLAYER_STATE_PAUSED:
+                logger.debug("Player is paused, but pause-toggling now")
+                response = self._beatplayer_pause()
+                if response and response['success']:
+                    player.state = Player.PLAYER_STATE_PLAYING
         return response
     
-    def enqueue(self, **kwargs):
+    def next(self, player, **kwargs):
+        response = None 
+        self._advance(player)
+        if player.state != Player.PLAYER_STATE_STOPPED:
+            response = self._beatplayer_play(player)        
+        return response
+    
+    def next_artist(self, player, **kwargs):        
+        response = None 
+        song = player.playlistsong.song
+        current_artist = song.album.artist.id 
+        while song.album.artist.id == current_artist:
+            cursor_set = self._advance(player)
+            song = player.playlistsong.song
+        if player.state != Player.PLAYER_STATE_STOPPED:            
+            response = self._beatplayer_play(player)
+        return response 
+    
+    def toggle_shuffle(self, player, **kwargs):
+        player.shuffle = not player.shuffle
+        
+    def toggle_repeat_song(self, player, **kwargs):
+        player.repeat_song = not player.repeat_song 
+        
+    def volume_down(self, player, **kwargs):
+        response = self._beatplayer_volume_down()
+        #self.set_volume(volume=response['data']['volume'])
+        return response
+        
+    def volume_up(self, player, **kwargs):
+        response = self._beatplayer_volume_up()
+        #self.set_volume(volume=response['data']['volume'])
+        return response
+    
+    def remove(self, player, **kwargs):
+        response = None 
+        if 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
+            response = self.playlist.remove_song(kwargs['playlistsongid'])
+        elif 'albumid' in kwargs and kwargs['albumid'] is not None:
+            response = self.playlist.remove_album(kwargs['albumid'])
+        elif 'artistid' in kwargs and kwargs['artistid'] is not None:
+            response = self.playlist.remove_artist(kwargs['artistid'])
+        else:
+            logger.debug("playlistsongid not found in kwargs: %s" % (kwargs))
+        return response 
+    
+    def splice(self, player, **kwargs):
+        song = None 
+        album = None 
+        artist = None 
+        response = None
+        if 'songid' in kwargs and kwargs['songid'] is not None:  
+            songid = kwargs['songid']
+            song = Song.objects.get(pk=songid)
+            response = self.playlist.splice_song(song, player.playlistsong)
+        elif 'albumid' in kwargs and kwargs['albumid'] is not None:
+            albumid = kwargs['albumid']
+            album = Album.objects.get(pk=albumid)
+            response = self.playlist.splice_album(album, player.playlistsong)
+        elif 'artistid' in kwargs and kwargs['artistid'] is not None:
+            artistid = kwargs['artistid']
+            artist = Artist.objects.get(pk=artistid)
+            response = self.playlist.splice_artist(artist, player.playlistsong)
+        return response
+    
+    def enqueue(self, player, **kwargs):
+        playlist_id = kwargs['playlist_id'] if 'playlist_id' in kwargs else None 
         if 'songid' in kwargs and kwargs['songid'] is not None:  
             songid = kwargs['songid']
             song = Song.objects.get(pk=songid)

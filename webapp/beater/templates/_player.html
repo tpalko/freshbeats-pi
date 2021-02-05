@@ -31,9 +31,9 @@
     <div id="switchboard_status" class="btn btn-warning d-inline">S:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
   </div>
   <div class="col-md-1">
-    <select id="player_select">
+    <select id="device_select">
       {% for device in devices %}
-        <option value="{{ device.id }}">{{ device.name }}</option>
+        <option value="{{ device.id }}" {% if selected_device_id and device.id == selected_device_id|add:"0" %}selected{% endif %}>{{ device.name }}</option>
       {% endfor %}
     </select>
   </div>

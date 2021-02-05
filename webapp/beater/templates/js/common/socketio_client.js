@@ -16,8 +16,14 @@ setInterval(function(){
   }
 }, 5000);
 
+socket.on('change_device', function(data) {
+  // console.log('change device response: ' + JSON.stringify(data) + '. setting selected device');
+  $("#device_select").val(data.device_id);
+  $("#device_select").change();
+})
+
 socket.on('health_response', function(data) {
-  console.log(data);
+  // console.log('health response: ' + JSON.stringify(data));
   if (switchboard_status == 'down') {
     // -- any news is good news 
     switchboard_status = 'up';
@@ -27,24 +33,25 @@ socket.on('health_response', function(data) {
 });
 
 socket.on('connect_response', function(data) {
-  console.log(data);
+  console.log('switchboard connect response: ' + JSON.stringify(data) + " -- now calling register_client");
   $.ajax({
     url: '{% url "register_client" %}',
     data: data,
     dataType: 'json',
     type: 'POST',
-    success: function(data, textStatus, jqXHR) {
-      console.log(data);
+    success: function(data, textStatus, jqXHR) {      
+      console.log('register client: ' + JSON.stringify(data));
     }, 
     error: function(jqXHR, textStatus, errorThrown) {
-      console.log(errorThrown);
+      console.error('register client error: ' + textStatus);
+      console.error(errorThrown);
     }
   })
 });
 
 socket.on('player_status', function(player_status){
 
-  // console.log(player_status);
+  console.log('player status: ' + JSON.stringify(player_status));
   
   $("#player_status").html(player_status.current_song);
   
@@ -76,14 +83,20 @@ socket.on('player_status', function(player_status){
   $("#player_time_pos").html(player_status.player.time_pos_display);
   $("#player_time_remaining").html(player_status.player.time_remaining_display);
   $("#player_percent_pos").html(player_status.player.percent_pos + "%");
-  $(".playlist")[0].scroll(0, $(".playlist").find(".playlistsong.current")[0].offsetTop - 43);
+
+  var current_playlistsong = $(".playlist").find(".playlistsong.current")[0];
+  if (current_playlistsong != undefined) {
+    if (playlist_scrolled_at === undefined || now - playlist_scrolled_at > 5000) {
+      $(".playlist")[0].scroll(0, current_playlistsong.offsetTop - 43);
+    }
+  }
   
   realignPage();  
 });
 
 socket.on('beatplayer_status', function(beatplayer_status) {
   
-  // console.log(beatplayer_status)
+  // console.log('beatplayer status: ' + JSON.stringify(beatplayer_status));
   //$("#volume_display").html(player_status.player.beatplayer_volume + "%");
   
   if (beatplayer_status.status == 'ready') {
@@ -93,16 +106,13 @@ socket.on('beatplayer_status', function(beatplayer_status) {
   } else if (beatplayer_status.status == 'down') {
     $("#beatplayer_status_" + beatplayer_status.id).removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
   }
-  $("#beatplayer_status_" + beatplayer_status.id).find("img")[0].title = "reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered + ", selfreport: " + beatplayer_status.selfreport + ", mounted: " + beatplayer_status.mounted;
-  
+  var title = "agent base URL: " + beatplayer_status.agent_base_url + ", reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered + ", selfreport: " + beatplayer_status.selfreport + ", mounted: " + beatplayer_status.mounted
+  $("#beatplayer_status_" + beatplayer_status.id).find("img")[0].title = title;
 });
 
 socket.on('append_player_output', function(output) {
-  $("#player_output").html($("#player_output").html() + output);
-});
-
-socket.on('clear_player_output', function() {
-  $("#player_output").html("");
+  $("#player_output").html((output.data.clear ? "" : $("#player_output").html()) + output.message);
+  realignPage();
 });
 
 socket.on('alert', function(data){
@@ -113,4 +123,5 @@ socket.on('alert', function(data){
 socket.on('message', function(data){
   console.log(data);
   showError(data);
+  realignPage();
 })

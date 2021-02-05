@@ -12,50 +12,59 @@ function load_playlists() {
     url: '{% url "get_playlists" %}',
     type: "GET",
     success: function(data, textStatus, jqXHR) {
-      populate_playlists(data.body);
+      if ($(data.body).find("option").length == 0) {
+        $("#playlists").hide();
+      } else {
+        populate_playlists(data.body);
+        load_playlistsongs();        
+      }
       spinner.el.remove();
-      load_playlistsongs();
     }
   })
 }
 
 function load_playlistsongs() {
 
-  $("#overlay").append(spinner.el);
-
-  var playlistsongs_url = '{% url "get_playlistsongs" 0 %}';
-
-  $.ajax({
-    url: playlistsongs_url.replace(/0/, $("#playlist_select").val()),
-    type: "GET",
-    success: function(data){
-      $("#playlist_songs").html(data.body);
-      $("#playlist_songs").attr('data-loaded', data.object.playlist_id);
-      /*$("#playlistsong_sort").sortable();
-      $(".draggable").draggable({ 
-        "axis": "y",
-        "connectToSortable": "#playlistsong_sort",
-        stop: function(e, helper) {
-          console.log(e);
-          console.log(helper.position);
-          console.log(helper.originalPosition);
-          console.log(helper.offset);
-          var ids = $(".draggable").map(function(i, e){ return e.id.split("_")[1]; });
-          console.log(ids);
-          $.ajax({
-            url: '{% url "playlist_sort" %}',
-            data: { thing: ids },
-            type: "PUT",/?name=#
-            dataType: 'json',
-            success: function(data) {
-              console.log(data);
-            }
-          });
-        }
-      });*/
-      spinner.el.remove();
-    }
-  });  
+  var playlist_id = $("#playlist_select").val();
+  
+  if (playlist_id != undefined) {
+    
+    var playlistsongs_url = '{% url "get_playlistsongs" 0 %}';
+    
+    $("#overlay").append(spinner.el);
+    
+    $.ajax({
+      url: playlistsongs_url.replace(/0/, playlist_id),
+      type: "GET",
+      success: function(data){
+        $("#playlist_songs").html(data.body);
+        $("#playlist_songs").attr('data-loaded', data.object.playlist_id);
+        /*$("#playlistsong_sort").sortable();
+        $(".draggable").draggable({ 
+          "axis": "y",
+          "connectToSortable": "#playlistsong_sort",
+          stop: function(e, helper) {
+            console.log(e);
+            console.log(helper.position);
+            console.log(helper.originalPosition);
+            console.log(helper.offset);
+            var ids = $(".draggable").map(function(i, e){ return e.id.split("_")[1]; });
+            console.log(ids);
+            $.ajax({
+              url: '{% url "playlist_sort" %}',
+              data: { thing: ids },
+              type: "PUT",/?name=#
+              dataType: 'json',
+              success: function(data) {
+                console.log(data);
+              }
+            });
+          }
+        });*/
+        spinner.el.remove();
+      }
+    });  
+  }
 }
 
 function new_playlist_prompt() {
@@ -91,6 +100,19 @@ function submit_new_playlist(e) {
   });
   return false;
 }
+
+function playlist_select() {
+  $.ajax({
+    url: '{% url 'playlist_select' %}',
+    data: {"playlist_id": $(this).val()},
+    type: "POST",
+    success: function(data, textStatus, jqXHR) {
+      console.log(data);
+    }
+  });
+};
+
+$(document).on('change', '#playlist_select', playlist_select);
 
 $(document).ready(function(){
   

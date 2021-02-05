@@ -24,7 +24,7 @@
 
     <div class="container-fluid">
 
-        <div class="stickyheader">
+        <div class="header sticky">
     			<div class="row title">
     				<div class="col-md-1">
     					<h2>Hy!asdf</h2>
@@ -67,21 +67,43 @@
 
     <script type="text/javascript">
     
+      var now = Date.now();
       var type_headers = {};
 
       $(document).ready(function(){
 
         window.onscroll = function (){
+          var stickyHeader = $(".header").hasClass("sticky");
+          var headerHeight = 0;
+          var offset = window.pageYOffset;
+          if (stickyHeader) {
+            headerHeight = $($(".header")[0]).height();
+            offset += headerHeight;
+          }
           $(Object.keys(type_headers)).each(function(i,k){
-            var h = type_headers[k];
-            if (window.pageYOffset + 92 > h.top) {
-              $(h.el).addClass("sticky").addClass("result_type");              
+            var h = type_headers[k];            
+            if (h.top < offset) {
+              $(h.el).addClass("sticky");
+              $(h.el)[0].style.top = headerHeight; //.addClass("result_type");              
             } else {
-              $(h.el).removeClass("sticky").removeClass("result_type");
-            }
+              $(h.el).removeClass("sticky"); //.removeClass("result_type");
+              $(h.el)[0].style.top = $(h.el)[0].style.marginTop;
+            }            
           });
         };
       });
+      
+      function realignPage() {
+        var headerHeight = $($(".header")[0]).height();
+        var windowHeight = window.innerHeight;
+        if (windowHeight - 100 <= headerHeight) {
+          $(".header").removeClass("sticky");
+          $(".content")[0].style.marginTop = 0;
+        } else {
+          $(".header").addClass("sticky");
+          $(".content")[0].style.marginTop = headerHeight;
+        }
+      }
 
       var spinner_opts = {
         lines: 5, // The number of lines to draw
@@ -108,42 +130,52 @@
 
       // var tabs;
 
+      // using jQuery
       function getCookie(name) {
-        var cookieValue = null;
-        if (document.cookie && document.cookie != '') {
-          var cookies = document.cookie.split(';');
-          for (var i = 0; i < cookies.length; i++) {
-            var cookie = jQuery.trim(cookies[i]);
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) == (name + '=')) {
-              cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-              break;
-            }
+          var cookieValue = null;
+          if (document.cookie && document.cookie !== '') {
+              var cookies = document.cookie.split(';');
+              for (var i = 0; i < cookies.length; i++) {
+                  var cookie = jQuery.trim(cookies[i]);
+                  // Does this cookie string begin with the name we want?
+                  if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                      cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                      break;
+                  }
+              }
           }
-        }
-        return cookieValue;
+          return cookieValue;
       }
-
       var csrftoken = getCookie('csrftoken');
 
       function csrfSafeMethod(method) {
         // these HTTP methods do not require CSRF protection
         return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
       }
+      $.ajaxSetup({
+          beforeSend: function(xhr, settings) {
+              if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+                // console.log("before send, setting csrf token: " + csrftoken + " (settings.type: " + settings.type + ", this.crossDomain: " + this.crossDomain + ")");
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+              } else {
+                // console.log("before send, not setting csrf token (settings.type: " + settings.type + ", this.crossDomain: " + this.crossDomain + ")");
+              }
+          }
+      });
 
-      function sameOrigin(url) {
-        // test that a given url is a same-origin URL
-        // url could be relative or scheme relative or absolute
-        var host = document.location.host; // host + port
-        var protocol = document.location.protocol;
-        var sr_origin = '//' + host;
-        var origin = protocol + sr_origin;
-        // Allow absolute or scheme relative URLs to same origin
-        return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
-          (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
-          // or any other URL that isn't scheme relative or absolute i.e relative.
-          !(/^(\/\/|http:|https:).*/.test(url));
-      }
+      // function sameOrigin(url) {
+      //   // test that a given url is a same-origin URL
+      //   // url could be relative or scheme relative or absolute
+      //   var host = document.location.host; // host + port
+      //   var protocol = document.location.protocol;
+      //   var sr_origin = '//' + host;
+      //   var origin = protocol + sr_origin;
+      //   // Allow absolute or scheme relative URLs to same origin
+      //   return (url == origin || url.slice(0, origin.length + 1) == origin + '/') ||
+      //     (url == sr_origin || url.slice(0, sr_origin.length + 1) == sr_origin + '/') ||
+      //     // or any other URL that isn't scheme relative or absolute i.e relative.
+      //     !(/^(\/\/|http:|https:).*/.test(url));
+      // }
 
       var album_songs_url = "{% url "album_songs" 0 %}";
 
@@ -159,7 +191,7 @@
 
         // -- grab the form and the callback function  to handle the edit response
         var form = $(this).closest('form');
-        var callback = $(this).data("callback");
+        var callback = $(this).data("blurpost-callback");
 
         // -- grab the saved html to swap back in
         var savedro = $(form).find(".savero");
@@ -251,38 +283,38 @@
         });
       });
 
-      $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-          var is_safe = csrfSafeMethod(settings.type);
-          var is_crossdomain = this.crossDomain;
-          // console.log("AJAX beforeSend: settings.type: " + settings.type + ", is_safe: " + is_safe + ", is_crossdomain: " + is_crossdomain);
-          // console.log("CSRFToken found in 'csrftoken' cookie: " + csrftoken);
-          if (!is_safe && !is_crossdomain && csrftoken != null) { //sameOrigin(settings.url)) {
-            // Send the token to same-origin, relative URLs only.
-            // Send the token only if the method warrants CSRF protection
-            // Using the CSRFToken value acquired earlier
-            xhr.setRequestHeader("X-CSRFToken", csrftoken);
-          }
-        },
-        success: function(data, textStatus, jqXHR) {
-          console.log("AJAX Success:");
-          console.log(data);
-          console.log(textStatus);
-          console.log(jqXHR);
-        },
-        error: function(jqXHR, textStatus, errorThrown){
-
-          if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
-            console.log("AJAX Error: jqXHR.responseText does not have a value");
-            return;
-          }
-
-          console.log("AJAX Error:");
-          console.log(errorThrown);
-
-          showError(jqXHR.responseText.replace(/\n/, "<br />"));
-        }
-      });
+      // $.ajaxSetup({
+      //   beforeSend: function(xhr, settings) {
+      //     var is_safe = csrfSafeMethod(settings.type);
+      //     var is_crossdomain = this.crossDomain;
+      //     // console.log("AJAX beforeSend: settings.type: " + settings.type + ", is_safe: " + is_safe + ", is_crossdomain: " + is_crossdomain);
+      //     // console.log("CSRFToken found in 'csrftoken' cookie: " + csrftoken);
+      //     //if (!is_safe && !is_crossdomain && csrftoken != null) { //sameOrigin(settings.url)) {
+      //       // Send the token to same-origin, relative URLs only.
+      //       // Send the token only if the method warrants CSRF protection
+      //       // Using the CSRFToken value acquired earlier
+      //       xhr.setRequestHeader("X-CSRFToken", csrftoken);
+      //     }
+      //   },
+      //   success: function(data, textStatus, jqXHR) {
+      //     console.log("AJAX Success:");
+      //     console.log(data);
+      //     console.log(textStatus);
+      //     console.log(jqXHR);
+      //   },
+      //   error: function(jqXHR, textStatus, errorThrown){
+      // 
+      //     if(jqXHR.responseText == undefined || jqXHR.responseText == ""){
+      //       console.log("AJAX Error: jqXHR.responseText does not have a value");
+      //       return;
+      //     }
+      // 
+      //     console.log("AJAX Error:");
+      //     console.log(errorThrown);
+      // 
+      //     showError(jqXHR.responseText.replace(/\n/, "<br />"));
+      //   }
+      // });
 
       function clearErrors() {
         $("#errors").html("");
@@ -330,10 +362,8 @@
       //     }
       //   });
       // });
-
-      function realignPage() {
-        $(".content")[0].style.marginTop = $($(".stickyheader")[0]).height();
-      }
+      
+      $(window).resize(realignPage);
 
       $(document).ready(function(){
 

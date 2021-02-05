@@ -28,6 +28,13 @@ a:hover {
 	margin: 0;
 }
 
+#device_select {
+  color: black;
+  background-color: white;
+  padding: 3px;
+  font-size: 1.5em;
+}
+
 .menu .current {
   color: #ccc;
   font-weight: bold;
@@ -43,11 +50,6 @@ a:hover {
 
 .sticky {
   position: fixed;
-  top: 92px;
-}
-
-.result_type {
-  top: 92px;
 }
 
 .result_name {
@@ -63,11 +65,14 @@ a:hover {
   color: white;
 }
 
-.stickyheader {
-  position: fixed;
+.header {
   top: 0px;
   width: 100%;
   z-index: 99;
+}
+
+.header.sticky {
+  position: fixed;
 }
 
 .content {

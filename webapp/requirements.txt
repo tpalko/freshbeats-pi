@@ -9,3 +9,4 @@ mysqlclient
 #MySQL-python
 #MySQLdb
 gunicorn
+colorlog

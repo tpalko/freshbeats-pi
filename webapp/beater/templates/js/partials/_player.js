@@ -1,15 +1,23 @@
 var player_url = '{% url "player" "null" %}';
 
-$(document).on('change', '#player_select', function(e) {
+function device_select() {
   $.ajax({
-    url: '{% url 'player_select' %}',
-    data: {"player_id": $(this).val()},
+    url: '{% url 'device_select' %}',
+    data: {"device_id": $(this).val()},
     type: "POST",
     success: function(data, textStatus, jqXHR) {
       console.log(data);
     }
   });
-});
+};
+
+var playlist_scrolled_at;
+
+$(document).on('wheel', '.playlist', function(e) {
+  playlist_scrolled_at = now;
+})
+
+$(document).on('change', '#device_select', device_select);
 
 $(document).on('click', "a.player", function(e){
 
@@ -31,8 +39,11 @@ $(document).on('click', "a.player", function(e){
     success: function(data, textStatus, jqXHR){
       var callback = $(clickable).attr('callback');
       if(callback != undefined){
+        console.log("Calling callback " + callback);
+        console.log("Sending:");
+        console.log(data);
         fn = window[callback];
-        fn(JSON.parse(data));
+        fn(data);
       }
     }
   });
