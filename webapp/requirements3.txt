@@ -12,6 +12,6 @@ mysqlclient==1.4.6
 pytz==2019.3
 requests==2.22.0
 subprocess32==3.5.4
-urllib3==1.25.8
+urllib3==1.26.5
 django-debug-toolbar==2.2
 colorlog
