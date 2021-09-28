@@ -18,7 +18,7 @@
     "cookie"   :  "*", 
     "socket.io" :  "*",
     "restify" : "*",
-    "lodash" : "^4.17.12" 
+    "lodash" : "^4.17.21" 
   },
   "engines": {
     "node": "*" 
