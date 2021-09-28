@@ -249,7 +249,7 @@ class Player(DirtyFieldsMixin, models.Model):
     cursor_mode = models.CharField(max_length=6, choices=CURSOR_MODE_CHOICES, default=CURSOR_MODE_NEXT, null=False)
     repeat_song = models.BooleanField(null=False, default=False)
     beatplayer_status = models.CharField(max_length=20, null=True)
-    beatplayer_registered = models.NullBooleanField()
+    beatplayer_registered_at = models.DateTimeField(null=True)
     volume = models.IntegerField(null=True)
     playlistsong = models.ForeignKey(PlaylistSong, null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -266,9 +266,9 @@ class Player(DirtyFieldsMixin, models.Model):
         other_dirty_fields = len(insert_triggering_dirty_fields) > 0
         '''
         >>> p._original_state.keys()
-        dict_keys(['created_at', 'beatplayer_status', 'beatplayer_registered', 'time_pos', 'parent', 'percent_pos', 'cursor_mode', 'mute', 'playlistsong', 'shuffle', 'preceding_command', 'volume', 'state', 'time_remaining', 'preceding_command_args', 'id', 'repeat_song', 'updated_at'])
+        dict_keys(['created_at', 'beatplayer_status', 'beatplayer_registered_at', 'time_pos', 'parent', 'percent_pos', 'cursor_mode', 'mute', 'playlistsong', 'shuffle', 'preceding_command', 'volume', 'state', 'time_remaining', 'preceding_command_args', 'id', 'repeat_song', 'updated_at'])
         >>> p.__dict__.keys()
-        dict_keys(['created_at', 'beatplayer_status', 'beatplayer_registered', 'time_pos', 'parent_id', 'percent_pos', 'cursor_mode', 'mute', 'playlistsong_id', 'shuffle', 'preceding_command', 'volume', 'state', 'time_remaining', 'preceding_command_args', 'id', 'repeat_song', 'updated_at', '_state', '_original_state'])
+        dict_keys(['created_at', 'beatplayer_status', 'beatplayer_registered_at', 'time_pos', 'parent_id', 'percent_pos', 'cursor_mode', 'mute', 'playlistsong_id', 'shuffle', 'preceding_command', 'volume', 'state', 'time_remaining', 'preceding_command_args', 'id', 'repeat_song', 'updated_at', '_state', '_original_state'])
         '''
 
         if song_changed or other_dirty_fields:
@@ -298,7 +298,7 @@ class Player(DirtyFieldsMixin, models.Model):
             'cursor_mode': self.cursor_mode,
             'repeat_song': self.repeat_song,
             'beatplayer_status': self.beatplayer_status,
-            'beatplayer_registered': self.beatplayer_registered
+            'beatplayer_registered_at': datetime.strftime(self.beatplayer_registered_at, "%c") if self.beatplayer_registered_at else None 
         }, indent=4)
         
     # def compare(self, p1):
@@ -322,6 +322,24 @@ class Player(DirtyFieldsMixin, models.Model):
     #     self.updated_at = None 
     #     super(Player, self).save(*args, **kwargs)
 
+class DeviceHealth(DirtyFieldsMixin, models.Model):
+
+    DEVICE_STATUS_READY = 'ready'
+    DEVICE_STATUS_NOTREADY = 'notready'
+    DEVICE_STATUS_DOWN = 'down'
+    
+    DEVICE_STATUS_CHOICES = (
+        (DEVICE_STATUS_READY, 'Ready'),
+        (DEVICE_STATUS_NOTREADY, 'Not Ready'),
+        (DEVICE_STATUS_DOWN, 'Down')
+    )
+
+    last_client_presence = models.DateTimeField(null=True)
+    registered_at = models.DateTimeField(null=True)
+    last_device_health_report = models.DateTimeField(null=True)
+    status = models.CharField(max_length=20, choices=DEVICE_STATUS_CHOICES, default=DEVICE_STATUS_DOWN, null=False)
+    reachable = models.BooleanField(null=False, default=False)
+    mounted = models.BooleanField(null=False, default=False)
    
 class Device(DirtyFieldsMixin, models.Model):
     
@@ -336,40 +354,45 @@ class Device(DirtyFieldsMixin, models.Model):
     )
     
     player = models.OneToOneField(Player, null=True, on_delete=models.CASCADE)
+    health = models.OneToOneField(DeviceHealth, null=True, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     ip_address = models.GenericIPAddressField(protocol='IPv4')
-    agent_base_url = models.CharField(max_length=255)
-    registered_at = models.DateTimeField(null=True)
-    last_health_check = models.DateTimeField(null=True)
-    status = models.CharField(max_length=20, choices=DEVICE_STATUS_CHOICES, default=DEVICE_STATUS_DOWN, null=False)
-    reachable = models.BooleanField(null=False, default=False)
-    registered = models.BooleanField(null=False, default=False)
-    mounted = models.BooleanField(null=False, default=False)
-    selfreport = models.BooleanField(null=False, default=False)
-    is_active = models.BooleanField(null=False, default=True)
+    agent_base_url = models.CharField(max_length=255)    
+    is_active = models.BooleanField(null=False, default=True)    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
         
-    def save(self, *args, **kwargs):        
-        new_or_activating = self.id is None or (self.is_active and 'is_active' in self.get_dirty_fields())
+    def save(self, *args, **kwargs):       
+        is_new = self.id is None
+        activating = self.is_active and 'is_active' in self.get_dirty_fields()
+
+        if is_new or not self.health:
+            logger.info("Filling in missing DeviceHealth for device %s" % self.id)
+            self.health = DeviceHealth.objects.create(
+                status = DeviceHealth.DEVICE_STATUS_NOTREADY,
+                reachable = False,
+                mounted = False
+            )
+            
         super(Device, self).save(*args, **kwargs)
-        if new_or_activating:
-            headers = {'Content-type': 'application/json'}
-            data = json.dumps({'agent_base_url': self.agent_base_url})
-            time.sleep(1)
-            response = requests.post(parse.urljoin(settings.FRESHBEATS_CALLBACK_URL, reverse('device_health_loop')), headers=headers, data=data)
+
+    def _human_date(self, val):
+        # return datetime.strftime(val, "%Y-%m-%d %H:%M:%S") if val else None
+        return datetime.strftime(val, "%c") if val else None
 
     def status_dump(self):
         return json.dumps({
             'id': self.id,
             'agent_base_url': self.agent_base_url,
-            'last_health_check': datetime.strftime(self.last_health_check, "%Y-%m-%d %H:%M:%S") if self.last_health_check else None, 
-            'status': self.status, 
-            'reachable': self.reachable,
-            'registered': self.registered,
-            'selfreport': self.selfreport,
-            'mounted': self.mounted
+            'registered_at': self._human_date(self.health.registered_at),
+            'last_device_health_report': self._human_date(self.health.last_device_health_report),
+            'status': self.health.status,
+            'reachable': self.health.reachable,
+            'mounted': self.health.mounted
         }, indent=4)
+
+
+
 # class PlayerTemp(models.Model):
 # 
 #     updated_at = models.DateTimeField(auto_now=True)

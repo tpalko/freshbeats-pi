@@ -1,13 +1,42 @@
 var player_url = '{% url "player" "null" %}';
 
-function device_select() {
-  $.ajax({
+function device_select(e) {
+  
+  var request = $.ajax({
     url: '{% url 'device_select' %}',
-    data: {"device_id": $(this).val()},
-    type: "POST",
-    success: function(data, textStatus, jqXHR) {
-      console.log(data);
-    }
+    data: {"device_id": e.target.value},
+    type: "POST"
+  });
+  request.done(function( msg ) {
+    
+    console.log('device select: ' + JSON.stringify(msg));
+    
+    old_device_id = $("#devices").attr('data-loaded');
+    new_device_id = msg.data.device_id;
+
+    $("#devices").attr('data-loaded', new_device_id);
+
+    $("#beatplayer_status_" + old_device_id).hide();
+    $("#beatplayer_status_" + new_device_id).show();
+
+    log_client_presence();
+  });
+  request.fail(function( jqXHR, textStatus ) {
+    showError(jqXHR);
+  });
+};
+
+function log_client_presence(e) {
+  
+  var request = $.ajax({
+    url: '{% url 'log_client_presence' %}',
+    type: "POST"
+  });
+  request.done(function( msg ) {
+    console.log('log client response: ' + JSON.stringify(msg));
+  });
+  request.fail(function( jqXHR, textStatus ) {
+    showError(jqXHR);
   });
 };
 
@@ -18,6 +47,11 @@ $(document).on('wheel', '.playlist', function(e) {
 })
 
 $(document).on('change', '#device_select', device_select);
+
+$(function() {
+  $("#device_select").trigger("change");  
+  setInterval(log_client_presence, 30000);  
+})
 
 $(document).on('click', "a.player", function(e){
 

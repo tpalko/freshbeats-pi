@@ -1,5 +1,6 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python3
 
+import colorlog
 import sys
 import socket 
 import signal
@@ -13,12 +14,18 @@ from contextlib import contextmanager
 import traceback 
 
 # %(name)-17s
-logging.basicConfig(
-    level=logging.WARN,
-    format='[ %(levelname)7s ] %(asctime)s %(name)s %(filename)s:%(lineno)-4d %(message)s'
-)
+# logging.basicConfig(
+#     level=logging.WARN,
+#     format='[ %(levelname)7s ] %(asctime)s %(name)s %(filename)s:%(lineno)-4d %(message)s'
+# )
 
 logger = logging.getLogger(__name__)
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+logger.addHandler(handler)
+
+class PlayerNotRunningError(Exception):
+    pass 
 
 class MpvSocketTalker():
     
@@ -141,11 +148,14 @@ class MpvSocketTalker():
                     # time.sleep(1)
     
     @contextmanager
-    def socket(self):        
+    def socket(self):       
+
         caller = traceback.format_stack()[-3].split(' ')[7].replace('\n', '')
+        # try:
+        logger.debug("SOCKET: Socket lock desired for %s" % caller)
+        self._socket_lock.acquire()
+
         try:
-            logger.debug("SOCKET: Socket lock desired for %s" % caller)
-            self._socket_lock.acquire()
             if not self._socket:
                 logger.debug("SOCKET: creating new socket")
                 self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -157,15 +167,13 @@ class MpvSocketTalker():
             # logger.info(dir(s))
             logger.debug("SOCKET: Yielding socket to caller %s" % caller)
             yield self._socket 
-        except Exception as e:
-            logger.error("Nonifying socket: %s %s" % (sys.exc_info()[0], sys.exc_info()[1]))
-            self._socket = None 
-            raise e 
-            # logger.error(sys.exc_info()[0])
-            # logger.error(sys.exc_info()[1])
-            # traceback.print_tb(sys.exc_info()[2])
+        except ConnectionRefusedError as cre:
+            raise PlayerNotRunningError()
+        except OSError as oe:
+            raise PlayerNotRunningError()
         finally:
-            #self._socket.close()
+            self._socket.close()
+            self._socket = None 
             self._socket_lock.release()
             logger.debug("SOCKET: Socket lock released by %s" % caller)
             
@@ -199,19 +207,24 @@ class MpvSocketTalker():
         
         request_id = None 
         self.sendread_logger.debug("SEND: command '%s'" % command)
-        with self.socket() as send_socket:
-            if 'request_id' in command:
-                request_id = command['request_id']
-                self.sendread_logger.debug("  - SEND: request_id found on command: %s" % (request_id))
-            else:
-                request_id = self._new_request_id()
-                command['request_id'] = request_id
-                self.sendread_logger.debug("  - SEND: request_id acquired: %s" % (request_id))
-            send_result = send_socket.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
-            #send_recv_raw = send_socket.recv(1024)
-            # self.sendread_logger.debug("  - SEND: Command sent to socket: %s" % command)
-            #self.sendread_logger.debug("  - SEND: Recv from send (%s): %s" % (send_result, send_recv_raw.decode()))
-        
+        try:
+            with self.socket() as send_socket:
+                if 'request_id' in command:
+                    request_id = command['request_id']
+                    self.sendread_logger.debug("  - SEND: request_id found on command: %s" % (request_id))
+                else:
+                    request_id = self._new_request_id()
+                    command['request_id'] = request_id
+                    self.sendread_logger.debug("  - SEND: request_id acquired: %s" % (request_id))
+                send_result = send_socket.send(bytes(json.dumps(command) + '\n', encoding='utf8'))
+                #send_recv_raw = send_socket.recv(1024)
+                # self.sendread_logger.debug("  - SEND: Command sent to socket: %s" % command)
+                #self.sendread_logger.debug("  - SEND: Recv from send (%s): %s" % (send_result, send_recv_raw.decode()))
+        except RuntimeError as re:
+            # -- socket probably failed to yield from generator 
+            logger.error(sys.exc_info()[1])
+            pass 
+
         return request_id
     
     def _read(self, request_id, multi_response=False):
@@ -265,7 +278,7 @@ class MpvSocketTalker():
         self.watch_logger.debug("Raw output: %s" % received_raw)
         self.data = "%s%s" % (self.data, received_raw.decode())
         self.watch_logger.debug("  - WATCH: socket cumulative response: %s" % self.data)
-        
+
     def _output_into_queue(self):
         for n in [ json.loads(d) for d in self.data.split('\n') if d ]:
             if 'request_id' in n:
@@ -293,6 +306,9 @@ class MpvSocketTalker():
                     # self.watch_logger.debug("  - WATCH: sleeping")
                     time.sleep(1)
                 self.data = ""
+            except PlayerNotRunningError as pnre:
+                self.watch_logger.debug("Player not running while watching socket for command output")
+                time.sleep(1)
             except ConnectionRefusedError as cre:
                 fails += 1
                 self.watch_logger.error("Watch loop failed..")

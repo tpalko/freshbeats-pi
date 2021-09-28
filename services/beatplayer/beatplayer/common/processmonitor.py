@@ -1,5 +1,8 @@
+#!/usr/bin/env python3
+
 import sys 
 import logging 
+import colorlog
 import time 
 import json 
 import requests 
@@ -7,13 +10,16 @@ import threading
 import traceback 
 from datetime import datetime 
 
-logging.basicConfig(
-    level=logging.WARN,
-    format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s'
-)
+# logging.basicConfig(
+#     level=logging.WARN,
+#     format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s'
+# )
 #f_handler = logging.FileHandler(filename='processmonitor.log', mode='a')
 logger = logging.getLogger(__name__)
 #logger.addHandler(f_handler)
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+logger.addHandler(handler)
 
 class ProcessMonitor():
     

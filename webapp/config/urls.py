@@ -28,19 +28,6 @@ from beater.models import Device
 
 logger = logging.getLogger(__name__)
 
-# TODO: this needs to be reimplemented
-# -- beatplayer up first, webapp calls on start to register, beatplayer pings on short cycle, webapp checks age of last ping for status 
-# -- webapp up first, exponential backoff call to beatplayer to register with some high max, refresh backoff on page requests 
-if settings.FRESHBEATS_SERVING:
-    logger.info("")
-    logger.info("*************************************")
-    logger.info("* Beatplayer subscriptions starting *")
-    logger.info("*************************************")
-    logger.info("")
-    for device in Device.objects.all():
-        beatplayer = BeatplayerRegistrar.getInstance(device.agent_base_url)
-        beatplayer.check_if_health_loop()
-
 urlpatterns = [
     url(r'^$', views.home, name='home'),
     url(r'^search/$', views.search, name='search'),
@@ -67,14 +54,13 @@ urlpatterns = [
     # url(r'^player/(?P<command>[a-zA-Z]+)/album/(?P<albumid>[0-9]+)/$', beatplayer_handlers.player, name='album_command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/song/(?P<songid>[0-9]+)/$', beatplayer_handlers.player, name='song_command'),
     # url(r'^player/(?P<command>[a-zA-Z]+)/$', beatplayer_handlers.player, name='player'),
+    url(r'^log_client_presence/$', beatplayer_handlers.log_client_presence, name='log_client_presence'),
     url(r'^device_select/$', beatplayer_handlers.device_select, name='device_select'),
     url(r'^playlist_select/$', beatplayer_handlers.playlist_select, name='playlist_select'),
     url(r'^player_complete/$', beatplayer_handlers.player_complete, name='player_complete'),
-    url(r'^health_response/$', beatplayer_handlers.health_response, name='health_response'),
-    url(r'^beatplayer_status/$', beatplayer_handlers.beatplayer_status, name='beatplayer_status'),
+    url(r'^device_health_report/$', beatplayer_handlers.device_health_report, name='device_health_report'),
     url(r'^player_status_and_state/$', beatplayer_handlers.player_status_and_state, name='player_status_and_state'),
     url(r'^register_client/$', beatplayer_handlers.register_client, name='register_client'),
-    
     url(r'^apply_plan/$', freshbeats_client.apply_plan, name='apply_plan'),
     url(r'^validate_plan/$', freshbeats_client.validate_plan, name='validate_plan'),
     url(r'^plan_report/$', freshbeats_client.plan_report, name='plan_report'),
@@ -108,9 +94,9 @@ urlpatterns = [
 # -- gunicorn finds no static files in this state 
 # -- adding static(STATIC_URL) allows gunicorn to find app static files, but not debug_toolbar 
 
-if settings.DEBUG:
-    print("IS DEBUG -- loading debug toolbar")
-    import debug_toolbar 
-    urlpatterns = [
-        url(r'^__debug__/', include(debug_toolbar.urls)),
-    ] + urlpatterns
+# if settings.DEBUG:
+#     print("IS DEBUG -- loading debug toolbar")
+#     import debug_toolbar 
+#     urlpatterns = [
+#         url(r'^__debug__/', include(debug_toolbar.urls)),
+#     ] + urlpatterns

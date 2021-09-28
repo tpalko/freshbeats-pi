@@ -4,7 +4,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import resolve 
 
-from ..models import Device
+from ..models import Device, DeviceHealth
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ def switchboard_processor(request_context):
         selected_device_id = request_context.session['device_id']
         logger.debug("device_id found on session: %s" % selected_device_id)
     else:
+        other_ready_devices = Device.objects.filter(Q(health__status=DeviceHealth.DEVICE_STATUS_READY))
+        if len(other_ready_devices) > 0:
+            selected_device_id = other_ready_devices[0].id
         logger.debug("device_id NOT found on session")
 
     return {

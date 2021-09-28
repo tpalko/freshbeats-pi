@@ -22,6 +22,8 @@ from .health import BeatplayerRegistrar
 
 logger = logging.getLogger(__name__)
 
+@csrf_exempt
+@require_http_methods(['POST'])
 def register_client(request):    
     user_agent = request.POST.get('userAgent')
     connection_id = request.POST.get('connectionId')
@@ -48,7 +50,7 @@ def device_health_loop(request):
     return JsonResponse(response)
 
 @csrf_exempt
-def health_response(request):
+def device_health_report(request):
     
     response = {'message': "", 'success': False, 'result': {}}
     try:
@@ -65,7 +67,7 @@ def health_response(request):
         
         logger.debug("Parsing health response in BeatplayerRegistrar..")
         beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=agent_base_url)
-        beatplayer.log_health_response(health_data)
+        beatplayer.log_device_health_report(health_data)
         
         with beatplayer.device(read_only=True) as device:
             logger.debug("Parsing health response in PlayerWrapper..")
@@ -97,16 +99,28 @@ def playlist_select(request):
         else:
             logger.debug("Setting playlist ID: playlist_id not found on the request")
     return JsonResponse({'success': True})
-    
+
+def log_client_presence(request):
+    success = False 
+    if 'device_id' not in request.session:
+        logger.warn('No device ID on request.session, cannot log client presence')
+    else:
+        device = Device.objects.get(pk=request.session['device_id'])
+        beatplayer = BeatplayerRegistrar.getInstance(device.agent_base_url)
+        beatplayer.log_client_presence()
+        success = True
+    return JsonResponse({'success': success})
+
 def device_select(request):
+    device_id = None 
     if request.method == "POST":
         device_id = request.POST.get('device_id')
         if device_id:
             logger.debug("Setting device ID: %s" % device_id)
-            request.session['device_id'] = device_id 
+            request.session['device_id'] = device_id             
         else:
             logger.debug("Setting device ID: device_id not found on the request")
-    return JsonResponse({'success': True})
+    return JsonResponse({'success': True, "data": {"device_id": device_id}})
 
 def player(request, command):
     response = {'result': {}, 'success': False, 'message': ""}
@@ -179,25 +193,6 @@ def player_complete(request):
         logger.error(response['message'])
         traceback.print_tb(sys.exc_info()[2])
         _publish_event('alert', json.dumps(response))
-
-    return JsonResponse(response)
-
-def beatplayer_status(request):    
-    response = {'result': {}, 'success': False, 'message': ""}
-    try:
-        logger.info("/beatplayer_status called, triggering status display")
-        agent_base_url = None
-        if 'device_id' in request.session:
-            device = Device.objects.get(pk=request.session['device_id'])
-            agent_base_url = device.agent_base_url
-            beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=agent_base_url)        
-            beatplayer.check_if_health_loop()
-            response['success'] = True
-    except:
-        response['message'] = str(sys.exc_info()[1])
-        logger.error(response['message'])
-        traceback.print_tb(sys.exc_info()[2])
-        _publish_event('message', json.dumps(response['message']))
 
     return JsonResponse(response)
 

@@ -5,13 +5,26 @@ var socket = io.connect("http://{{socketio_host}}:{{socketio_port}}");
 var switchboard_status = 'down';
 var switchboard_freshness = undefined;
 
+function set_switchboard_up() {
+  switchboard_status = 'up';
+  $("#switchboard_status").removeClass("btn-warning").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';;
+}
+
+function set_switchboard_down() {
+  switchboard_status = 'down';
+  $("#switchboard_status").removeClass('btn-success').addClass('btn-warning').find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';;
+}
+
 setInterval(function(){
   now = new Date();
   if (switchboard_freshness == undefined) {
-  } else if (now - switchboard_freshness > 7000) {
-    if (switchboard_status == 'up') {
-      switchboard_status = 'down';
-      $("#switchboard_status").removeClass('btn-success').addClass('btn-warning').find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';;
+    // -- do nothing 
+  } else {
+
+    not_fresh = now - switchboard_freshness > 7000
+
+    if (not_fresh && switchboard_status == 'up') {
+      set_switchboard_down();
     }
   }
 }, 5000);
@@ -19,17 +32,18 @@ setInterval(function(){
 socket.on('change_device', function(data) {
   // console.log('change device response: ' + JSON.stringify(data) + '. setting selected device');
   $("#device_select").val(data.device_id);
-  $("#device_select").change();
+  $("#device_select").trigger("change");
 })
 
-socket.on('health_response', function(data) {
-  // console.log('health response: ' + JSON.stringify(data));
+socket.on('switchboard_health_ping', function(data) {
+  console.log('switchboard health ping: ' + JSON.stringify(data));
+
+  switchboard_freshness = new Date();
+
   if (switchboard_status == 'down') {
     // -- any news is good news 
-    switchboard_status = 'up';
-    $("#switchboard_status").removeClass("btn-warning").addClass("btn-success").find("img")[0].src = '{% static "icons/check-circle.svg" %}';;
-  }
-  switchboard_freshness = new Date();
+    set_switchboard_up();
+  }  
 });
 
 socket.on('connect_response', function(data) {
@@ -51,7 +65,7 @@ socket.on('connect_response', function(data) {
 
 socket.on('player_status', function(player_status){
 
-  console.log('player status: ' + JSON.stringify(player_status));
+  // console.log('player status: ' + JSON.stringify(player_status));
   
   $("#player_status").html(player_status.current_song);
   
@@ -106,7 +120,7 @@ socket.on('beatplayer_status', function(beatplayer_status) {
   } else if (beatplayer_status.status == 'down') {
     $("#beatplayer_status_" + beatplayer_status.id).removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger").find("img")[0].src = '{% static "icons/alert-triangle-fill.svg" %}';
   }
-  var title = "agent base URL: " + beatplayer_status.agent_base_url + ", reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered + ", selfreport: " + beatplayer_status.selfreport + ", mounted: " + beatplayer_status.mounted
+  var title = "agent base URL: " + beatplayer_status.agent_base_url + ", reachable: " + beatplayer_status.reachable + ", registered: " + beatplayer_status.registered_at + ", mounted: " + beatplayer_status.mounted
   $("#beatplayer_status_" + beatplayer_status.id).find("img")[0].title = title;
 });
 
@@ -125,3 +139,4 @@ socket.on('message', function(data){
   showError(data);
   realignPage();
 })
+

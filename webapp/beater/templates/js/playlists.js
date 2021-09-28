@@ -1,5 +1,9 @@
 var spinner = new Spinner(spinner_opts).spin();
 
+/*
+  submit new playlist 
+*/
+
 function populate_playlists(data) {
   $("#playlists").html(data);
 }
@@ -70,7 +74,7 @@ function load_playlistsongs() {
 function new_playlist_prompt() {
   $("#new_playlist").hide();
   $("#new_playlist_form").show();
-  $("#id_name").focus();
+  $("#id_name").trigger('focus');
 }
 
 function submit_new_playlist(e) {
@@ -113,13 +117,14 @@ function playlist_select() {
 };
 
 $(document).on('change', '#playlist_select', playlist_select);
+$(document).on("change", "#playlist_select", load_playlistsongs);
 
-$(document).ready(function(){
+$(() => {
   
   load_playlists();
 
   $("#new_playlist").on("click", new_playlist_prompt);
-  $("#new_playlist_form").on("submit", submit_new_playlist);
+  $("#new_playlist_form").on("submit", submit_new_playlist);  
 });
 
-$(document).on("change", "#playlist_select", load_playlistsongs);
+

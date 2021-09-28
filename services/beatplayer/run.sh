@@ -16,4 +16,8 @@ while [[ $# -gt 0 ]]; do
   esac 
 done 
 
+env | grep BEATPLAYER
+
+echo "docker-compose up $@"
+
 docker-compose up $@

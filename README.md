@@ -2,9 +2,9 @@
 ### Own What You Own
 
 **Goals**
-* learn
-* tinker
 * get confused
+* get unconfused
+* make something useful 
 
 **Components**
 * music playback API (services/beatplayer)
@@ -18,30 +18,55 @@ This project is quite unfinished. Yes, if you have a magic touch, it will work. 
 use it regularly, but I created it, and I think it only obeys me (on occasion)
 because it owes me its life.
 
+### RUN!
+
+To run all services locally as the code sits, three shells are required: the web app (Django), beatplayer (RPC server), and switchboard (messaging).
+
+```/webapp/dev.env 
+./devserve.sh runserver 0.0.0.0:80000
+```
+
+```/services/beatplayer/.env
+./local.sh
+```
+
+```/services/switchboard
+npm start 
+```
+
+Running all services in docker containers is supported by docker-compose, and looks like this:
+
+```/webapp/containerized.dev
+docker-compose up
+```
+
+```/services/beatplayer/.env
+./build.sh && ./run.sh
+```
+
 ## Getting Started
 
 This project is:
 
 1. A web interface that provides
-  - search and playback on any networked device of music files available on any
-  network, provided the networks are networked
-  - light management and classification of said music files, including personal
-  review and ripping status
-  - an interface for the utility (below) to rotate said music files on your mobile
+  - search and playback of audio files available on a network
+  - light management and classification of said music files, including personal review, various status flags, and IDv3 tagging
+  - an interface for the utilities described below
   device
 2. A command-line utility that
-  - ingests information about a music collection from a filesystem
+  - copies audio files around between devices
+  - ingests information about a music collection from a filesystem into a database
   - smartly (using survey info collected through the website) rotates your music
-  collection through your mobile device
+  collection through your mobile device or another networked destination
   - identifies and helps to remediate IDv3 tagging inconsistencies
 
 ### Collection Ingestion
 
 **Requirements**
-* a running MySQL database instance accessible from this code
+* a running MySQL database instance
 
-First, probably, you want to ingest information about your music collection into
-the database. You'll need a database and the utility `services/freshbeats/freshbeats.py`.
+Before trying to use this system, you'll want to populate the database with information 
+about your music collection. You'll need a database and the utility `services/freshbeats/freshbeats.py`.
 
 Go into `services/freshbeats/config` and copy `settings_example.cfg` to `settings.cfg`.
 
@@ -61,17 +86,14 @@ The only option other than `-i`, which you'll use in a minute to ingest your col
 is `--skip_verification`, which controls whether the script will check the files
 for consistent IDv3 tagging, differences in file count and size since the last
 ingestion, and mismatched SHA1 sums since the last ingestion. If this is your
-first ingestion, probably `--skip_verification`. This script is idempotent, so
+first ingestion, probably skip `--skip_verification`. This script is idempotent, so
 you can always come back and mess with your tags.
 
 **Connecting to the database?** `freshbeats.py` directly uses Django models and the web app's
-Django settings. Next stop, `webapp/config/settings_env.py`. You'll notice the
+Django settings, so next stop is `webapp/config/settings_env.py`. You'll notice the
 database connection is driven by environment variables. In the `webapp` folder,
 copy `.env.example` to `.env` and edit your new `.env` file to fill in the
 `FRESHBEATS_DATABASE_*` variables.
-
-* single-node mode 
-* containerized 
 
 Also notice the two references to a music path: `web app .env's FRESHBEATS_MUSIC_PATH`
 and `freshbeats.py settings.cfg's MUSIC_PATH`. The web app value overrides the

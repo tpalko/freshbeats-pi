@@ -1,5 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
+import colorlog
 import os
 import sys
 import signal
@@ -14,10 +15,15 @@ import requests
 import threading
 from wrappers import BaseWrapper 
 from common.processmonitor import ProcessMonitor
+from common.mpvsockettalker import PlayerNotRunningError
 
 HEALTH_LOG_LEVEL = os.getenv('BEATPLAYER_HEALTH_LOG_LEVEL', 'INFO')
+
 logger_health = logging.getLogger(__name__)
 logger_health.setLevel(level=logging._nameToLevel[HEALTH_LOG_LEVEL.upper()])
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+logger_health.addHandler(handler)
 
 class PlayerHealth():
 
@@ -63,13 +69,34 @@ class PlayerHealth():
             logger_health.warning("Exiting!")
             sys.exit(0)
         return handler 
-        
+    
+    def _get_health_response(self):
+        return {
+            'success': False, 
+            'message': '', 
+            'data': {
+                'time': (0,0,),
+                'ps': {
+                    'returncode': None,
+                    'pid': None,
+                    'is_alive': False 
+                },
+                'socket': {
+                    'healthy': True  # -- this is somewhat an arbitrary designation 
+                },
+                'current_command': None, 
+                'music_folder_mounted': False
+            }
+        }
+
     def healthz(self):
-        
-        logger_health.debug("  Assessing player health..")
-        
+        response = self._get_health_response()        
         player = BaseWrapper.getInstance()
-        
+        response['data']['music_folder_mounted'] = self._is_player_music_folder_mounted(player)
+        return response 
+
+    def _is_player_music_folder_mounted(self, player):
+        music_folder_mounted = False 
         if not self.skip_mount_check:
             ps_df = subprocess.Popen(shlex.split("df"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             ps_grep = subprocess.Popen(shlex.split("grep %s" % player.music_folder), stdin=ps_df.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -81,45 +108,46 @@ class PlayerHealth():
             logger_health.debug("   - music folder mount check skipped")
             music_folder_mounted = True 
         
-        response = {
-            'success': False, 
-            'message': '', 
-            'data': {
-                'time': (0,0,),
-                'ps': {
-                    'returncode': None,
-                    'pid': None,
-                    'is_alive': False 
-                },
-                'socket': {
-                    'healthy': False  
-                },
-                'current_command': player.current_command, 
-                'music_folder_mounted': music_folder_mounted
-            }
-        }
+        return music_folder_mounted
+
+    def get_health_report(self):
+        
+        logger_health.debug("  Assessing player health..")
+        
+        player = BaseWrapper.getInstance()
+        
+        response = self._get_health_response()
+        response['data']['current_command'] = player.current_command
+        response['data']['music_folder_mounted'] = self._is_player_music_folder_mounted(player)
         
         try:
             logger_health.debug("  - checking player stats:")
+            # -- these are local stats 
             response['data']['paused'] = player.is_paused()
             response['data']['volume'] = player.player_volume()
             response['data']['muted'] = player.is_muted()
-            response['data']['time'] = player.get_time()
+            
+            # -- this calls out to the socket 
+            try:
+                response['data']['time'] = player.get_time()
+            except PlayerNotRunningError as pnre:
+                logger_health.debug("Player not running while fetching time info")
+
             # response['data']['time_remaining'] = player.get_time_remaining()
             # response['data']['time_pos'] = player.get_time_pos()
             # response['data']['percent_pos'] = player.get_percent_pos()
-            response['data']['socket']['healthy'] = True
-        except ConnectionRefusedError as cre:
-            logger_health.warning("Connection refused while checking some stats: %s" % sys.exc_info()[1])
-            #traceback.print_tb(sys.exc_info()[2])
-        except OSError as oe:
-            logger_health.warning("%s while checking stats: %s" % (sys.exc_info()[0].__class__, sys.exc_info()[1]))
-            #traceback.print_tb(sys.exc_info()[2])
-        except:
+
+        except RuntimeError as re:
+            # [Errno 111] Connection refused during socket file /tmp/mpv.sock connect (_send)
             logger_health.error("Big Fail while checking some stats")
+            logger_health.error(sys.exc_info()[0])
+            traceback.print_tb(sys.exc_info()[2])
+            response['data']['socket']['healthy'] = False 
+        except Exception as e:
             logger_health.error(sys.exc_info()[0])
             logger_health.error(sys.exc_info()[1])
             traceback.print_tb(sys.exc_info()[2])
+            response['data']['socket']['healthy'] = False 
             
         try:
             returncode = -1
@@ -153,7 +181,7 @@ class PlayerHealth():
                     logger_health.debug("*********************************")
                     player_health = None 
                     try:                  
-                        player_health = self.healthz()
+                        player_health = self.get_health_report()
                         player_health['data']['agent_base_url'] = agent_base_url
                         logger_health.debug(json.dumps(player_health, indent=4))
                         try:

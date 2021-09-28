@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+import colorlog
 import os
 import sys 
 import json
@@ -22,6 +25,9 @@ BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYE
 WRAPPER_LOG_LEVEL = os.getenv('BEATPLAYER_WRAPPER_LOG_LEVEL', 'INFO')
 logger_wrapper = logging.getLogger(__name__)
 logger_wrapper.setLevel(level=logging._nameToLevel[WRAPPER_LOG_LEVEL.upper()])
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+logger_wrapper.addHandler(handler)
 
 class BaseWrapper():
     

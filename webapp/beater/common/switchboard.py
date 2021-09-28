@@ -7,13 +7,17 @@ import sys
 from contextlib import contextmanager 
 from django.conf import settings
 from django.contrib.sessions.models import Session
+from datetime import datetime 
+from pytz import timezone 
 
+UTC = timezone('UTC')
 logger = logging.getLogger(__name__)
 # defLogger = logging.getLogger()
 
 def session_data():
     all_sessions = Session.objects.all()
-    for session in all_sessions:
+    now = UTC.localize(datetime.utcnow())
+    for session in [ s for s in all_sessions if s.expire_date > now]:
         decoded = base64.decodestring(session.session_data.encode()).decode('utf-8').partition(':')
         session_data = json.loads(decoded[2])
         yield session_data 

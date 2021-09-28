@@ -392,12 +392,6 @@
           success: function(data, textStatus, jqXHR){}
         });
 
-        $.ajax({
-          url: '{% url "beatplayer_status" %}',
-          type: 'GET',
-          success: function(data, textStatus, jqXHR){}
-        });
-
       });
 
       {% include 'js/common/socketio_client.js' %}

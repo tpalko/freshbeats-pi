@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
-import coloredlogs
+import colorlog
 import logging
-coloredlogs.install(level='DEBUG', fmt='[ %(levelname)7s ] %(asctime)s %(name)s %(filename)12s:%(lineno)-4d %(message)s')
-
 import os
 import sys
 import traceback
@@ -15,12 +13,21 @@ import requests
 from wrappers import BaseWrapper, MPVWrapper, MPlayerWrapper
 from health import PlayerHealth
 
-PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'INFO')
+PLAYER_LOG_LEVEL = os.getenv('BEATPLAYER_PLAYER_LOG_LEVEL', 'DEBUG')
 
-logger_player = logging.getLogger(__name__)
+logger_player = colorlog.getLogger(__name__)
+
+# for h in logger_player.handlers:
+#     print("Removing handler: %s" % h)
+#     logger_player.removeHandler(h)
+
 logger_player.setLevel(level=logging._nameToLevel[PLAYER_LOG_LEVEL.upper()])
 
-logger_urllib = logging.getLogger('urllib3')
+handler = colorlog.StreamHandler()
+handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+logger_player.addHandler(handler)
+
+logger_urllib = colorlog.getLogger('urllib3')
 logger_urllib.setLevel(level=logging.WARN)
         
 
@@ -57,28 +64,24 @@ class MPPlayer():
 
         self.health = PlayerHealth()
     
+    def healthz(self):
+        return "OK"
+        
     def _dispatch(self, method, params):
-        # logger_player.debug("Attempting to dispatch %s" % method)
+        logger_player.debug("Attempting to dispatch %s / %s" % (method, params))
         modules = [self.player, self.health, self]
-        f = None 
         response = None 
-        for m in modules:
+        for m in [ m for m in modules if hasattr(m, method) ]:
             try:
-                # logger_player.debug("Looking for %s on %s" % (method, m.__class__.__name__))
                 f = getattr(m, method)
                 logger_player.debug("Dispatching %s on %s" % (method, m.__class__.__name__))
                 response = f(*params)
-            except AttributeError as ae:
-                # logger_player.error(sys.exc_info()[0])
-                logger_player.error(sys.exc_info()[1])
-                # -- but try another one..
             except Exception as e:
                 logger_player.error(sys.exc_info()[0])
                 logger_player.error(sys.exc_info()[1])
                 traceback.print_tb(sys.exc_info()[2])
-                raise e
-        if not f:
-            raise Exception("Cannot dispatch %s: not found")
+                raise e 
+
         return response
             
     # def logs(self):

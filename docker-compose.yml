@@ -8,8 +8,8 @@ services:
       #   - gitcommithash=05c10666dcb5829f574881f6ab1b2cbdd05f8ec8
     container_name: freshbeats_app
     env_file: webapp/containerized.env
-    # ports:
-    #   - "8030:8000"
+    ports:
+      - "8030:8000"
     environment:
      - PYTHONUNBUFFERED=1
     restart: "always"
@@ -21,9 +21,24 @@ services:
     image: switchboard:latest
     build: services/switchboard
     container_name: freshbeats_switchboard
+    ports:
+      - 3333:3333
     restart: "always"
     networks:
       - frankenbridge
+  freshbeats_beatplayer:
+    image: beatplayer:latest
+    build: 
+      context: services/beatplayer
+      args:
+        - ALPINE_ARCH=amd64
+    container_name: freshbeats_beatplayer
+    ports:
+      - 9000:9000
+    restart: "always"
+    env_file: services/beatplayer/.env
+    networks:
+      - frankenbridge 
 networks:
   frankenbridge:
     external: yes

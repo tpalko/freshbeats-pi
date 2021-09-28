@@ -18,10 +18,11 @@ from django.contrib.sessions.models import Session
 from django.urls import reverse
 from ..common.switchboard import _publish_event, _get_switchboard_connection_id_for_device_id
 from ..common.util import get_localized_now
-from ..models import Device
+from ..models import Device, DeviceHealth
 
 REGISTRATION_TIMEOUT = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_TIMEOUT', 30))
 REGISTRATION_BACKOFF = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_BACKOFF', 3))
+REGISTRATION_HONEYMOON = int(os.getenv('FRESHBEATS_BEATPLAYER_REGISTRATION_HONEYMOON', 60))
 MAX_REGISTRATION_ATTEMPTS = int(os.getenv('FRESHBEATS_BEATPLAYER_MAX_REGISTRATION_ATTEMPTS', 5))
 HEALTH_LOOP_MAX_ITERATIONS = int(os.getenv('FRESHBEATS_BEATPLAYER_HEALTH_LOOP_MAX_ITERATIONS', 30))
 
@@ -31,7 +32,8 @@ class BeatplayerRegistrar():
     
     __instances = {} 
     agent_base_url = None 
-    lock = None 
+    device_lock = None 
+    health_lock = None 
     health_loop_thread = None 
     
     @staticmethod
@@ -47,7 +49,8 @@ class BeatplayerRegistrar():
         if kwargs['agent_base_url'] in BeatplayerRegistrar.__instances and BeatplayerRegistrar.__instances[kwargs['agent_base_url']] != None:
             raise Exception("Singleton instance exists!")
         else:
-            self.lock = threading.Lock()
+            self.device_lock = threading.Lock()
+            self.health_lock = threading.Lock()
             self.agent_base_url = kwargs['agent_base_url']
             BeatplayerRegistrar.__instances[self.agent_base_url] = self 
     
@@ -66,24 +69,42 @@ class BeatplayerRegistrar():
             logger.info("No device was found with agent_base_url '%s'" % self.agent_base_url)
             device = Device(agent_base_url=self.agent_base_url)
         return device
-        
+    
+    def _reconcile_status(self, device_health):
+        if device_health.reachable and device_health.mounted:
+            device_health.status = DeviceHealth.DEVICE_STATUS_READY
+        elif not device_health.reachable:
+            device_health.status = DeviceHealth.DEVICE_STATUS_DOWN
+        else:
+            device_health.status = DeviceHealth.DEVICE_STATUS_NOTREADY
+
+    @contextmanager 
+    def devicehealth(self):
+        self.health_lock.acquire()
+        health = DeviceHealth.objects.filter(device__agent_base_url=self.agent_base_url).first()
+        yield health
+        self._reconcile_status(health)
+        health.save() 
+        self.health_lock.release()
+
     @contextmanager
     def device(self, read_only=False):
         if read_only:                        
             device = self._get_device()
-            #logger.debug("Client state (r/o yield): %s" % device.status_dump())
+            # logger.debug("Client state (r/o yield): %s" % device.status_dump())
             try:
                 yield device
             finally:
                 pass 
         else:        
-            #logger.debug("Client state R/W request")    
+            # logger.debug("Client state R/W request")    
             caller = traceback.format_stack()[-3].split(' ')[7].replace('\n', '')
-            #logger.debug("%s wants to acquire client record lock.." % caller)
-            self.lock.acquire()
-            #logger.debug("%s has acquired client record lock" % caller)
+            logger.debug("%s wants to acquire client record lock.." % caller)
+            self.device_lock.acquire()
+            self.health_lock.acquire()
+            logger.debug("%s has acquired client record lock" % caller)
             device = self._get_device()
-            #logger.debug("Client state (yield): %s" % device.status_dump())
+            # logger.debug("Client state (yield): %s" % device.status_dump())
             try:
                 yield device
             except:
@@ -92,55 +113,82 @@ class BeatplayerRegistrar():
                 traceback.print_tb(sys.exc_info()[2])
             else:
                 try:
-                    if device.reachable and device.registered and device.selfreport and device.mounted:
-                        device.status = Device.DEVICE_STATUS_READY
-                    elif not device.reachable:
-                        device.status = Device.DEVICE_STATUS_DOWN
-                    else:
-                        device.status = Device.DEVICE_STATUS_NOTREADY
-                    if device.status != Device.DEVICE_STATUS_READY:
-                        self.reassign_device()
-                    self._show_beatplayer_status(device.status_dump())
-                    #logger.debug("Client state (save): %s" % device.status_dump())
+                    self._reconcile_status(device.health)
+                    
+                    # logger.debug("Client state (save): %s" % device.status_dump())
                     device.save()
-                    self.lock.release()
+                    device.health.save()
+                    self.health_lock.release()
+                    self.device_lock.release()
+                    
+                    if device.health.status != DeviceHealth.DEVICE_STATUS_READY:
+                        self.reassign_device()
+                    _publish_event('beatplayer_status', device.status_dump())
+                    
                 except Exception as e:
                     logger.error(sys.exc_info()[0])
                     logger.error(sys.exc_info()[1])
                     traceback.print_tb(sys.exc_info()[2])
     
-    def log_health_response(self, health_data):
+    def healthz(self):
         with self.device() as device:
-            now = get_localized_now()            
-            device.mounted = health_data['music_folder_mounted']
-            device.last_health_check = now
+            response = self._call_agent(device)
+            if response:
+                device.health.reachable = True 
+                if 'data' in response and 'music_folder_mounted' in response['data']:
+                    device.health.mounted = response['data']['music_folder_mounted']
 
-    def _show_beatplayer_status(self, beatplayer_status):
-        _publish_event('beatplayer_status', beatplayer_status)
-        
-    def show_status(self):
-        with self.device(read_only=True) as device:
-            self._show_beatplayer_status(device.status_dump())
-    
+    def log_client_presence(self):
+        with self.devicehealth() as health:
+            health.last_client_presence = get_localized_now()
+            logger.debug("%s -- set last client presence: %s" % (self.agent_base_url, datetime.strftime(health.last_client_presence, "%c")))
+        self.check_if_health_loop()
+
+    def log_device_health_report(self, health_data):
+        with self.devicehealth() as health:
+            now = get_localized_now()            
+            health.mounted = health_data['music_folder_mounted']
+            health.last_device_health_report = now
+
     def reassign_device(self):
         '''
         If this device is not ready, set its subscribers to another ready device  
         '''
         connection_ids_by_device = _get_switchboard_connection_id_for_device_id()
+        logger.debug(connection_ids_by_device)
         with self.device(read_only=True) as device:
-            if device.id in connection_ids_by_device:
-                other_ready_devices = Device.objects.filter(Q(status=Device.DEVICE_STATUS_READY) & ~Q(id=device.id))
-                if len(other_ready_devices) > 0:
-                    logger.debug("The device we're looking at is NOT ready, %s clients care, and %s other device(s) are available" % (len(connection_ids_by_device[device.id]), len(other_ready_devices)))
-                    for id in connection_ids_by_device[device.id]:
-                        _publish_event(event='change_device', payload=json.dumps({'device_id': other_ready_devices[0].id}), connection_id=id)
+
+            if device.id not in connection_ids_by_device:
+                logger.debug("%s - this device has no websocket clients, nobody to switch" % device.agent_base_url)
+                return 
+
+            all_other_devices = Device.objects.filter(Q(is_active=True)  & ~Q(id=device.id))
+
+            for d in all_other_devices:
+                beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=d.agent_base_url)
+                beatplayer.healthz()
+
+            other_ready_devices = Device.objects.filter(Q(health__status=DeviceHealth.DEVICE_STATUS_READY) & ~Q(id=device.id))
+            
+            if len(other_ready_devices) == 0:
+                logger.debug("%s - no other devices are ready, cannot switch" % device.agent_base_url)
+                return 
+
+            logger.debug("The device we're looking at is NOT ready, %s clients care, and %s other device(s) are available" % (len(connection_ids_by_device[device.id]), len(other_ready_devices)))
+            
+            for id in connection_ids_by_device[device.id]:
+                logger.debug("%s - switching connection ID %s to device %s" % (device.agent_base_url, id, other_ready_devices[0].agent_base_url))
+                _publish_event(event='change_device', payload=json.dumps({'device_id': other_ready_devices[0].id}), connection_id=id)
                            
-    def _call_agent(self, device):
+    def _call_agent(self, device, health_check_only=True):
         response = None 
         try:
             logger.info("Attempting registration: %s" % device.agent_base_url)
             beatplayer_client = client.ServerProxy(device.agent_base_url)
-            response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_HEALTH_URL, device.agent_base_url)
+            if health_check_only:
+                response = beatplayer_client.healthz()                
+            else:
+                response = beatplayer_client.register_client(settings.FRESHBEATS_CALLBACK_HEALTH_URL, device.agent_base_url)
             logger.info(" - %s registration response: %s" % (device.agent_base_url, response))
         except ConnectionRefusedError as cre:
             logger.error(sys.exc_info()[1])
@@ -159,14 +207,30 @@ class BeatplayerRegistrar():
                     return 
                 else:
                     logger.debug("%s -- Health loop thread not alive, joining.." % device.agent_base_url)
-                    self.health_loop_thread.join()
+                    try:
+                        self.health_loop_thread.join()
+                    except RuntimeError as re:
+                        pass 
                     self.health_loop_thread = None 
-            if device.is_active:                
-                logger.warning(" - %s -- active, starting health loop" % device.agent_base_url)
-                self.health_loop_thread = threading.Thread(target=self.run_health_loop)
-                self.health_loop_thread.start()
             else:
+                logger.debug("%s -- No health loop thread" % device.agent_base_url)
+
+            if not device.is_active:
                 logger.info(" - %s -- inactive, not re-registering" % device.agent_base_url)
+                self.reassign_device()
+                return 
+            else:
+                logger.info(" - %s -- device is active, proceeding.." % device.agent_base_url)
+
+            if not device.health.last_client_presence or not device.health.last_client_presence + timedelta(minutes=5) > get_localized_now():
+                logger.info(" - %s -- no clients present, not re-registering" % device.agent_base_url)
+                return 
+            else:
+                logger.info(" - %s -- device has a recent client presence, proceeding.." % device.agent_base_url)
+
+            logger.warning(" - %s -- passed checks, starting health loop" % device.agent_base_url)
+            self.health_loop_thread = threading.Thread(target=self.run_health_loop)
+            self.health_loop_thread.start()
     
     def run_health_loop(self):
         '''
@@ -177,45 +241,69 @@ class BeatplayerRegistrar():
         try:                   
             logger.debug("Top of health loop..") 
             registration_attempts = 0
-            no_report_count = 0
             iterations = 0
-            since_last = None 
+            seconds_since_last_device_health_report = None 
             sleep_time = 5
             dont_retry = False 
+
             while True:
                 iterations += 1
+
                 with self.device() as device:
-                    if not device.registered:
+
+                    if device.health.registered_at:
+                        
+                        logger.debug("(%s) Registered (%s), now verifying registration" % (device.agent_base_url, datetime.strftime(device.health.registered_at, "%Y-%m-%d %H:%M:%S")))
+
+                        if not device.health.last_device_health_report and (get_localized_now() - device.health.registered_at).total_seconds() < REGISTRATION_HONEYMOON:
+                            logger.debug("(%s) In registration honeymoon, we'll check back.." % device.agent_base_url)
+                            pass # .. 
+
+                        elif device.health.last_device_health_report: # -- verify it's actually registered
+                            seconds_since_last_device_health_report = (get_localized_now() - device.health.last_device_health_report).total_seconds()
+                            if seconds_since_last_device_health_report >= REGISTRATION_TIMEOUT:
+                                logger.debug("(%s) We have a last check but it's not recent, cancelling registration" % device.agent_base_url)
+                                device.health.registered_at = None 
+                            else:
+                                response = self._call_agent(device, health_check_only=True)
+                                if not response:
+                                    device.health.registered_at = None 
+                        else:
+                            logger.debug("(%s) Registered but no check and registration is old, cancelling registration" % device.agent_base_url)
+                            device.health.registered_at = None 
+
+                    else:
+                        logger.info("(%s) Device is NOT registered on health loop, attempting to register.." % device.agent_base_url)
                         registration_attempts += 1
-                        response = self._call_agent(device)
-                        device.reachable = response is not None 
-                        device.registered = response is not None and response['data']['registered']
-                        device.registered_at = get_localized_now() if device.registered else None 
-                        dont_retry = response and 'data' in response and 'retry' in response['data'] and response['data']['retry'] == False                        
-                    else:      
-                        since_last = (get_localized_now() - device.last_health_check).total_seconds() if device.last_health_check else None 
-                        no_report_count += 1 if not device.last_health_check else -no_report_count
-                        device.selfreport = (since_last is not None and since_last < REGISTRATION_TIMEOUT)
-                        device.registered = not (no_report_count > 2 or not device.selfreport)
-                    
-                    last_format = datetime.strftime(device.last_health_check, "%Y-%m-%d %H:%M:%S") if device.last_health_check else "-"
-                    logger.debug("(%s) Registration - %s - attempts %s reachable? %s registered? %s last? %s/%s (%s)" % (iterations, device.agent_base_url, registration_attempts, device.reachable, device.registered, since_last, REGISTRATION_TIMEOUT, last_format))
+                        response = self._call_agent(device, health_check_only=False)
+                        if response:
+                            device.health.reachable = True 
+                            if response['data']['registered']:
+                                device.health.registered_at = get_localized_now() 
+
+                            if 'data' in response and 'retry' in response['data'] and response['data']['retry'] == False:
+                                dont_retry = True 
+
+                    last_format = '-'
+                    registered_at_format = 'no'
+                    if device.health.last_device_health_report:
+                        last_format = datetime.strftime(device.health.last_device_health_report, "%Y-%m-%d %H:%M:%S")
+                    if device.health.registered_at:
+                        registered_at_format = "yes (%s)" % datetime.strftime(device.health.registered_at, "%Y-%m-%d %H:%M:%S")
+
+                    logger.debug("(%s) iter %s Registration - %s attempts, reachable? %s, registered? %s last? %s/%s (%s)" 
+                        % (device.agent_base_url, iterations, registration_attempts, device.health.reachable, registered_at_format, seconds_since_last_device_health_report, REGISTRATION_TIMEOUT, last_format))
                     
                     if iterations > HEALTH_LOOP_MAX_ITERATIONS:
                         logger.debug(" - %s -- health loop iteration MAX (%s/%s), breaking.." % (device.agent_base_url, iterations, HEALTH_LOOP_MAX_ITERATIONS))
                         break 
                         
-                    if not device.registered:
+                    if not device.health.registered_at:
                         if dont_retry or registration_attempts >= MAX_REGISTRATION_ATTEMPTS:
                             logger.info("  - %s --  not registered, quitting registration (dont_retry: %s)" % (device.agent_base_url, dont_retry))
-                            break                        
+                            break    
                         else:
-                            no_report_count = 0
-                            device.selfreport = False 
-                    else:
-                        registration_attempts = 0
-                                            
-                    sleep_time = 5 if device.registered else registration_attempts*REGISTRATION_BACKOFF
+                            sleep_time = registration_attempts * REGISTRATION_BACKOFF
                 
                 # -- do our sleeping outside the R/W context 
                 logger.debug(" - %s - sleeping %s.." % (device.agent_base_url, sleep_time))

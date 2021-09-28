@@ -60,6 +60,7 @@ class PlayerWrapper():
             logger.debug("Creating lock for playlist %s" % (playlist_id))
             PlayerWrapper.playlist_locks[playlist_id] = threading.Lock()
         logger.debug("Wanting playlist lock %s" % playlist_id)
+        # TODO: implement playlist read-only mode and avoid acquring the lock when not necessary 
         PlayerWrapper.playlist_locks[playlist_id].acquire()
         logger.debug("Acquired playlist lock %s" % playlist_id)
         playlist = Playlist.getInstance(playlist_id)
@@ -108,9 +109,9 @@ class PlayerWrapper():
                 logger.debug("Player yield returned from %s, cleaning up and saving" % caller)
                 
                 beatplayer = BeatplayerRegistrar.getInstance(player.device.agent_base_url)
-                with beatplayer.device(read_only=True) as device:
-                    player.beatplayer_status = device.status
-                    player.beatplayer_registered = device.registered
+                with beatplayer.devicehealth() as health:
+                    player.beatplayer_status = health.status
+                    player.beatplayer_registered_at = health.registered_at
                 player.save()
                 
             finally:
@@ -234,6 +235,9 @@ class PlayerWrapper():
         return response 
     
     def show_player_status(self):
+        '''
+        Assembles player and playlist state and emits a player_status event.
+        '''
         
         with self.player(read_only=True) as player:
             # -- READ ONLY PLAYER
@@ -251,7 +255,7 @@ class PlayerWrapper():
             
             current_playlistsong = player.playlistsong if player.playlistsong else None 
             
-            logger.debug("Showing player status (%s/%s). Current playlistsong: %s" % (player.id, player.device.id, current_playlistsong.song.name if current_playlistsong else "<no song>"))
+            logger.debug("Publishing player status (player %s/device %s). Current playlistsong: %s" % (player.id, player.device.id, current_playlistsong.song.name if current_playlistsong else "<no song>"))
             
             current_song_obj = {
                 'song': current_playlistsong.song if current_playlistsong else None

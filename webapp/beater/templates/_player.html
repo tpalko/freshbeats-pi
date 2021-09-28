@@ -22,13 +22,13 @@
   <div class="col-md-3">
     <h2 style="font-size: 2em;display:inline;"><span id="player_time_pos"></span> / <span id="player_time_remaining"></span></h2> <h4 style="display:inline;"><span id="player_percent_pos"></span></h4>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-3" id="devices" data-loaded="">
     {% for device in devices %}
-      <div id="beatplayer_status_{{ device.id }}" class="btn btn-warning d-inline">
-        <img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" />
+      <div id="beatplayer_status_{{ device.id }}" class="btn btn-warning d-inline" style="display: none;">
+        Btpl<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" />
       </div>
     {% endfor %}
-    <div id="switchboard_status" class="btn btn-warning d-inline">S:<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
+    <div id="switchboard_status" class="btn btn-warning d-inline">Swbd<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
   </div>
   <div class="col-md-1">
     <select id="device_select">

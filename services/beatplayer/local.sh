@@ -7,7 +7,12 @@ if [[ "$1" = "-h" ]]; then
 fi 
 
 export $(cat .env | xargs)
-export BEATPLAYER_MUSIC_FOLDER=${1:=}
+
+if [[ $# -gt 0 ]]; then 
+  BEATPLAYER_MUSIC_FOLDER=$1
+fi 
+
+export BEATPLAYER_MUSIC_FOLDER=${BEATPLAYER_MUSIC_FOLDER:=${HOST_MUSIC_FOLDER}}
 export BEATPLAYER_SKIP_MOUNT_CHECK=1
 
 env | grep BEATPLAYER

@@ -108,9 +108,10 @@ function healthz(req, res, next) {
 }
 
 setInterval(function() {
-  console.log("Sending health ping to " + Object.keys(sockets).length + " clients");
+  // console.log("Sending health ping to " + Object.keys(sockets).length + " clients");
   for (connectionId in sockets) {
-    var response = sockets[connectionId].emit('health_response', { health: 'ok' });
+    console.log('Emitting switchboard_health_ping -> ' + connectionId);
+    var response = sockets[connectionId].emit('switchboard_health_ping', { health: 'ok' });
     if (!response.connected) {
       console.log("Removing " + connectionId + " from health pings - found disconnected");
       delete sockets[connectionId];
@@ -149,7 +150,13 @@ io.sockets.on('connection', function (socket) {
   
   sockets[socket.conn.id] = socket;
 
-  var sessionInfo = { message: 'Socket.IO connection made', connectionId: socket.conn.id, userAgent: socket.handshake.headers['user-agent'], remoteAddress: socket.client.conn.remoteAddress };
+  var sessionInfo = { 
+    message: 'Socket.IO connection made', 
+    connectionId: socket.conn.id, 
+    userAgent: socket.handshake.headers['user-agent'], 
+    remoteAddress: socket.client.conn.remoteAddress 
+  };
+  
   console.log(sessionInfo);
   socket.emit('connect_response', sessionInfo);
 });

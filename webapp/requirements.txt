@@ -1,4 +1,4 @@
-django==1.11
+django==2.0
 configparser
 requests
 click
@@ -10,3 +10,5 @@ mysqlclient
 #MySQLdb
 gunicorn
 colorlog
+django-dirtyfields
+mutagen
