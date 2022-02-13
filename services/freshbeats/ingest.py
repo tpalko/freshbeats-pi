@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import re
+import json
 import os
 import sys
 from os.path import join, getsize
@@ -22,7 +24,6 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 print("setting up")
 django.setup()
 from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
-
 from mutagen import easyid3, id3
 
 sys.path.append(os.path.dirname(__file__))
@@ -31,8 +32,16 @@ from common import get_storage_path
 # logging.basicConfig(
 #     format='%(log_color)s[ %(levelname)7s ] %(asctime)s %(name)s %(filename)12s:%(lineno)-4d %(message)s'
 # )
-logger = logging.getLogger('services.ingest')
-logger.setLevel(logging.INFO)
+if __file__:
+    print(f'creating logger as {__name__}')
+    logger = logging.getLogger(__name__)
+else:
+    print(f'creating logger as services.ingest')
+    logger = logging.getLogger('services.ingest')
+
+logger.setLevel(logging.DEBUG)
+
+logger.fatal(os.getenv('DJANGO_LOG_LEVEL'))
 
 # DJANGO_LOGGER = logging.getLogger('django')
 # DJANGO_LOGGER.setLevel(logging.INFO)
@@ -71,29 +80,33 @@ artist_database_frame_types = [
     'musicbrainz_artistid'
 ]
 
+# -- idv3 tags that are also database columns 
+# -- we can set these in the database 
+# -- and track variation in the tags over time 
 song_database_frame_types = [
     'title', 
     'musicbrainz_trackid', 
     'tracknumber'
 ]
 
-album_tags = [
-    'album',
-    'musicbrainz_artistid',
-    'conductor',
-    'musicbrainz_albumstatus',
-    'artist',
-    'media',
-    'releasecountry',
-    'musicbrainz_albumid',
-    'date',
-    'albumartist',
-    'musicbrainz_albumtype',
-    'organization',
-    'genre',
-    'originaldate',
-    'musicbrainz_trmid'
-]
+# album_tags = [
+#     'album',
+#     'musicbrainz_artistid',
+#     'conductor',
+#     'musicbrainz_albumstatus',
+#     'artist',
+#     'media',
+#     'releasecountry',
+#     'musicbrainz_albumid',
+#     'date',
+#     'albumartist',
+#     'musicbrainz_albumtype',
+#     'organization',
+#     'genre',
+#     'originaldate',
+#     'musicbrainz_trmid'
+# ]
+
 frame_types = {
     'TPE1': 'artist',
     'TALB': 'album',
@@ -102,9 +115,9 @@ frame_types = {
     'TPUB': 'organization',
     'TPE2': 'albumartist'
 }
-song_frame_types = ['TIT2', 'TCOM', 'TRCK']
-easy_song_frame_types = ['title', 'musicbrainz_trackid', 'tracknumber']
-artist_frame_types = ['musicbrainz_artistid']
+# song_frame_types = ['TIT2', 'TCOM', 'TRCK']
+# easy_song_frame_types = ['title', 'musicbrainz_trackid', 'tracknumber']
+# artist_frame_types = ['musicbrainz_artistid']
 
 class Albummeta(object):
 
@@ -135,6 +148,8 @@ class Ingest(object):
 
     def __init__(self, *args, **kwargs):
 
+        logger.debug(json.dumps(kwargs, indent=4))
+         
         self.artist_filter = kwargs['artist_filter'] if 'artist_filter' in kwargs else None
         self.tags_menu = kwargs['tags_menu'] if 'tags_menu' in kwargs else False
         self.sha1_scan = kwargs['sha1_scan'] if 'sha1_scan' in kwargs else False
@@ -142,13 +157,14 @@ class Ingest(object):
         self.purge = kwargs['purge'] if 'purge' in kwargs else False
         self.skip_verification = kwargs['skip_verification'] if 'skip_verification' in kwargs else False
         
+        config_file = join(os.path.dirname(__file__), './config/settings.cfg')
         config = ConfigParser()
-        config.read(
-            join(os.path.dirname(__file__), './config/settings.cfg')
-        )
+        logger.info(f'Loading {config_file}')
+        config.read(config_file)
 
         for section in config.sections():
             for i in config.items(section):
+                logger.debug(f'setting {i[0]}: {i[1]}')
                 self.__setattr__(i[0], i[1])
 
         if os.getenv('FRESHBEATS_MUSIC_PATH'):
@@ -172,6 +188,7 @@ class Ingest(object):
         return (artist, added)
 
     def _save_album(self, artist, album_name, total_size):
+        '''If not found by artist and album name, insert a new (empty) record'''
         album = None
         added = False
         try:
@@ -179,6 +196,9 @@ class Ingest(object):
                 artist=artist,
                 name=album_name)
             logger.debug(" - album found: %s" % album_name)
+            if album.has_status(AlbumStatus.WANTED):
+                album.remove_status(AlbumStatus.WANTED)
+                album.save()                
         except Album.DoesNotExist as d:
             album = Album(
                 artist=artist,
@@ -250,7 +270,7 @@ class Ingest(object):
         '''
         try:
 
-            parent_folder = self.music_path.rpartition('/')[1]
+            # parent_folder = self.music_path.rpartition('/')[1]
             quit = False
             skip_id3_tag_skew_check = False
 
@@ -265,11 +285,11 @@ class Ingest(object):
                     logger.debug(" - %s -> no files, skipping" % sub_path)
                     continue
 
-                root_splits = root.split('/')
-                if len(root_splits) > 0:
-                    parent = root.split('/')[-1]
-                if len(root_splits) > 1:
-                    grandparent = root.split('/')[-2]
+                # root_splits = root.split('/')
+                # if len(root_splits) > 0:
+                #     parent = root_splits[-1]
+                # if len(root_splits) > 1:
+                #     grandparent = root_splits[-2]
 
                 parts = [ p for p in sub_path.split('/') if p ]
 
@@ -277,7 +297,6 @@ class Ingest(object):
                     logger.debug(" - %s -> skipping the base path" % sub_path)
                     continue
 
-                logger.debug("")
                 logger.debug("Processing path %s" % sub_path)
 
                 if len(parts) < 2:
@@ -290,11 +309,13 @@ class Ingest(object):
                     # -- extra folders?
                     album_name = parts[-1].strip()
                     artist_name = parts[-2].strip()
-
-                #logger.debug("folder path is type %s while input flag is type %s" % (type(artist), type(artist_filter)))
-                if self.artist_filter and str(self.artist_filter) != str(artist_name):
-                    logger.debug(" - %s no match for artist filter %s" % (artist_name, str(self.artist_filter)))
-                    continue
+                
+                if self.artist_filter:
+                    artist_match = re.search(self.artist_filter.lower(), str(artist_name).lower())
+                    album_match = re.search(self.artist_filter.lower(), str(album_name).lower())
+                    if not artist_match and not album_match:
+                        logger.debug(" - %s no match for artist filter %s" % (artist_name, str(self.artist_filter)))
+                        continue
 
                 if len(files) > 0 and all(f in self.skip_files for f in files):
                     logger.debug(" - all files are skip files, skipping")
@@ -311,7 +332,7 @@ class Ingest(object):
                     logger.debug(" - no music tracks, skipping")
                     continue
 
-                logger.debug(" - path parsed -> artist: %s, album: %s" % (artist_name, album_name))
+                logger.debug(" - path parsed -> artist: %s, album: %s, tracks: %s" % (artist_name, album_name, track_count))
 
                 total_size = sum(getsize(join(root, name)) for name in all_files)
                 audio_size = sum(getsize(join(root, name)) for name in music_files)
@@ -320,12 +341,40 @@ class Ingest(object):
                 (album, album_added) = self._save_album(artist, album_name, total_size)
 
                 if self.skip_verification and not artist_added and not album_added:
+                    logger.debug(f'Nothing new added and skip verification flag set, skipping..')
                     continue
 
                 flags = AlbumStatus.objects.filter(album=album)
 
-                (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(root)
+                (files_by_values_by_tag, value_counts_per_tag, id3_files, values_by_tags_by_file) = self._extract_album_id3_tags(root)
 
+                '''
+                maybe interesting at this point, we're creating an object that 
+                    represents both information from the database 
+                    and live-on-disk information 
+                it may BEHOOVE US to make a clear demarcation in the process 
+                    to say.. here are these files in a folder.. 
+                    do as much automatic ingestion as makes sense into the database 
+                    for information that is useful to have there (and no more)
+                    and then involve the human for things like verifying database-destined 
+                    data that cannot be verified programmatically and verifying,
+                    adding, or fixing the actual file metadata, tags, etc.
+                take a pass into memory
+                    
+                if there's enough information, or maybe we allow some variable relaxation, save it 
+                    - artist name 
+                    - album name 
+                    - album size on disk 
+                    - album track count 
+                    - album-level tags (on consensus of song tags, i.e. year, style)
+                    - song filenames 
+                    - song sizes on disk 
+                    - song hash 
+                    - song-level tags
+                human intervention to verify and fix file metadata 
+                    - individual file or blanket tags
+                    - 
+                '''
                 albummeta = Albummeta(full_path=root,
                     sub_path=sub_path,
                     artist=artist,
@@ -340,7 +389,9 @@ class Ingest(object):
                 # - the songs were already cleared (above)
                 # if we updated and naturally empty if new
                 album_file_stats_mismatch = not self._verify_album_meta(album, albummeta)
-
+                
+                # -- if album added, all stats and tags are obviously new 
+                # -- if stats mismatch, this is effectively a new ingestion, so reset all stats and tags 
                 if album_added or album_file_stats_mismatch:
                     self._clear_album_meta(album, total_size)
                     logger.debug(" - ingesting %s songs" % track_count)
@@ -366,38 +417,43 @@ class Ingest(object):
                 else:
                     if self.id3_scan or self.sha1_scan:
                         for song in album.song_set.all():
+                            needs_save = False 
                             if self.id3_scan:
-                                song_frames = self._get_frames(join(root, song.name), song_database_frame_types)                                
+                                song_frames = self._get_frames(join(root, song.name), song_database_frame_types)
                                 logger.debug(" - read %s frames from %s" % (len(song_frames.keys()), song.name))
                                 for frame in song_frames.keys():
                                     db_value = song.__dict__[frame]
                                     if str(db_value) != str(song_frames[frame]):
                                         logger.info("   - %s mismatch (db: %s, file: %s)" % (frame, db_value, song_frames[frame]))
+                                        # -- actual value on disk rules 
                                         song.__setattr__(frame, song_frames[frame])
+                                        needs_save = True 
                             if self.sha1_scan:
                                 logger.info(" - calculating song hash")
                                 sha1sum = self._get_sha1sum(root, song.name)
                                 if song.sha1sum != sha1sum:
                                     song.sha1sum = sha1sum
                                     logger.info(" - SHA1 mismatch, updated %s (%s/%s) \
-                                        ", song.encode('utf-8'),
-                                        artist.encode('utf-8'),
-                                        album.encode('utf-8'))                            
-                                    song.save()
-                                    # -- only if we're not planning on showing the menu already 
-                            
+                                        ", song.name.encode('utf-8'),
+                                        artist.name.encode('utf-8'),
+                                        album.name.encode('utf-8'))
+                                    needs_save = True 
+                            if needs_save:
+                                song.save()
+
+                # -- only if we're not planning on showing the menu already 
                 # -- and we care about tag skew 
                 # -- do we bother to check if...
                 
-                id3_tag_skew = any([ t for t in dist if len(dist[t]) > 1 or len(dist[t]) == 1 and dist[t][0] == None ])
+                id3_tag_skew = any([ t for t in value_counts_per_tag if len(value_counts_per_tag[t]) > 1 or len(value_counts_per_tag[t]) == 1 and value_counts_per_tag[t][0] == None ])
                 
                 # id3_tag_skew = False
                 # if not self.tags_menu and not skip_id3_tag_skew_check:
                 #     # -- ...any found tags have more than one value?
-                #     for t in dist:
+                #     for t in value_counts_per_tag:
                 #         # -- the tag has more than one value 
                 #         # -- the tag has a 'None' value 
-                #         if len(dist[t]) > 1 or len([ v for v in dist[t] if v is None ]) > 0:
+                #         if len(value_counts_per_tag[t]) > 1 or len([ v for v in value_counts_per_tag[t] if v is None ]) > 0:
                 #             # -- and if so, show that menu
                 #             id3_tag_skew = True
                 #             break
@@ -408,19 +464,22 @@ class Ingest(object):
                         print("Some discrepancies were detected in the MP3 file tags.")
                         print("What do you want to do?")
                         print("")
-                        print("fix ID3 (t)ags")
-                        print("    set (f)lags")
-                        print("     do (n)othing for this album")
-                        print("        (s)kip this and stop checking ID3 tags on remaining albums")
-                        print("        (q)uit")
+                        print("fix ID3 tags for (a)lbum")
+                        print("fix ID3 tags for (s)ongs")
+                        print("             set (f)lags")
+                        print("              do (n)othing for this album")
+                        print("   skip this and (d)on't check ID3 tags on remaining albums")
+                        print("                 (q)uit")
                         print("")
                         chosen = input("       ? ")
 
-                        if str(chosen).lower() == "t":
-                            self.normalize_id3_tags(albummeta)
+                        if str(chosen).lower() == "a":
+                            self.normalize_id3_tags_for_album(albummeta)
+                        elif str(chosen).lower() == "s":
+                            self.fix_id3_tags_for_songs(albummeta)
                         elif str(chosen).lower() == "f":
                             self.set_flags(albummeta)
-                        elif str(chosen).lower() == "s":
+                        elif str(chosen).lower() == "d":
                             skip_id3_tag_skew_check = True
                             break
                         elif str(chosen).lower() == "n":
@@ -433,15 +492,15 @@ class Ingest(object):
                     logger.info("Quitting!")
                     break 
                     
-                (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(root)
+                (files_by_values_by_tag, value_counts_per_tag, id3_files, values_by_tags_by_file) = self._extract_album_id3_tags(root)
                 
                 # -- go through found tag values in the collection of files 
                 # -- and if there is consensus and we're tracking that tag in the database 
                 # -- make sure the database has the correct value 
                 # -- TODO: should we track the non-consensus state in the database.. just say "uncertain" in the field 
                 logger.info("Updating database for consensus tag values:")
-                for t in [ t for t in files_per_val_per_frame if t in album_database_frame_types ]:
-                    values = files_per_val_per_frame[t].keys()
+                for t in [ t for t in files_by_values_by_tag if t in album_database_frame_types ]:
+                    values = files_by_values_by_tag[t].keys()
                     # -- if there is only one value among all files and this is NOT the value represented in the database
                     # -- go ahead and save it 
                     if len(values) == 1 and list(values)[0] is not None and album.__dict__[t] != list(values)[0]:
@@ -449,8 +508,8 @@ class Ingest(object):
                         logger.info(" - album frame type %s is consistently '%s', writing to album.." % (t, value))
                         album.__setattr__(t, value)
                         album.save()
-                for t in [ t for t in files_per_val_per_frame if t in artist_database_frame_types ]:
-                    values = files_per_val_per_frame[t].keys()
+                for t in [ t for t in files_by_values_by_tag if t in artist_database_frame_types ]:
+                    values = files_by_values_by_tag[t].keys()
                     if len(values) == 1 and list(values)[0] is not None and artist.__dict__[t] != list(values)[0]:
                         value = list(values)[0]
                         logger.info(" - artist frame type %s is consistently '%s', writing to artist.." % (t, value))
@@ -487,7 +546,12 @@ class Ingest(object):
                         logger.info("  - %s/%s missing, would actually soft-delete in database", album.artist.name.encode('utf-8'), album.name.encode('utf-8'))
                     else:
                         logger.debug("  - %s/%s was found on disk, so not deleting" % (album.artist.name.encode('utf-8'), album.name.encode('utf-8')))
-
+        
+        except django.db.utils.OperationalError as oe:
+            message = str(sys.exc_info()[1])
+            logging.error(str(sys.exc_info()[0]))
+            logging.error(message)
+            traceback.print_tb(sys.exc_info()[2])
         except Exception as update_db_exception:
             message = str(sys.exc_info()[1])
             logging.error(str(sys.exc_info()[0]))
@@ -545,8 +609,13 @@ class Ingest(object):
         song_sha1sum = sha1.hexdigest()
 
         return song_sha1sum
-                
-    def _extract_id3_tags(self, album_folder):
+    
+    def _extract_file_id3_tags(self, albummeta):
+        
+        for f in albummeta.id3_files:
+            e = easyid3.EasyID3(f)
+            
+    def _extract_album_id3_tags(self, album_folder):
         # - pass artist and album, or just let it run
         # - for each album, extract:
         #   - per song, common frames and their values
@@ -561,9 +630,10 @@ class Ingest(object):
         #   - each possible status + toggle
         #   - skip album
         # -- for each attribute, for each value of that attribute, a list of files 
-        files_per_val_per_frame = { frame_types[t]: {} for t in list(frame_types.keys()) }
+        files_by_values_by_tag = { frame_types[t]: {} for t in list(frame_types.keys()) }
         # -- for each file, for each attribute of that file, the value 
-        val_per_frame_per_file = {}
+        values_by_tags_by_file = {}
+        id3_files = []
         for dir, subdirs, files in os.walk(album_folder):
             if dir != album_folder:
                 logger.debug("Recursed too var? %s != %s" %(dir, album_folder))
@@ -571,12 +641,19 @@ class Ingest(object):
 
             for f in files:
                 filepath = os.path.join(dir, f)
+                logger.debug(f'extract id3 tags have {filepath}')
                 try:
+                    if filepath not in id3_files:
+                        logger.debug(f'Added {filepath} to id3_files')
+                        id3_files.append(filepath)
+                    else:
+                        logger.debug(f'{filepath} is already in id3_files')
                     e = easyid3.EasyID3(filepath)
                     #m = mutagen.File(filepath)
                     if e:
+                        logger.debug(f'have EasyID3 of {filepath}')                        
                         # print(e)
-                        val_per_frame_per_file[filepath] = {}
+                        values_by_tags_by_file[filepath] = {}
                         logger.debug("   - scanning ID3 tag: %s" % f)
                         for t in album_frame_types:
                             # -- extraction
@@ -585,29 +662,33 @@ class Ingest(object):
                                 vals = e[t]
                             if len(vals) > 0:
                                 val = vals[0]
-                                val_per_frame_per_file[filepath][t] = val
-                                if t not in files_per_val_per_frame:
-                                    files_per_val_per_frame[t] = {}
-                                if val not in files_per_val_per_frame[t]:
-                                    files_per_val_per_frame[t][val] = []
-                                files_per_val_per_frame[t][val].append(f)
+                                values_by_tags_by_file[filepath][t] = val
+                                if t not in files_by_values_by_tag:
+                                    files_by_values_by_tag[t] = {}
+                                if val not in files_by_values_by_tag[t]:
+                                    files_by_values_by_tag[t][val] = []
+                                files_by_values_by_tag[t][val].append(f)
+                    else:
+                        logger.debug(f'EasyID3 did not take on {filepath}')
                 except id3.ID3NoHeaderError:
                     #logger.error(sys.exc_info()[1])
                     pass #? we're not filtering at all
         # -- dict of frames and lists of value: # files with that value 
-        dist = { frame: [ "%s (%s)" % (v, len(files_per_val_per_frame[frame][v])) for v in files_per_val_per_frame[frame] ] for frame in files_per_val_per_frame }
-        id3_files = [ f for f in list(val_per_frame_per_file.keys()) ]
+        value_counts_per_tag = { tag: [ "%s (%s)" % (value, len(files_by_values_by_tag[tag][value])) for value in files_by_values_by_tag[tag] ] for tag in files_by_values_by_tag }
         id3_files.sort()
-        return (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file)
+        return (files_by_values_by_tag, value_counts_per_tag, id3_files, values_by_tags_by_file)
 
-    def normalize_id3_tags(self, albummeta):
+    def fix_id3_tags_for_songs(self, albummeta):
+        pass 
+
+    def normalize_id3_tags_for_album(self, albummeta):
 
         while(True):
 
-            (files_per_val_per_frame, dist, id3_files, val_per_frame_per_file) = self._extract_id3_tags(albummeta.full_path)
+            (files_by_values_by_tag, value_counts_per_tag, id3_files, values_by_tags_by_file) = self._extract_album_id3_tags(albummeta.full_path)
 
             '''
-            files_per_val_per_frame
+            files_by_values_by_tag
             {
                 frame:
                 {
@@ -626,16 +707,16 @@ class Ingest(object):
             }
             '''
 
-            frame_menu = { i: t for i, t in enumerate(list(dist.keys()), 1) }
+            frame_menu = { i: t for i, t in enumerate(list(value_counts_per_tag.keys()), 1) }
             albummeta.printmeta()
             for i in list(frame_menu.keys()):
                 dist_display = ''
-                if len(dist[frame_menu[i]]) > 1:
+                if len(value_counts_per_tag[frame_menu[i]]) > 1:
                     dist_display = '\n\t'
-                    for d in dist[frame_menu[i]]:
+                    for d in value_counts_per_tag[frame_menu[i]]:
                         dist_display += '%s\n\t' % d 
                 else:
-                    dist_display = "\n".join(dist[frame_menu[i]])
+                    dist_display = "\n".join(value_counts_per_tag[frame_menu[i]])
                 print(" (%s) %s: %s" % (i, frame_menu[i], dist_display))
             print(" (q)uit")
             chosen = input("? ")
@@ -649,12 +730,12 @@ class Ingest(object):
                 print("Choose one value to apply to all tracks.")
                 print("If there is not a single value for all tracks but the information shown is not correct, sorry, we don't support that yet.")
                 # -- capture one output of the unordered dict and use it for both the question and answer lookup
-                frame_val_menu = { n: val for n, val in enumerate(list(files_per_val_per_frame[easyid_key].keys()), 1) }
+                frame_val_menu = { n: val for n, val in enumerate(list(files_by_values_by_tag[easyid_key].keys()), 1) }
                 frame_val = None
                 while not frame_val:
                     for n in frame_val_menu:
                         print(("   (%s) %s" % (n, frame_val_menu[n])))
-                        for f in files_per_val_per_frame[easyid_key][frame_val_menu[n]]:
+                        for f in files_by_values_by_tag[easyid_key][frame_val_menu[n]]:
                             print(("     - %s" % f))
                     print("   (w)rite in")
                     print("   (s)kip")
@@ -689,10 +770,10 @@ class Ingest(object):
                                 logger.error(n)
 
 
-        # single_values = { t: files_per_val_per_frame[t] for t in files_per_val_per_frame if len(files_per_val_per_frame[t]) == 1 }
+        # single_values = { t: files_by_values_by_tag[t] for t in files_by_values_by_tag if len(files_by_values_by_tag[t]) == 1 }
         # for t in single_values:
         #     logger.debug(" - %s: %s" % (t, single_values[t].keys()[0]))
-        # multiple_choices = { t: files_per_val_per_frame[t] for t in files_per_val_per_frame if len(files_per_val_per_frame[t]) > 1 }
+        # multiple_choices = { t: files_by_values_by_tag[t] for t in files_by_values_by_tag if len(files_by_values_by_tag[t]) > 1 }
         # for n, t in enumerate(multiple_choices, 1):
         #     easyid_key = frame_types[t]
         #     print(" - %s" % albummeta)
@@ -745,6 +826,7 @@ def main(artist_filter, tags_menu, sha1_scan, id3_scan, purge, skip_verification
             'purge': purge, 
             'skip_verification': skip_verification
         }
+        print(json.dumps(config, indent=4))
         # -- double-star a dict to pass kwargs 
         f = Ingest(**config)
         f.update_db()

@@ -18,7 +18,7 @@ def session_data():
     all_sessions = Session.objects.all()
     now = UTC.localize(datetime.utcnow())
     for session in [ s for s in all_sessions if s.expire_date > now]:
-        decoded = base64.decodestring(session.session_data.encode()).decode('utf-8').partition(':')
+        decoded = base64.decodebytes(session.session_data.encode()).decode('utf-8').partition(':')
         session_data = json.loads(decoded[2])
         yield session_data 
 
@@ -33,7 +33,7 @@ def _get_playlist_id_for_switchboard_connection_id(connection_id):
 
 def _get_switchboard_connection_id_for_device_id():
     device_switchboard_connection_ids = {}
-    for data in session_data():
+    for data in [ d for d in session_data() if 'switchboard_connection_id' in d ]:
         if 'device_id' in data:
             device_id = int(data['device_id'])
             if device_id in device_switchboard_connection_ids:

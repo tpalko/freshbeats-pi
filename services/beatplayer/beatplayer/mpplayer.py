@@ -29,7 +29,6 @@ logger_player.addHandler(handler)
 
 logger_urllib = colorlog.getLogger('urllib3')
 logger_urllib.setLevel(level=logging.WARN)
-        
 
 class MPPlayer():
     
@@ -50,19 +49,21 @@ class MPPlayer():
         
         logger_player.info("Choosing player..")
         preferred_player = kwargs['player'] if 'player' in kwargs else None 
-        for p in [ c for c in self.player_clients if c.executable_filename() == preferred_player or not preferred_player ]:
-            if p.can_play():
-                logger_player.info(" - %s can play - choosing" % p.__name__)
-                self.player = BaseWrapper.getInstance(p)
-                break 
-            else:
-                logger_player.info("  - %s cannot play" % p.__name__)
         
-        if not self.player:
-            self.player = BaseWrapper.getInstance()
+        players_by_exec = { c.executable_filename(): c for c in self.player_clients if c.can_play() }
+        chosen_player = None 
+        
+        if preferred_player and preferred_player in players_by_exec:
+            chosen_player = preferred_player
+        elif len(players_by_exec) > 0:
+            chosen_player = list(players_by_exec.keys())[0]
+        else:
             logger_player.warning("No suitable player could be found. BaseWrapper called without a wrapper type.")
-
-        self.health = PlayerHealth()
+        
+        logger_player.info(f'Player chosen: {chosen_player}')
+        self.player = BaseWrapper.getInstance(players_by_exec[chosen_player] if chosen_player else None)
+        
+        self.health = PlayerHealth(sigint_callback=self.player.stop)
     
     def healthz(self):
         return "OK"
@@ -245,12 +246,11 @@ if __name__ == "__main__":
             traceback.print_tb(sys.exc_info()[2])
     else:
 
-        logger_player.info("Creating XML RPC server..")
+        logger_player.debug("Creating XML RPC server..")
         s = SimpleXMLRPCServer((options.address, int(options.port)), allow_none=True)
 
-        m = MPPlayer(server=True, player=options.executable)
-        logger_player.info("Registering MPPlayer with XML RPC server..")
-        s.register_instance(m)
+        logger_player.debug("Registering MPPlayer with XML RPC server..")
+        s.register_instance(MPPlayer(server=True, player=options.executable))
 
         logger_player.info("Serving forever on %s:%s.." % (options.address, options.port))
         s.serve_forever()

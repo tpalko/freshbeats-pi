@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import resolve 
+from django.db.models import Q
 
 from ..models import Device, DeviceHealth
 

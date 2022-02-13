@@ -97,9 +97,9 @@ class Album(models.Model):
     old_total_size = models.BigIntegerField(null=True)
     rating = models.CharField(max_length=20, choices=ALBUM_RATING_CHOICES, null=False, default=UNRATED)
     sticky = models.BooleanField(null=False, default=False)
-    rip = models.BooleanField(null=False, default=False)
-    owned = models.BooleanField(null=False, default=False)
-    wanted = models.BooleanField(null=False, default=False)
+    # rip = models.BooleanField(null=False, default=False)
+    # owned = models.BooleanField(null=False, default=False)
+    # wanted = models.BooleanField(null=False, default=False)
     action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)
     request_priority = models.IntegerField(null=False, default=1)
     deleted = models.BooleanField(null=False, default=False)
@@ -136,8 +136,7 @@ class Album(models.Model):
 
     def has_status(self, status):
         '''Does album have given status?'''
-        statuses = map(lambda s: s.status, self.albumstatus_set.all())
-        return status in statuses
+        return status in [ s.status for s in self.albumstatus_set.all() ]
 
     def remove_status(self, status):
         '''Assumes given status exists and removes it'''
@@ -188,7 +187,25 @@ class Song(models.Model):
 
     def __unicode__(self):
         return self.name
+    
+    def tags(self, music_path):
+        e = easyid3.EasyID3(os.path.join(music_path, self.artist.name, self.album.name, self.name))
+        return e.keys()
+    
+    def set_tag(self, music_path, key, value):
+        e = easyid3.EasyID3(os.path.join(music_path, self.artist.name, self.album.name, self.name))
+        e[key] = value 
+        e.save()
+        
+    def get_tag(self, music_path, key):
+        e = easyid3.EasyID3(os.path.join(music_path, self.artist.name, self.album.name, self.name))
+        if key in e.keys():
+            return e[key]
+        return None 
 
+class Mobile(DirtyFieldsMixin, models.Model):
+    name = models.CharField(null=False, max_length=50)
+    
 class AlbumCheckout(models.Model):
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     checkout_at = models.DateTimeField()

@@ -115,6 +115,8 @@ First, see "Connecting to the database?" above. Then,
 bower install jquery jquery-ui datatables
 ```
 
+Note: npm install -g bower and make sure ~/.npm-global/bin (or something like it) is in your PATH.
+
 Containerized:
 ```
 docker-compose up --build

@@ -1,4 +1,4 @@
-FROM python:3.5
+FROM python:3.9
 
 RUN apt-get update \
     && apt-get -y upgrade \

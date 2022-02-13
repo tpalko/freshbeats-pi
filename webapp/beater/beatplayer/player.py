@@ -13,6 +13,9 @@ from ..common.switchboard import _publish_event, _get_switchboard_connection_id_
 from .playlist import Playlist, PlaylistHelper
 from .health import BeatplayerRegistrar
 
+# -- beater.beatplayer.player
+print(f'LOGGING: {__name__}')
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MUTE = False 

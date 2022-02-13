@@ -23,10 +23,13 @@ BEATPLAYER_DEFAULT_VOLUME = 90
 BEATPLAYER_INITIAL_VOLUME = int(os.getenv('BEATPLAYER_INITIAL_VOLUME', BEATPLAYER_DEFAULT_VOLUME))
 
 WRAPPER_LOG_LEVEL = os.getenv('BEATPLAYER_WRAPPER_LOG_LEVEL', 'INFO')
+log_level = logging._nameToLevel[WRAPPER_LOG_LEVEL.upper()]
+color_formatter = colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s')
+
 logger_wrapper = logging.getLogger(__name__)
-logger_wrapper.setLevel(level=logging._nameToLevel[WRAPPER_LOG_LEVEL.upper()])
+logger_wrapper.setLevel(level=log_level)
 handler = colorlog.StreamHandler()
-handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+handler.setFormatter(color_formatter)
 logger_wrapper.addHandler(handler)
 
 class BaseWrapper():
@@ -40,32 +43,39 @@ class BaseWrapper():
     ps = None 
     
     muted = False # -- subclasses must manage this state 
+    paused = False # - mpv works on a toggle, as opposed to mplayer, which needs not track this state 
     current_command = None 
+    logger = None 
     
     @staticmethod 
-    def getInstance(t=None):
+    def getInstance(t=None, logger=None):
         if BaseWrapper.__instance == None:
             if t:
                 t()
             else:
                 BaseWrapper()
-        return BaseWrapper.__instance 
+        i = BaseWrapper.__instance 
+        if logger:
+            i.logger = logger 
+        return i
         
     def __init__(self, *args, **kwargs):
         if BaseWrapper.__instance != None:
             raise Exception("Already exists!")
         else:
-            logger_wrapper.info("Creating BaseWrapper/%s singleton" % self.__class__.__name__)
+            self.logger = logger_wrapper 
+            
+            self.logger.info("Creating BaseWrapper/%s singleton" % self.__class__.__name__)
             self.volume = int(BEATPLAYER_INITIAL_VOLUME)
             self.music_folder = os.getenv('BEATPLAYER_MUSIC_FOLDER', '/mnt/music')            
-            logger_wrapper.info("  - music folder: %s" % self.music_folder)            
-            logger_wrapper.info("  - volume: %s" % self.volume)
+            self.logger.info("  - music folder: %s" % self.music_folder)            
+            self.logger.info("  - volume: %s" % self.volume)
             for k in kwargs:
                 val = kwargs[k]
                 # -- handling comma-separated strings as lists 
                 if type(kwargs[k]) == str and kwargs[k].count(",") > 0:
                     val = kwargs[k].split(',')
-                logger_wrapper.debug("  - setting %s: %s" % (k, val))
+                self.logger.debug("  - setting %s: %s" % (k, val))
                 self.__setattr__(k, val)
             BaseWrapper.__instance = self 
     
@@ -73,11 +83,11 @@ class BaseWrapper():
         response = {'success': False, 'message': '', 'data': {}}
         filepath_validation_message = self._validate_filepath(filepath)
         if filepath_validation_message:
-            logger_wrapper.warning(filepath_validation_message)
+            self.logger.warning(filepath_validation_message)
             response['message'] = filepath_validation_message
         else:
             command = self._command_generator(url, filepath)
-            logger_wrapper.debug("Issuing command: %s" % command)
+            self.logger.debug("Issuing command: %s" % command)
             try:
                 while self.is_playing():
                     self.stop()
@@ -89,12 +99,12 @@ class BaseWrapper():
                 process_monitor.process(self.ps, callback_url, agent_base_url, log_level=WRAPPER_LOG_LEVEL)
                 
                 self.current_command = command 
-                logger_wrapper.debug(' '.join(self.current_command) if self.current_command else None)
+                self.logger.debug(' '.join(self.current_command) if self.current_command else None)
                 response['success'] = True 
             except:
                 response['message'] = str(sys.exc_info()[1])
-                logger_wrapper.error(response['message'])
-                logger_wrapper.error(sys.exc_info()[0])
+                self.logger.error(response['message'])
+                self.logger.error(sys.exc_info()[0])
                 traceback.print_tb(sys.exc_info()[2])
         return response 
     
@@ -113,8 +123,8 @@ class BaseWrapper():
                 response['message'] = "No process is running"
         except:
             response['message'] = str(sys.exc_info()[1])
-            logger_wrapper.error(response['message'])
-            logger_wrapper.error(sys.exc_info()[0])
+            self.logger.error(response['message'])
+            self.logger.error(sys.exc_info()[0])
             traceback.print_tb(sys.exc_info()[2])
         return response 
     
@@ -129,8 +139,8 @@ class BaseWrapper():
             ps = subprocess.Popen(["which", cls.executable_filename()], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             result = ps.wait() == 0
         except:
-            logger_wrapper.error(sys.exc_info()[0])
-            logger_wrapper.error(sys.exc_info()[1])                        
+            self.logger.error(sys.exc_info()[0])
+            self.logger.error(sys.exc_info()[1])                        
         return result
         
     def is_playing(self):
@@ -152,7 +162,7 @@ class BaseWrapper():
             self.volume -= 5
         else:
             self.volume = 0
-        logger_wrapper.debug("new volume calculated: %s" % self.volume)
+        self.logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
     def volume_up(self):
@@ -160,7 +170,7 @@ class BaseWrapper():
             self.volume += 5
         else:
             self.volume = 100
-        logger_wrapper.debug("new volume calculated: %s" % self.volume)
+        self.logger.debug("new volume calculated: %s" % self.volume)
         return self.set_volume()
         
     @abstractmethod
@@ -220,8 +230,7 @@ class MPVWrapper(BaseWrapper):
         - playlist-pos 0-n-1
     '''
     
-    player_path = "mpv"
-    paused = False # - mpv works on a toggle, as opposed to mplayer, which needs not track this state 
+    player_path = "mpv"    
     socket_talker = None 
     mpv_socket = None 
     
@@ -230,9 +239,9 @@ class MPVWrapper(BaseWrapper):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger_wrapper.info("Creating MPVWrapper")
+        self.logger.info("Creating MPVWrapper")
         self.mpv_socket = os.getenv('MPV_SOCKET', '/tmp/mpv.sock')
-        logger_wrapper.info("  - mpv socket: %s" % self.mpv_socket)
+        self.logger.info("  - mpv socket: %s" % self.mpv_socket)
         self.socket_talker = MpvSocketTalker.getInstance(socket_file=self.mpv_socket, log_level=WRAPPER_LOG_LEVEL)
         
     def _command_generator(self, url, filepath):
@@ -243,7 +252,7 @@ class MPVWrapper(BaseWrapper):
             command.append(url)
         else:
             command.append(os.path.join(self.music_folder, filepath))
-        logger_wrapper.debug(' '.join(command))
+        self.logger.debug(' '.join(command))
         return command
     
     def get_time_remaining(self):
@@ -269,7 +278,7 @@ class MPVWrapper(BaseWrapper):
     def _send_to_socket(self, command):
         multi_response = False 
         socket_responses = self.socket_talker.send(command, multi_response=multi_response)
-        logger_wrapper.debug("command: %s, response: %s" % (command, socket_responses))
+        self.logger.debug("command: %s, response: %s" % (command, socket_responses))
         if multi_response:
             return socket_responses[0] if len(socket_responses) > 0 else None
         else:
