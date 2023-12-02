@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load beater %}
+
+{% block content %}
+
+<div class="row">
+	<div class="col-md-12">
+    {% if mobile.id %}
+		  <h2>{{ mobile.name }}</h2>
+    {% else %}
+      <h2>New Mobile</h2>
+    {% endif %}
+    <form method="POST">
+      {% csrf_token %}
+      {{ form }}
+      <input type="submit" value="Save" />
+    </form>    
+	</div>
+</div>
+
+{% endblock %}

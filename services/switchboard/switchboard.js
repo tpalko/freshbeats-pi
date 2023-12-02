@@ -1,9 +1,29 @@
-var restify = require('restify'),
+require('dotenv').config({ path: './dev.env' })
+
+var cors_origin = process.env.CORS_ORIGIN || ""
+var listen_host = process.env.LISTEN_HOST || "127.0.0.1"
+var listen_port = process.env.LISTEN_PORT || 8000 
+var monitoring_enabled = (process.env.MONITORING_ENABLED || 1) == 1
+
+var cors_origins = cors_origin.split(',')
+
+var restify = require('restify');
+
+// var restifyCors = require('restify-cors');
+// var cors = restifyCors({  
+//   origins: ['http://127.0.0.1:8100'],
+//   allowHeaders: ['authorization']
+// })
+
 server = restify.createServer({
-  name: "Switchboard"
+  name: "Switchboard",
+  url: "0.0.0.0"
 }),
 socketio = require('socket.io')({
-  // -- options
+  cors: {
+    origin: [cors_origins],
+    credentials: true
+  }
 }),
 io = socketio.listen(server.server),
 cookie = require('cookie');
@@ -70,11 +90,20 @@ function pushEventHandler(req, res, next) {
   try {
 
     if(connectionId != undefined) {
-      if (sockets[connectionId] != undefined) {
-        sockets[connectionId].emit(req.params.event, req.body);
-      } else {
+
+      var emitted = false;
+      for (remoteAddress in sockets) {
+        var socket = sockets[remoteAddress];
+        var thisSocketConnectionId = socket.conn.id;
+        if (thisSocketConnectionId == connectionId) {
+          socket.emit(req.params.event, req.body);  
+          emitted = true;
+        }
+      }
+      if (!emitted) {
         console.log("Connection ID " + connectionId + " not registered here");
       }
+      
     } else {
       io.sockets.emit(req.params.event, req.body);
     }
@@ -107,27 +136,55 @@ function healthz(req, res, next) {
   next();
 }
 
-setInterval(function() {
-  // console.log("Sending health ping to " + Object.keys(sockets).length + " clients");
-  for (connectionId in sockets) {
+function healthPing () {
+  console.log("Sending health ping to " + Object.keys(sockets).length + " clients");
+  for (remoteAddress in sockets) {
+    var socket = sockets[remoteAddress];
+    var connectionId = socket.conn.id;
     console.log('Emitting switchboard_health_ping -> ' + connectionId);
-    var response = sockets[connectionId].emit('switchboard_health_ping', { health: 'ok' });
-    if (!response.connected) {
+    var response = socket.emit('switchboard_health_ping', { health: 'ok' });
+    // console.log(response);
+    if (!response) {
       console.log("Removing " + connectionId + " from health pings - found disconnected");
-      delete sockets[connectionId];
+      delete socket;
     }
   }
-}, 5000);
+}
+
+//TAG:MONITORING
+
+if (monitoring_enabled) {
+  setInterval(healthPing, 5000);
+} else {
+  console.log("Monitoring has been disabled (MONITORING_ENABLED=" + monitoring_enabled + ")")
+}
+
+// server.use(
+//   function crossOrigin(req, res, next) {
+//     console.log("Adding ACAO/ACAH")
+//     res.header("Access-Control-Allow-Origin", "*");
+//     res.header("Access-Control-Allow-Headers", "X-Requested-With");
+//     return next();
+//   }
+// )
 
 server.use(restify.plugins.queryParser());
 server.use(restify.plugins.bodyParser());
+
+server.use((incomingMessage, serverResponse, next) => {
+  // console.log(incomingMessage);
+  // console.log(serverResponse);
+  // console.log(next);
+  
+  next();
+})
 
 //server.get('/', rootHandler);
 server.post('/pushevent/:event', pushEventHandler);
 server.post('/pushevent/:event/:connectionId', pushEventHandler);
 server.get('/healthz', healthz)
 
-server.listen(3333, function(){
+server.listen(listen_port, listen_host, function(){
   console.log('%s listening at %s', server.name, server.url);
 });
 
@@ -148,7 +205,7 @@ io.sockets.on('connection', function (socket) {
   sockets[parsed_cookie.io] = socket;
   */
   
-  sockets[socket.conn.id] = socket;
+  sockets[socket.client.conn.remoteAddress] = socket;
 
   var sessionInfo = { 
     message: 'Socket.IO connection made', 

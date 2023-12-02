@@ -1,44 +1,55 @@
 #from __future__ import unicode_literals
 import logging 
-import time 
-import threading 
+# import time 
+# import threading 
 import json
-import requests 
-from urllib import parse 
+# import requests 
+# from urllib import parse 
 from datetime import datetime
 from dirtyfields import DirtyFieldsMixin
 from django.db import models
-from django.shortcuts import reverse
-from django.conf import settings
-from .common.util import get_localized_now
+# from django.shortcuts import reverse
+# from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+# from .common.util import get_localized_now
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 # class PlayerPlaylistManager(models.Manager):
 # 
 #     def get_queryset(self):
 #         return super(PlayerPlaylistManager, self).get_queryset()
 
+## request session 
+# playlist_id 
+# device_id 
+# switchboard_connection_id
+# user_agent 
+# mobile_id 
+
 class CacheManager(models.Manager):
     
-    stale = False 
+    # stale = False 
     
     def get_queryset(self):
-        logger.debug(self)
+        # logger.debug(self)
         return super(CacheManager, self).get_queryset()
     
     def create(self, **kwargs):
-        self.stale = True
-        logger.debug("creating") 
-        super(CacheManager, self).create(**kwargs)
+        # self.stale = True
+        # logger.debug("creating") 
+        return super(CacheManager, self).create(**kwargs)
 
-class AlbumManager(models.Manager):
+class AlbumManager(CacheManager):
 
     def get_queryset(self):
         return super(AlbumManager, self).get_queryset().filter(deleted=False)
         
 class Artist(models.Model):
-
+    
+    objects = CacheManager()
+    
     name = models.CharField(max_length=255)
     musicbrainz_artistid = models.CharField(max_length=36, null=True)
     followed = models.BooleanField(default=False, null=False)
@@ -50,21 +61,46 @@ class Artist(models.Model):
 
 class Album(models.Model):
 
+    # -- state property values used to sort a planned action album into either 
+    # -- remainder or checked-out bins when its action is cancelled 
     STATE_CHECKEDIN = 'checkedin'
     STATE_CHECKEDOUT = 'checkedout'
 
-    CHECKIN = 'checkin'
-    REFRESH = 'refresh'
-    CHECKOUT = 'checkout'
-    DONOTHING = 'donothing'
-    REQUESTCHECKOUT = 'requestcheckout'
-
-    ALBUM_ACTION_CHOICES = (
-        (CHECKIN, 'Check-In'),
-        (REFRESH, 'Refresh'),
-        (CHECKOUT, 'Check-Out'),
-        (DONOTHING, 'Do Nothing')
-    )
+    # # -- on Album, 'action' means the album is in a transition state 
+    # # -- after applying the "plan", action clears 
+    # CHECKIN = 'checkin' # -- planned to check in 
+    # REFRESH = 'refresh' # -- planned to update from source 
+    # CHECKOUT = 'checkout' # -- planned to check out 
+    # DONOTHING = 'donothing' # -- plan specifically to not check in (survey response of 'keep' or 'sticky')
+    # REQUESTCHECKOUT = 'requestcheckout' # -- planned to validate for free space and become 'checkout'
+    # 
+    # ALBUM_ACTION_CHOICES = (
+    #     (CHECKIN, 'Check-In'),
+    #     (REFRESH, 'Refresh'),
+    #     (CHECKOUT, 'Check-Out'),
+    #     (DONOTHING, 'Do Nothing')
+    # )
+    '''
+    Album.action + AlbumCheckout timestamps only 
+    1. action = none 
+    2. action = requestcheckout 
+    3. action = checkout, albumcheckout.checkout_at = now 
+    4. action = none, albumcheckout.checkout_at = now 
+    5. action = refresh, albumcheckout.checkout_at = now 
+    6. action = none, albumcheckout.checkout_at = now 
+    7. action = checkin, albumcheckout.checkout_at = now 
+    8. action = none, albumcheckout.checkout_at = now, return_at = now 
+    
+    AlbumCheckout.state + timestamps (no Album.action)
+    1. albumcheckout <no record>
+    2. albumcheckout.state = requested, next_state = None 
+    3. albumcheckout.state = validated, next_state = checkedout  
+    4. albumcheckout.state = checkedout, next_state = None,         checkedout_at = now 
+    5. albumcheckout.state = checkedout, next_state = refresh,      checkedout_at = now 
+    6. albumcheckout.state = checkedout, next_state = None,         checkedout_at = now 
+    7. albumcheckout.state = checkedout, next_state = checkedin,    checkedout_at = now 
+    8. albumcheckout.state = checkedin,  next_state = None,         checkedout_at = now, return_at = now 
+    '''
 
     LOVEIT = 'loveit'
     MIXITUP = 'mixitup'
@@ -82,7 +118,7 @@ class Album(models.Model):
         (UNRATED, 'Unrated')
     )
 
-    objects = AlbumManager()
+    # objects = AlbumManager()
 
     artist = models.ForeignKey(Artist, null=True, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
@@ -100,8 +136,8 @@ class Album(models.Model):
     # rip = models.BooleanField(null=False, default=False)
     # owned = models.BooleanField(null=False, default=False)
     # wanted = models.BooleanField(null=False, default=False)
-    action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)
-    request_priority = models.IntegerField(null=False, default=1)
+    # action = models.CharField(max_length=20, choices=ALBUM_ACTION_CHOICES, null=True)
+    # request_priority = models.IntegerField(null=False, default=1)
     deleted = models.BooleanField(null=False, default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -110,16 +146,16 @@ class Album(models.Model):
         '''total_size (bytes) reported in MB'''
         return 1.0*(self.total_size)/(1024*1024)
 
-    def current_albumcheckout(self):
+    def current_albumcheckout(self, mobile_id):
         '''Returns first outstanding (return_at=None) checkout'''
-        checkouts = self.albumcheckout_set.filter(return_at=None)
+        checkouts = self.albumcheckout_set.filter(mobile_id=mobile_id, return_at=None)
         if len(checkouts) > 0:
             return checkouts[0]
         return None
 
-    def is_refreshable(self):
+    def is_refreshable(self, mobile_id):
         '''Has been updated since current checkout?'''
-        albumcheckout = self.current_albumcheckout()
+        albumcheckout = self.current_albumcheckout(mobile_id)
         if self.updated_at > albumcheckout.checkout_at:
             return True
         else:
@@ -166,11 +202,15 @@ class AlbumStatus(models.Model):
         (WANTED, 'This album is sought after'),
         (FOLLOW, 'The artist is of particular interest')
     )
-
+    
+    objects = CacheManager()
+    
     album = models.ForeignKey(Album, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=ALBUM_STATUS_CHOICES, null=False)
 
 class Song(models.Model):
+    
+    objects = CacheManager()
     
     album = models.ForeignKey(Album, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
@@ -204,29 +244,112 @@ class Song(models.Model):
         return None 
 
 class Mobile(DirtyFieldsMixin, models.Model):
+    
+    objects = CacheManager()
+    
     name = models.CharField(null=False, max_length=50)
+    ip_address = models.GenericIPAddressField(protocol='IPv4', null=True, blank=True)
+    ssh_username = models.CharField(null=True, max_length=50, blank=True)
+    ssh_private_key_path = models.CharField(null=True, max_length=255, blank=True)
+    target_path = models.CharField(null=False, max_length=255)
+    
+    def state_bins(self):
+        
+        mobile_checkouts = self.albumcheckout_set.all()
+        valid_states = [AlbumCheckout.REQUESTED, AlbumCheckout.VALIDATED, AlbumCheckout.CHECKEDOUT, AlbumCheckout.REFRESH, AlbumCheckout.CHECKEDIN]
+        state_bins = { state: [ac for ac in mobile_checkouts if ac.state == state] for state in valid_states }
+        
+        return state_bins 
+        
+        # checked_out_album_next_state_bins = {state: [ac.album for ac in mobile_checkouts if ac.next_state == state] for state in [AlbumCheckout.REFRESH, AlbumCheckout.CHECKEDIN]}
+        # # -- bin by state: sum total_size if checkin, otherwise size delta 
+        # checked_out_album_next_state_sizes = {state: sum([ac.album.total_size if ac.next_state == AlbumCheckout.CHECKEDIN else (ac.album.total_size - ac.album.old_total_size) for ac in mobile_checkouts if ac.state == state])/(1024*1024) for state in [AlbumCheckout.REFRESH, AlbumCheckout.CHECKEDIN]}
+        # checked_out_no_state_albums = [ ac.album for ac in mobile_checkouts if ac.next_state is None ]
+        # for album in checked_out_no_state_albums:
+        #     album.mobile_state = album.current_albumcheckout(mobile.id)
+        # checked_out_no_state_albums_size = sum([ album.total_size for album in checked_out_no_state_albums ])/(1024*1024)
+        # 
+        # mobile_state = mobile.albumcheckout_set.filter(Q(state=AlbumCheckout.REQUESTED) | Q(state=AlbumCheckout.VALIDATED))
+        # mobile_state_bins = { state: [ac.album for ac in mobile_state if ac.state == state] for state in [AlbumCheckout.REQUESTED, AlbumCheckout.VALIDATED] }
+        # mobile_state_bin_sizes = { state: sum([ac.total_size for ac in mobile_state_bins[state]])/(1024*1024) for state in mobile_state_bins }
     
 class AlbumCheckout(models.Model):
-    album = models.ForeignKey(Album, on_delete=models.CASCADE)
-    checkout_at = models.DateTimeField()
+    
+    REQUESTED = 'requested'
+    VALIDATED = 'validated'
+    CHECKEDOUT = 'checkedout'
+    REFRESH = 'refresh'
+    CHECKEDIN = 'checkedin'
+    
+    ALBUMCHECKOUT_STATE_CHOICES = (
+        (REQUESTED, 'Requested'),
+        (VALIDATED, 'Validated'),
+        (CHECKEDOUT, 'Checked-out'),
+        (CHECKEDIN, 'Checked-in')
+    )
+    
+    ALBUMCHECKOUT_NEXT_STATE_CHOICES = (
+        (CHECKEDOUT, 'Checked-out'),
+        (REFRESH, 'Refresh'),
+        (CHECKEDIN, 'Checked-in')
+    )
+    
+    objects = CacheManager()
+    
+    album = models.ForeignKey(Album, on_delete=models.PROTECT)
+    mobile = models.ForeignKey(Mobile, on_delete=models.CASCADE, null=True)
+    checkout_at = models.DateTimeField(null=True)
     return_at = models.DateTimeField(null=True)
-
+    state = models.CharField(max_length=20, choices=ALBUMCHECKOUT_STATE_CHOICES, default=REQUESTED)
+    next_state = models.CharField(max_length=20, null=True, choices=ALBUMCHECKOUT_NEXT_STATE_CHOICES)
+    request_priority = models.IntegerField(null=False, default=1)
+    
+    '''
+     2. albumcheckout.state = requested, next_state = None 
+     3. albumcheckout.state = validated, next_state = checkedout  
+     4. albumcheckout.state = checkedout, next_state = None,         checkedout_at = now 
+     5. albumcheckout.state = checkedout, next_state = refresh,      checkedout_at = now 
+     6. albumcheckout.state = checkedout, next_state = None,         checkedout_at = now 
+     7. albumcheckout.state = checkedout, next_state = checkedin,    checkedout_at = now 
+     8. albumcheckout.state = checkedin,  next_state = None,         checkedout_at = now, return_at = now 
+     '''
+    def clean(self):        
+        if self.state in [AlbumCheckout.REQUESTED, AlbumCheckout.CHECKEDIN]:
+            if self.next_state is not None:
+                raise ValidationError({'next_state': _('Next state cannot be set when state is requested or checked-in')})
+        elif self.state in [AlbumCheckout.VALIDATED]:
+            if self.next_state != AlbumCheckout.CHECKEDOUT:
+                raise ValidationError({'next_state': _('Next state must be checked-out when state is validated')})
+        elif self.state in [AlbumCheckout.CHECKEDOUT]:
+            if self.next_state not in [None, AlbumCheckout.REFRESH, AlbumCheckout.CHECKEDIN]:
+                raise ValidationError({'next_state': _('Next state must be refresh, checked-in, or not set when state is checked-out')})
+                
+    def save(self, *args, **kwargs):
+        self.clean()
+        super(AlbumCheckout, self).save(*args, **kwargs)
+    
 class Playlist(models.Model):
+    
+    objects = CacheManager()
+    
     name = models.CharField(max_length=50, null=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
 class PlaylistSong(models.Model):
+    
+    objects = CacheManager()
+    
     song = models.ForeignKey(Song, on_delete=models.PROTECT)
     queue_number = models.IntegerField(null=False, default=1)
     play_count = models.IntegerField(null=False, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     last_played_at = models.DateTimeField(null=True)
     playlist = models.ForeignKey(Playlist, null=True, on_delete=models.CASCADE)
-    #objects = CacheManager()
 
 class Player(DirtyFieldsMixin, models.Model):
-       
+    '''The state of a media-playing process behind a services.beatplayer API'''
+
     PLAYER_STATE_STOPPED = 'stopped'
     PLAYER_STATE_PLAYING = 'playing'
     PLAYER_STATE_PAUSED = 'paused'
@@ -253,6 +376,7 @@ class Player(DirtyFieldsMixin, models.Model):
     )
     
     # playlist = PlayerPlaylistManager()
+    objects = CacheManager()
     
     parent = models.ForeignKey('Player', null=True, on_delete=models.PROTECT)
     preceding_command = models.CharField(max_length=255, null=True)
@@ -289,7 +413,7 @@ class Player(DirtyFieldsMixin, models.Model):
         '''
 
         if song_changed or other_dirty_fields:
-            logger.debug("Inserting a new player (new song? %s, other dirty fields? %s)" % (song_changed, ",".join(insert_triggering_dirty_fields)))
+            # logger.debug("Inserting a new player (new song? %s, other dirty fields? %s)" % (song_changed, ",".join(insert_triggering_dirty_fields)))
             self.parent_id = self.id 
             self.id = None         
     
@@ -340,17 +464,22 @@ class Player(DirtyFieldsMixin, models.Model):
     #     super(Player, self).save(*args, **kwargs)
 
 class DeviceHealth(DirtyFieldsMixin, models.Model):
+    '''Readiness and liveness of a services.beatplayer API'''
 
+    DEVICE_STATUS_UNKNOWN = 'unknown'
     DEVICE_STATUS_READY = 'ready'
     DEVICE_STATUS_NOTREADY = 'notready'
     DEVICE_STATUS_DOWN = 'down'
     
     DEVICE_STATUS_CHOICES = (
+        (DEVICE_STATUS_UNKNOWN, 'Unknown'),
         (DEVICE_STATUS_READY, 'Ready'),
         (DEVICE_STATUS_NOTREADY, 'Not Ready'),
         (DEVICE_STATUS_DOWN, 'Down')
     )
-
+    
+    objects = CacheManager()
+    
     last_client_presence = models.DateTimeField(null=True)
     registered_at = models.DateTimeField(null=True)
     last_device_health_report = models.DateTimeField(null=True)
@@ -359,7 +488,8 @@ class DeviceHealth(DirtyFieldsMixin, models.Model):
     mounted = models.BooleanField(null=False, default=False)
    
 class Device(DirtyFieldsMixin, models.Model):
-    
+    '''An abstraction of a services.beatplayer API, referencing its state and health'''
+
     DEVICE_STATUS_READY = 'ready'
     DEVICE_STATUS_NOTREADY = 'notready'
     DEVICE_STATUS_DOWN = 'down'
@@ -369,6 +499,8 @@ class Device(DirtyFieldsMixin, models.Model):
         (DEVICE_STATUS_NOTREADY, 'Not Ready'),
         (DEVICE_STATUS_DOWN, 'Down')
     )
+    
+    objects = CacheManager()
     
     player = models.OneToOneField(Player, null=True, on_delete=models.CASCADE)
     health = models.OneToOneField(DeviceHealth, null=True, on_delete=models.CASCADE)
@@ -407,10 +539,23 @@ class Device(DirtyFieldsMixin, models.Model):
             'reachable': self.health.reachable,
             'mounted': self.health.mounted
         }, indent=4)
-
-
-
+    
 # class PlayerTemp(models.Model):
 # 
 #     updated_at = models.DateTimeField(auto_now=True)
 #     created_at = models.DateTimeField(default=get_localized_now)
+
+class Log(models.Model):
+
+    objects = CacheManager()
+    
+    levelname = models.CharField(null=True, max_length=255) 
+    levelno = models.IntegerField(null=False, default=1)
+    message = models.TextField(null=True) 
+    asctime = models.DateTimeField()
+    processName = models.CharField(null=True, max_length=255) 
+    funcName = models.CharField(null=True, max_length=255) 
+    name = models.CharField(null=True, max_length=255) 
+    lineno = models.IntegerField(null=False, default=1)
+    pathname = models.CharField(null=True, max_length=255) 
+    

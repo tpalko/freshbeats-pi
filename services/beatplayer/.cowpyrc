@@ -1,0 +1,72 @@
+{
+    'version': 1,
+    'disable_existing_loggers': True,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'DEBUG',
+            'format': 'Format.DETAILED'
+        },
+        'socket_handler': {
+            'class': 'logging.FileHandler',
+            'filename': 'beatplayer_socket.log',
+            'level': 'DEBUG',
+            'format': 'Format.DETAILED',
+        },
+        'health_handler': {
+            'class': 'logging.FileHandler',
+            'filename': 'beatplayer_health.log',
+            'level': 'DEBUG',
+            'format': 'Format.DETAILED',
+        },
+        'action_handler': {
+            'class': 'logging.FileHandler',
+            'filename': 'beatplayer_action.log',
+            'level': 'DEBUG',
+            'format': 'Format.DETAILED',
+        },
+        'exception_handler': {
+            'class': 'logging.FileHandler',
+            'filename': 'beatplayer_exceptions.log',
+            'level': 'ERROR',
+            'format': 'Format.DETAILED',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',
+        'propagate': False,
+    },
+    'loggers': {
+        'urllib3': {
+            'handlers': ['console', 'exception_handler'],
+            'level': 'WARN',
+            'propagate': False,
+        },        
+        'beatplayer.common.mpvsockettalker': {
+            'handlers': ['socket_handler', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'beatplayer.health': {
+            'handlers': ['health_handler', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },        
+        'beatplayer.action': {
+            'handlers': ['action_handler', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },        
+        'beatplayer.basewrapper': {
+            'handlers': ['console', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'routes': {
+            'handlers': ['console', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        }
+    }
+}

@@ -8,6 +8,7 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 
 django.setup()
 from beater.beatplayer.player import PlayerWrapper 
+from beater.models import Device 
 
 health_data = {
     'current_command': ['mpv', 

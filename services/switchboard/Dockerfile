@@ -1,6 +1,8 @@
 FROM node:latest
 
-RUN apt-get -y update && apt-get -y upgrade && apt-get -y install yarn
+RUN apt-get -y update \
+  && apt-get -y upgrade \
+  && apt-get -y install yarn
 
 WORKDIR /app
 
@@ -12,4 +14,4 @@ EXPOSE 3333
 
 COPY . /app
 
-CMD ["npm", "start"]
+CMD ["node", "switchboard.js"]

@@ -12,14 +12,14 @@ $(document).ready(function(){
 	$("#remainder_overlay").append(spinner.el);
 
 	var remainder_url = '{% url "fetch_remainder_albums" %}';
-
-	console.log("fetching: " + remainder_url);
+  console.log("fetching: " + remainder_url);
 
 	$.ajax({
 		url: remainder_url,
 		type: "GET",
 		dataType: "json",
 		success: function(data){
+      // console.log(data.rows);
 			$("#remainder_albums tbody").append(data.rows);
 			$("#remainder_albums").dataTable({
 				"paging": false,
@@ -51,10 +51,11 @@ $(document).on('click', '.freshbeats_client', function(e){
 		dataType: "json",
 		success: function(data){
 			console.log(data);
+      $(this).attr('disabled', true);
 		}
 	});
 
-	$(this).attr('disabled', true);
+  return false;
 });
 
 $(document).on('click', '.album_cancel', function(e){

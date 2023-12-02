@@ -14,25 +14,11 @@ a:hover {
   color: black;
 }
 
-.title {
-  /*
-  sparkles blue
-  background-color: rgb(61, 16, 255); 
-  */
-	background-color: rgb(61, 16, 255);
-	color: #3fc;
-	padding: 1em;
-}
-
-.title h2 {
-	margin: 0;
-}
-
-#device_select {
+#device_select, #mobile_select {
   color: black;
   background-color: white;
   padding: 3px;
-  font-size: 1.5em;
+  font-size: 1em;  
 }
 
 .menu .current {
@@ -56,13 +42,13 @@ a:hover {
   top: 131px;
 }
 
-.playlist {
-  max-height: 100px;
-  overflow-y: scroll;
+.header #playlist strong {
+  color: white;
 }
 
-.playlist strong {
-  color: white;
+.header #playlist #playlist_songs {
+  max-height: 100px;
+  overflow-y: scroll;
 }
 
 .header {
@@ -71,8 +57,18 @@ a:hover {
   z-index: 99;
 }
 
+.header > .row {
+  background-color: rgb(61, 16, 255);
+	color: #3fc;
+	padding: 1em;  
+}
+
 .header.sticky {
   position: fixed;
+}
+
+.title {
+	margin: 0;
 }
 
 .content {
@@ -92,10 +88,10 @@ a:hover {
   // margin-bottom: 15px;
 }
 
-.row.status {
+.header .status {
   margin-top: 1em;
 }
-.row.status .btn {
+.header .status .btn {
   color: black;
   font-weight: bold;  
 }

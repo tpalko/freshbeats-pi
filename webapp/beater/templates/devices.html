@@ -5,7 +5,36 @@
 
 <div class="row">
 	<div class="col-md-12">
-		<h2>Devices <a href="{% url 'device_new' %}"><button class="btn btn-primary">new</button></a></h2> 
+		<h2>Mobiles <a href="{% url 'mobile_new' %}"><button class="btn btn-primary">new</button></a></h2> 
+    <table id="mobile_table" width="100%" class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>IP Address</th>
+          <th>SSH username</th>
+          <th>SSH private key path</th>
+          <th>Target Path</th>
+          <th></th>
+      </thead>
+      <tbody>
+        {% for mobile in mobiles %}
+        <tr>
+          <td>{{ mobile.id }}</td>
+          <td>{{ mobile.name }}</td>
+          <td>{{ mobile.ip_address }}</td>
+          <td>{{ mobile.ssh_username }}</td>
+          <td>{{ mobile.ssh_private_key_path }}</td>
+          <td>{{ mobile.target_path }}</td>
+          <td>
+            <a href="{% url 'mobile_edit' mobile.id %}">edit</a>
+            <a href="{% url 'mobile_delete' mobile.id %}">delete</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <h2>Devices <a href="{% url 'device_new' %}"><button class="btn btn-primary">new</button></a></h2> 
     <table id="device_table" width="100%" class="table">
       <thead>
         <tr>

@@ -1,0 +1,21 @@
+{% load beater %}
+
+<tr data-id="{{ album.id }}">
+	<td class="album">{{ album.name }}</td>
+	<td>{{ album.artist.name }}</td>
+  <td>{{ album.tracks }}</td>
+	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>
+  <td>{{ album.created_at|date:"Y/m/d" }}</td>
+  <td>{{ album.albumstatus_set.all|map:"status"|join:"," }}</td>
+	<td>
+    {% if album.mobile_state == AlbumCheckout.CHECKEDIN %}
+      <a href="{% url "album_checkout" album.id %}" class="btn btn-default album_checkout">check-out</a>
+    {% else %}
+  		{% if album.sticky %}
+  			<span class="label label-info">STICKY</span>
+  		{% else %}
+  			<a href="{% url "album_checkin" album.id %}" class="btn btn-default album_checkin">check-in</a>
+  		{% endif %}						
+    {% endif %}
+	</td>
+</tr>

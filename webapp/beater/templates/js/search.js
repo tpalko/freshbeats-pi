@@ -72,7 +72,7 @@ function setRecordShopMode(recordShopMode = false) {
 	// isRecordShopMode = localStorage.getItem('isRecordShopMode') === 'true';
 	isRecordShopMode = recordShopMode;
 	$("#record_shop_mode").val(isRecordShopMode ? 1 : 0);
-  console.log("isRecordShopMode:" + isRecordShopMode);
+//   console.log("isRecordShopMode:" + isRecordShopMode);
   if (isRecordShopMode) {
 		$("button#record_shop_mode_btn")[0].innerText = 'Record Shop Mode';
 	} else {
@@ -112,7 +112,7 @@ function perform_search() {
 	}
   
   if (searchjqXHR !== undefined) {
-    console.log("aborting previous query..");
+    // console.log("aborting previous query..");
     searchjqXHR.abort();
   }
 

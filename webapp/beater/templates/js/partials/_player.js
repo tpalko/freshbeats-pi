@@ -9,7 +9,7 @@ function device_select(e) {
   });
   request.done(function( msg ) {
     
-    console.log('device select: ' + JSON.stringify(msg));
+    // console.log('device select: ' + JSON.stringify(msg));
     
     old_device_id = $("#devices").attr('data-loaded');
     new_device_id = msg.data.device_id;
@@ -19,17 +19,44 @@ function device_select(e) {
     $("#beatplayer_status_" + old_device_id).hide();
     $("#beatplayer_status_" + new_device_id).show();
 
-    log_client_presence();
+    log_client_presence({caller: "_player.js device_select done"});
   });
   request.fail(function( jqXHR, textStatus ) {
     showError(jqXHR);
   });
 };
 
-function log_client_presence(e) {
+function mobile_select(e) {
   
   var request = $.ajax({
+    url: '{% url 'mobile_select' %}',
+    data: {"mobile_id": e.target.value},
+    type: "POST"
+  });
+  request.done(function( msg ) {
+    
+    // console.log('mobile select: ' + JSON.stringify(msg));
+    
+    old_mobile_id = $("#mobiles").attr('data-loaded');
+    new_mobile_id = msg.data.mobile_id;
+
+    $("#mobiles").attr('data-loaded', new_mobile_id);
+
+    $("#beatplayer_status_" + old_mobile_id).hide();
+    $("#beatplayer_status_" + new_mobile_id).show();
+
+    log_client_presence({caller: "_player.js mobile_select done"});
+  });
+  request.fail(function( jqXHR, textStatus ) {
+    showError(jqXHR);
+  });
+};
+
+function log_client_presence(args) {
+
+  var request = $.ajax({
     url: '{% url 'log_client_presence' %}',
+    data: args,
     type: "POST"
   });
   request.done(function( msg ) {
@@ -47,10 +74,21 @@ $(document).on('wheel', '.playlist', function(e) {
 })
 
 $(document).on('change', '#device_select', device_select);
+$(document).on('change', '#mobile_select', mobile_select);
 
 $(function() {
-  $("#device_select").trigger("change");  
-  setInterval(log_client_presence, 30000);  
+  $("#device_select").trigger("change");
+  $("#mobile_select").trigger("change");
+  
+  //TAG:MONITORING
+  console.log("MONITORING ENABLED: {{ monitoring_enabled }}")
+  if("{{ monitoring_enabled }}" == "True") {
+    // console.error('MONITORING IS ENABLED BUT THE CALL IS COMMENTED _player.js line 86')
+    console.log("monitoring enabled, initiating log_client_presence");
+    setInterval(log_client_presence, 30000, {caller: "_player.js interval"});  
+  } else {
+    console.log("monitoring disabled");
+  }
 })
 
 $(document).on('click', "a.player", function(e){
@@ -65,6 +103,8 @@ $(document).on('click', "a.player", function(e){
 
   var url = player_url.replace(/null/, command);
 
+  console.debug("Calling " + url)
+
   $.ajax({
     url: url,
     data: { albumid: albumid, songid: songid, artistid: artistid, playlistsongid: playlistsongid },
@@ -73,12 +113,17 @@ $(document).on('click', "a.player", function(e){
     success: function(data, textStatus, jqXHR){
       var callback = $(clickable).attr('callback');
       if(callback != undefined){
-        console.log("Calling callback " + callback);
-        console.log("Sending:");
+        // console.log("Calling callback " + callback);
+        // console.log("Sending:");
         console.log(data);
         fn = window[callback];
         fn(data);
       }
+    }, 
+    error: function(a, b, c) {
+      console.log(a);
+      console.log(b);
+      console.log(c);
     }
   });
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
+import cowpy
+import os
 import sys 
-import logging 
-import colorlog
+# import logging 
+# import colorlog
 import time 
 import json 
 import requests 
@@ -15,11 +17,18 @@ from datetime import datetime
 #     format='[ %(levelname)7s ] %(asctime)s %(name)-17s %(filename)s:%(lineno)-4d %(message)s'
 # )
 #f_handler = logging.FileHandler(filename='processmonitor.log', mode='a')
-logger = logging.getLogger(__name__)
+# import django
+# sys.path.append(os.path.join(os.path.dirname(__file__), '../webapp'))
+# os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
+# django.setup()
+
+# print(f'creating logger as {__name__}')
+
+
 #logger.addHandler(f_handler)
-handler = colorlog.StreamHandler()
-handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
-logger.addHandler(handler)
+# handler = colorlog.StreamHandler()
+# handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s[ %(levelname)7s ] %(asctime)s %(filename)12s:%(lineno)-4d %(message)s'))
+# logger.addHandler(handler)
 
 class ProcessMonitor():
     
@@ -30,6 +39,8 @@ class ProcessMonitor():
     lines = None 
     
     ps = None 
+
+    logger = None 
     
     process_dead = True
     let_thread_die = True 
@@ -44,6 +55,7 @@ class ProcessMonitor():
     def __init__(self, *args, **kwargs):
         if ProcessMonitor.__instance is not None:
             raise Exception("Call ProcessMonitor.getInstance()")
+        self.logger = cowpy.getLogger()
         ProcessMonitor.__instance = self
     
     def read_stream(self):
@@ -54,11 +66,11 @@ class ProcessMonitor():
     def _post_callback_url(self, data):
         response = None 
         if self.callback_url:
-            logger.debug("Posting to %s.." % (self.callback_url))
+            self.logger.debug("Posting to %s.." % (self.callback_url))
             response = requests.post(self.callback_url, headers={'content-type': 'application/json'}, data=json.dumps(data))
-            logger.debug("Response (%s): %s" %(response.status_code if response else "no response", json.dumps(data, indent=4)))
+            self.logger.debug("Response (%s): %s" %(response.status_code if response else "no response", json.dumps(data, indent=4)))
         else:
-            logger.debug("Not posting to %s (no callback_url)" % (self.callback_url))
+            self.logger.debug("Not posting to %s (no callback_url)" % (self.callback_url))
         return response 
         
     def report_stream(self):#, command, force):
@@ -80,10 +92,10 @@ class ProcessMonitor():
         while True:
             try:
                 if self.ps.poll() is None:
-                    logger.debug('player process is running (%s)' % self.ps.pid)
+                    self.logger.debug('player process is running (%s)' % self.ps.pid)
                     self.process_dead = False 
                 else:
-                    logger.debug('player process is dead (exit %s)' % self.ps.returncode)
+                    self.logger.debug('player process is dead (exit %s)' % self.ps.returncode)
                     # -- realization of the fact here is potentially 3+ seconds late
                     self.process_dead = True 
                 
@@ -96,7 +108,7 @@ class ProcessMonitor():
                 self.read_loop = False 
                 read_thread.join()
                 
-                logger.debug(" - loop captured %s lines" % len(self.lines))
+                self.logger.debug(" - loop captured %s lines" % len(self.lines))
                 
                 if len(self.lines) > 0:
                     int_resp = {
@@ -109,23 +121,23 @@ class ProcessMonitor():
                     }
                     self._post_callback_url(int_resp)
                 else:
-                    logger.debug("stdout is empty")
+                    self.logger.debug("stdout is empty")
                 
             except:
-                logger.error(sys.exc_info()[0])
-                logger.error(sys.exc_info()[1])
+                self.logger.error(sys.exc_info()[0])
+                self.logger.error(sys.exc_info()[1])
                 traceback.print_tb(sys.exc_info()[2])
             finally:
                if self.process_dead and self.let_thread_die:
-                   logger.debug("Exiting process monitor while loop (process_dead: %s, let_thread_die; %s)" % (self.process_dead, self.let_thread_die))
+                   self.logger.debug("Exiting process monitor while loop (process_dead: %s, let_thread_die; %s)" % (self.process_dead, self.let_thread_die))
                    break
                    
-        logger.debug("Waiting on player process..")
+        self.logger.debug("Waiting on player process..")
         returncode = self.ps.wait()
         (out, err) = self.ps.communicate(None)
-        logger.debug("returncode: %s" % returncode)
-        logger.debug("out: %s" % out)
-        logger.debug("err: %s" % err)
+        self.logger.debug("returncode: %s" % returncode)
+        self.logger.debug("out: %s" % out)
+        self.logger.debug("err: %s" % err)
         if self.report_complete:
             complete_data = {
                 'success': True, 
@@ -140,9 +152,9 @@ class ProcessMonitor():
             }
             complete_response = self._post_callback_url(complete_data)
         else:
-            logger.debug("Not calling complete response (callback_url: %s report_complete: %s)" % (self.callback_url, self.report_complete))
+            self.logger.debug("Not calling complete response (callback_url: %s report_complete: %s)" % (self.callback_url, self.report_complete))
         
-        logger.debug("Exiting monitor thread now")
+        self.logger.debug("Exiting monitor thread now")
 
     '''
     - start state: no thread, no process 
@@ -153,16 +165,26 @@ class ProcessMonitor():
     
     '''
     
-    def expired_less_than(self, seconds_ago=0):
+    def expired_less_than(self, seconds_ago=0, logger=None):
+        if not logger:
+            logger = self.logger 
         expiration_age = (datetime.now() - self.last_activity).total_seconds() if self.last_activity else None        
-        logger.debug("Process monitor expired %s seconds ago" % expiration_age)
+        if expiration_age:
+            logger.debug("Process monitor expired %s seconds ago" % expiration_age)
+        else:
+            logger.debug("Process monitor has no activity record")
         return expiration_age <= seconds_ago if expiration_age is not None else False 
-        
-    def is_alive(self):
-        logger.debug("Process monitor thread is_alive: %s" % (self.monitor_thread.is_alive() if self.monitor_thread else "(doesn't exist)"))
+
+    def is_alive(self, logger=None):
+        if not logger:
+            logger = self.logger 
+        if self.monitor_thread:
+            logger.debug(f'Process monitor thread: {self.monitor_thread.is_alive()}')
+        else:
+            logger.debug(f'Process monitor thread doesn\'t exist')
         return (self.monitor_thread and self.monitor_thread.is_alive())
     
-    def process(self, ps, callback_url, agent_base_url, log_level='INFO'):
+    def process(self, ps, callback_url, agent_base_url):
         '''
         A thread can continue monitoring a process for output and completeness if the parameters are the same.
         Rather than the thread dying when it observes the process ending, it can honor a flag which cancels this response.
@@ -170,10 +192,10 @@ class ProcessMonitor():
         '''
         
         if self.is_alive():
-            logger.debug("ProcessMonitor seems to be monitoring a process already.. waiting")
+            self.logger.debug("ProcessMonitor seems to be monitoring a process already.. waiting")
             self.monitor_thread.join()
             
-        logger.setLevel(level=logging._nameToLevel[log_level.upper()])
+        # self.logger.setLevel(level=logging._nameToLevel[log_level.upper()])
         self.lines = []
         self.process_dead = False 
         self.report_complete = True

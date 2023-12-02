@@ -19,23 +19,42 @@
   </div>
 </div>            
 <div class="row status">
-  <div class="col-md-3">
+  <div class="col-md-5">
     <h2 style="font-size: 2em;display:inline;"><span id="player_time_pos"></span> / <span id="player_time_remaining"></span></h2> <h4 style="display:inline;"><span id="player_percent_pos"></span></h4>
   </div>
   <div class="col-md-3" id="devices" data-loaded="">
     {% for device in devices %}
       <div id="beatplayer_status_{{ device.id }}" class="btn btn-warning d-inline" style="display: none;">
-        Btpl<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" />
+        Btpl <img src="{% static "icons/exclamation-triangle-fill.svg" %}" alt="" width="24" height="24" title="beatplayer status" />
       </div>
     {% endfor %}
-    <div id="switchboard_status" class="btn btn-warning d-inline">Swbd<img src="{% static "icons/alert-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" /></div>
+    <div id="switchboard_status" class="btn btn-warning d-inline">
+      Swbd <img src="{% static "icons/exclamation-triangle-fill.svg" %}" alt="" width="24" height="24" title="switchboard status" />
+    </div>
   </div>
-  <div class="col-md-1">
-    <select id="device_select">
-      {% for device in devices %}
-        <option value="{{ device.id }}" {% if selected_device_id and device.id == selected_device_id|add:"0" %}selected{% endif %}>{{ device.name }}</option>
-      {% endfor %}
-    </select>
+  <div class="col-md-4"> 
+    <div class="row">
+      <div class="col-md-4">
+        <div>
+          <label for="device_select" class="pull-right">beatplayer:</label>
+        </div>
+        <div>
+          <label for="mobile_select" class="pull-right">mobile:</label>
+        </div>
+      </div>
+      <div class="col-md-8">
+        <select id="device_select" class="pull-left">
+          {% for device in devices %}
+            <option value="{{ device.id }}" {% if selected_device_id and device.id == selected_device_id|add:"0" %}selected{% endif %}>{{ device.name }}</option>
+          {% endfor %}
+        </select>
+        <select id="mobile_select" class="pull-left">
+          {% for mobile in mobiles %}
+            <option value="{{ mobile.id }}" {% if selected_mobile_id and mobile.id == selected_mobile_id|add:"0" %}selected{% endif %}>{{ mobile.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
   </div>
 </div>
 <div class="row" id="player_status"></div>

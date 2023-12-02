@@ -1,0 +1,92 @@
+{
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'DEBUG'
+        },
+        'exception_handler': {
+            'class': 'logging.FileHandler',
+            'filename': 'freshbeats_webapp_exceptions.log',
+            'level': 'ERROR'
+        },        
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'urllib3': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'models': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'urls': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'switchboard': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'monitor_handlers': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'client': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'health': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'views': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'playlist': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'player': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'handlers': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'freshbeats_client': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'beater': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'freshbeats.freshbeats': {
+            'handlers': ['console', 'exception_handler', 'database'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    }
+}

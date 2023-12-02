@@ -2,12 +2,12 @@ ARG ALPINE_ARCH
 
 FROM ${ALPINE_ARCH}/alpine
 
-RUN apk update && apk add --no-cache python3 py3-pip mpv socat jq
+RUN apk update && apk add --no-cache python3 py3-pip mpv socat jq mariadb-dev build-base python3-dev
 
 WORKDIR /opt/beatplayer 
 
 COPY requirements.txt .
-
+COPY vendor/cowpy ./vendor
 RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt
 

@@ -7,17 +7,27 @@ function usage() {
 
 [[ "$1" = "-h" ]] && usage && exit 0
 
-export ARCH=$(uname -m)
+# export HOST_MUSIC_FOLDER=/media/storage/music
+export CPU_ARCH=$(uname -m)
 
-while [[ $# -gt 0 ]]; do 
-  case $1 in
-    --) shift; break;;
-    -r) export DOCKER_REGISTRY=$2/; shift; shift;;
-  esac 
-done 
+case ${CPU_ARCH} in 
+  armv6l)    ALPINE_ARCH=arm32v6;;
+  armv7l)    ALPINE_ARCH=arm32v7;;
+  x86_64|*)  ALPINE_ARCH=amd64;;  
+esac 
+
+export ALPINE_ARCH
+
+
+# while [[ $# -gt 0 ]]; do 
+#   case $1 in
+#     --) shift; break;;
+#     -r) export DOCKER_REGISTRY=$2/; shift; shift;;
+#   esac 
+# done 
 
 env | grep BEATPLAYER
 
 echo "docker-compose up $@"
 
-docker-compose up $@
+docker-compose down && docker-compose up $@

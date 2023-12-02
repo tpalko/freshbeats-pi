@@ -3,13 +3,14 @@
 function usage() {
   echo "Purpose: A script to build a beatplayer image with an appropriate base architecture for the system on which it's called."
   echo "i.e. run this script on the deploy target architecture"
-  echo "Usage: $0 [DOCKER_REGISTRY]"
+  # echo "Usage: $0 [DOCKER_REGISTRY]"
 }
 
-[[ "$1" = "-h" ]] && usage && exit 0
+# [[ "$1" = "-h" ]] && usage && exit 0
 
-DOCKER_REGISTRY=$1
-CPU_ARCH=${CPU_ARCH:=$(uname -m)}
+# DOCKER_REGISTRY=$1
+export CPU_ARCH=${CPU_ARCH:=$(uname -m)}
+# IMAGE_NAME=beatplayer:${CPU_ARCH}
 
 case ${CPU_ARCH} in 
   armv6l)    ALPINE_ARCH=arm32v6;;
@@ -17,12 +18,18 @@ case ${CPU_ARCH} in
   x86_64|*)  ALPINE_ARCH=amd64;;  
 esac 
 
-echo "CPU_ARCH: ${CPU_ARCH}"
-echo "ALPINE_ARCH: ${ALPINE_ARCH}"
+export ALPINE_ARCH
 
-docker build -t beatplayer:${CPU_ARCH} --build-arg ALPINE_ARCH=${ALPINE_ARCH} .
-BUILD_RETURN=$?
+echo "CPU: ${CPU_ARCH}"
+echo "Alpine arch: ${ALPINE_ARCH}"
+# echo "Image: ${IMAGE_NAME}"
 
-([[ "${BUILD_RETURN}" -eq 0 && -n "${DOCKER_REGISTRY}" ]] \
- && docker tag beatplayer:${CPU_ARCH} ${DOCKER_REGISTRY}/beatplayer:${CPU_ARCH} \
- && docker push ${DOCKER_REGISTRY}/beatplayer:${CPU_ARCH}) || exit ${BUILD_RETURN}
+docker-compose build && docker-compose push
+# docker build -t ${IMAGE_NAME} --build-arg ALPINE_ARCH=${ALPINE_ARCH} .
+# BUILD_RETURN=$?
+
+# -- if build goes well and we have a registry, push it
+# ([[ "${BUILD_RETURN}" -eq 0 ]] \
+#   && docker-compose push) || exit ${BUILD_RETURN}
+#  && docker tag ${IMAGE_NAME} ${DOCKER_REGISTRY}/${IMAGE_NAME} \
+#  && docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}) || exit ${BUILD_RETURN}

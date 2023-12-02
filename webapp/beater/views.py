@@ -13,11 +13,13 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 #from django.views.decorators.csrf import csrf_exempt
-from .forms import PlaylistForm, DeviceForm
-from .models import Album, Artist, Song, AlbumStatus, PlaylistSong, Playlist, Device
-from .beatplayer.health import BeatplayerRegistrar
+from beater.forms import PlaylistForm, DeviceForm, MobileForm
+from beater.models import Album, Artist, Song, AlbumStatus, PlaylistSong, Playlist, Device, Mobile, AlbumCheckout
+from beater.monitoring.health import BeatplayerHealth
+from beater.common.util import get_session_value, set_session_value
+from beater.switchboard.switchboard import SwitchboardClient
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 # - PAGES
 
@@ -51,7 +53,7 @@ def get_playlists(request):
     '''
     Fetch playlist <select>
     '''    
-    playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
+    playlist_id = get_session_value(request, 'playlist_id')
     return _standard_response(body=_render_playlists(selected_playlist_id=playlist_id))
 
 def get_playlistsongs(request, playlist_id):
@@ -71,9 +73,11 @@ def playlist(request):
         form = PlaylistForm(request.POST)
         if form.is_valid():
             playlist = Playlist.objects.create(name=form.cleaned_data['name'])
-            if 'playlist_id' not in request.session:
-                request.session['playlist_id'] = playlist.id
-            returnval['body'] = _render_playlists(selected_playlist_id=request.session['playlist_id'])
+            # -- only if the session doesn't already have one, this becomes the current 
+            set_session_value(request, 'playlist_id', playlist.id, force=False)
+            playlist_id = get_session_value(request, 'playlist_id')
+            
+            returnval['body'] = _render_playlists(selected_playlist_id=playlist_id)
             returnval['success'] = True 
         else:
             returnval['message'] = form.errors
@@ -89,31 +93,87 @@ def playlist_sort(request):
 def search(request):
     return render(request, 'search.html', {})
 
+
 def mobile(request):
-
-    # -- has albumcheckout where return_at is null
-    checked_out_albums = Album.objects.filter(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True))
-    checked_out_album_action_bins = {action: [a for a in checked_out_albums if a.action == action] for action in [Album.CHECKIN, Album.REFRESH]}
-    checked_out_album_action_sizes = {action: sum([a.total_size if a.action == Album.CHECKIN else (a.total_size - a.old_total_size) for a in checked_out_albums if a.action == action])/(1024*1024) for action in [Album.CHECKIN, Album.REFRESH]}
-    checked_out_album_no_action_bins = {action if action else "No Action": [a for a in checked_out_albums if a.action == action] for action in [Album.DONOTHING, None]}
-    checked_out_no_action_size = sum([album.total_size for album_list in checked_out_album_no_action_bins.values() for album in album_list])/(1024*1024)
-
-    # -- does not have albumcheckout where return_at is null and action is set
-    other_action_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=False))
-    other_album_action_bins = {
-        action: [a for a in other_action_albums if a.action == action] for action in [Album.REQUESTCHECKOUT, Album.CHECKOUT]}
-    other_album_action_sizes = {
-        action: sum([a.total_size for a in other_action_albums if a.action == action])/(1024*1024) for action in [Album.REQUESTCHECKOUT, Album.CHECKOUT]}
-
+    
+    mobile_id = get_session_value(request, 'mobile_id')
+    
+    checked_out_album_next_state_bins = {}
+    checked_out_album_next_state_sizes = {}
+    checked_out_no_state_albums = []
+    checked_out_no_state_albums_size = 0
+    mobile_state_bins = {}
+    mobile_state_bin_sizes = {}
+    checked_out_album_next_state_bin_sizes = {}
+    
+    if mobile_id:
+        
+        mobile = Mobile.objects.get(pk=mobile_id)
+        state_bins = mobile.state_bins()
+                    
+        # mobile_checkouts = mobile.albumcheckout_set.filter(Q(state=AlbumCheckout.CHECKEDOUT))
+        
+        checked_out_album_next_state_bins = {next_state: [ ac.album for ac in state_bins[AlbumCheckout.CHECKEDOUT] if ac.next_state == next_state ] for next_state in [AlbumCheckout.REFRESH, AlbumCheckout.CHECKEDIN]}
+        checked_out_album_next_state_bin_sizes = {next_state: sum([(a.total_size - a.old_total_size) if next_state == AlbumCheckout.REFRESH else a.total_size for a in checked_out_album_next_state_bins[next_state]]) for next_state in checked_out_album_next_state_bins.keys() }
+        # -- bin by state: sum total_size if checkin, otherwise size delta 
+        # checked_out_album_next_state_sizes = {state: sum([ac.album.total_size if ac.next_state == AlbumCheckout.CHECKEDIN else (ac.album.total_size - ac.album.old_total_size) for ac in mobile_checkouts if ac.state == state])/(1024*1024) for state in [AlbumCheckout.REFRESH, AlbumCheckout.CHECKEDIN]}
+        
+        checked_out_no_state_albums = [ {**ac.album.__dict__, 'mobile_state': AlbumCheckout.CHECKEDOUT} for ac in state_bins[AlbumCheckout.CHECKEDOUT] if ac.next_state is None ]
+        # for album in checked_out_no_state_albums:
+        #     album.mobile_state = AlbumCheckout.CHECKEDOUT 
+        checked_out_no_state_albums_size = sum([ album['total_size'] for album in checked_out_no_state_albums ])/(1024*1024)
+        
+        # mobile_state = mobile.albumcheckout_set.filter(Q(state=AlbumCheckout.REQUESTED) | Q(state=AlbumCheckout.VALIDATED))
+        mobile_state_bins = { state: [ac.album for ac in state_bins[state]] for state in [AlbumCheckout.REQUESTED, AlbumCheckout.VALIDATED] }
+        mobile_state_bin_sizes = { state: sum([a.total_size for a in mobile_state_bins[state]])/(1024*1024) for state in mobile_state_bins.keys() }
+        
+        # -- does not have albumcheckout where return_at is null and action is set
+        # other_action_albums = Album.objects.filter(Q(albumcheckout__mobile=mobile_id) & ~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=False))
+        # other_album_action_bins = {
+        #     action: [a for a in other_action_albums if a.action == action] for action in [Album.REQUESTCHECKOUT, Album.CHECKOUT]}
+        # other_album_action_sizes = {
+        #     action: sum([a.total_size for a in other_action_albums if a.action == action])/(1024*1024) for action in [Album.REQUESTCHECKOUT, Album.CHECKOUT]}
+    
     return render(request, 'mobile.html', {
-        'checked_out_album_action_bins': checked_out_album_action_bins,
-        'checked_out_album_action_sizes': checked_out_album_action_sizes,
-        'checked_out_album_no_action_bins': checked_out_album_no_action_bins,
-        'checked_out_no_action_size': checked_out_no_action_size,
-        'other_album_action_bins': other_album_action_bins,
-        'other_album_action_sizes': other_album_action_sizes
+        'mobile_id': mobile_id,
+        'checked_out_album_next_state_bins': checked_out_album_next_state_bins,
+        'checked_out_album_next_state_bin_sizes': checked_out_album_next_state_bin_sizes,
+        'checked_out_no_state_albums': checked_out_no_state_albums,
+        'checked_out_no_state_albums_size': checked_out_no_state_albums_size,
+        'mobile_state_bins': mobile_state_bins,
+        'mobile_state_bin_sizes': mobile_state_bin_sizes
     })
 
+def mobile_delete(request, mobile_id):
+    mobile = Mobile.objects.get(pk=mobile_id)
+    mobile.delete()
+    return redirect('devices')
+
+def mobile_edit(request, mobile_id):
+    mobile = Mobile.objects.get(pk=mobile_id)
+    if request.method == "POST":
+        form = MobileForm(request.POST, instance=mobile)
+        if form.is_valid():
+            form.save()
+        return redirect('devices')
+    else:
+        form = MobileForm(instance=mobile)
+    
+    return render(request, 'mobile_form.html', {'mobile': mobile, 'form': form})
+
+def mobile_new(request):
+    
+    form = MobileForm()
+    
+    if request.method == "POST":
+        form = MobileForm(request.POST)
+        if form.is_valid():
+            save_id = form.save()
+            logger.debug("save ID: %s" % save_id)
+            return redirect('devices')
+    
+    return render(request, 'mobile_form.html', {'form': form})
+    
 def device_delete(request, device_id):
     device = Device.objects.get(pk=device_id)
     device.delete()
@@ -122,8 +182,8 @@ def device_delete(request, device_id):
 def device_edit(request, device_id):
     device = Device.objects.get(pk=device_id)
     if request.method == "POST":
-        beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=device.agent_base_url)
-        with beatplayer.device() as lockdevice:
+        beatplayer = BeatplayerHealth.getInstance(agent_base_url=device.agent_base_url)
+        with beatplayer.device(logger=logger) as lockdevice:
             form = DeviceForm(request.POST, instance=lockdevice)
             if form.is_valid():
                 form.save()
@@ -131,7 +191,7 @@ def device_edit(request, device_id):
     else:
         form = DeviceForm(instance=device)
     
-    return render(request, 'device.html', {'device': device, 'form': form})
+    return render(request, 'device_form.html', {'device': device, 'form': form})
 
 def device_new(request):
     
@@ -144,11 +204,12 @@ def device_new(request):
             logger.debug("save ID: %s" % save_id)
             return redirect('devices')
     
-    return render(request, 'device.html', {'form': form})
+    return render(request, 'device_form.html', {'form': form})
     
 def devices(request):
     devices = Device.objects.all()
-    return render(request, 'devices.html', {'devices': devices})
+    mobiles = Mobile.objects.all()
+    return render(request, 'devices.html', {'devices': devices, 'mobiles': mobiles})
 
 
 def manage(request):
@@ -161,11 +222,16 @@ def report(request):
 
 
 def survey(request):
-
-    albums = Album.objects.filter(action=None, albumcheckout__isnull=False, albumcheckout__return_at=None)
+        
+    mobile_id = get_session_value(request, 'mobile_id')
+    albums = []
+    
+    if mobile_id:            
+        mobile = Mobile.objects.get(pk=mobile_id)
+        albums = mobile.albumcheckout_set.filter(state=AlbumCheckout.CHECKEDOUT, next_state__isnull=True)
 
     if len(albums) == 0:
-        return redirect('beater.views.home')
+        return redirect('home')
 
     return render(request, 'survey.html', {
         'album': random.choice(albums),
@@ -215,31 +281,45 @@ def albums(request):
 def checkin(request, album_id):
 
     album = Album.objects.get(pk=album_id)
-    album.action = Album.CHECKIN
-    album.save()
+    mobile_id = get_session_value(request, 'mobile_id')
+    
+    album_checkout = album.current_albumcheckout(mobile_id)
+    if album_checkout:
+        album_checkout.next_state = AlbumCheckout.CHECKEDIN 
+        album_checkout.save()
 
     return JsonResponse({'album_id': album_id, 'row': render_to_string("_album_row.html", {'album': album})})
 
 
 def checkout(request, album_id):
-
+    
     album = Album.objects.get(pk=album_id)
-    album.action = Album.REQUESTCHECKOUT
-    album.request_priority = 1
-    album.save()
-
+    mobile_id = get_session_value(request, 'mobile_id')
+    mobile = Mobile.objects.get(pk=mobile_id)
+    
+    album_checkout = album.current_albumcheckout(mobile_id)
+    if album_checkout:
+        logger.warning(f'Cannot request checkout for {album.name} as it already has an active (not checked-in) checkout: {album_checkout.id} in {album_checkout.state} state.')
+    else:
+        AlbumCheckout.objects.create(album=album, mobile=mobile, state=AlbumCheckout.REQUESTED)
+        
+    state_bins = mobile.state_bins()
+    mobile_state_bins = { state: [ac.album for ac in state_bins[state]] for state in [AlbumCheckout.REQUESTED, AlbumCheckout.VALIDATED] }
+    mobile_state_bin_sizes = { state: sum([a.total_size for a in mobile_state_bins[state]])/(1024*1024) for state in mobile_state_bins.keys() }
+    requestcheckout_size = mobile_state_bin_sizes[AlbumCheckout.REQUESTED]
+    
     # - is not currently checked out and has an assigned action
     # -- basically is either scheduled to be refreshed or in some to-be-checked-out state
-    other_action_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=False))
+    # other_action_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=False))
 
     # -- bin up actions with sums of album sizes
     # -- limit to this album's action
-    other_album_action_sizes = {
-        action: sum([a.total_size for a in other_action_albums if a.action == action])/(1024*1024) for action in [Album.REQUESTCHECKOUT]}
+    # other_album_action_sizes = {
+    #     action: sum([a.total_size for a in other_action_albums if a.action == action])/(1024*1024) for action in [Album.REQUESTCHECKOUT]}
 
     return JsonResponse({
         'album_id': album_id,
-        'requestcheckout_size': other_album_action_sizes[Album.REQUESTCHECKOUT],
+        'requestcheckout_size': requestcheckout_size,
         'row': render_to_string("_album_row.html", {'album': album})
     })
 
@@ -247,17 +327,35 @@ def checkout(request, album_id):
 def cancel(request, album_id):
 
     album = Album.objects.get(pk=album_id)
-    album.action = None
-    album.save()
+    mobile_id = get_session_value(request, 'mobile_id')
+    
+    '''
+    2. albumcheckout.state = requested, next_state = None 
+    3. albumcheckout.state = validated, next_state = checkedout  
+    4. albumcheckout.state = checkedout, next_state = None,         checkedout_at = now 
+    5. albumcheckout.state = checkedout, next_state = refresh,      checkedout_at = now 
+    6. albumcheckout.state = checkedout, next_state = None,         checkedout_at = now 
+    7. albumcheckout.state = checkedout, next_state = checkedin,    checkedout_at = now 
+    8. albumcheckout.state = checkedin,  next_state = None,         checkedout_at = now, return_at = now 
+    '''
+    
+    # -- state is either in our out 
+    # -- we just need to know in what box to put the cancelled album in the UI 
+    # -- default is 'remainder'
+    state = AlbumCheckout.CHECKEDIN
+    checkout = album.current_albumcheckout(mobile_id)
+    
+    if checkout:
+        if checkout.state in [AlbumCheckout.REQUESTED, AlbumCheckout.VALIDATED]:
+            checkout.delete()
+        else:
+            state = checkout.state
+            checkout.next_state = None 
+            checkout.save()
+    
+    album.mobile_state = state 
 
-    row_template = "_album_row_checkedin.html"
-    state = Album.STATE_CHECKEDIN
-
-    if album.current_albumcheckout():
-        row_template = "_album_row_checkedout.html"
-        state = Album.STATE_CHECKEDOUT
-
-    return JsonResponse({'state': state, 'album_id': album_id, 'row': render_to_string(row_template, {'album': album})})
+    return JsonResponse({'state': state, 'album_id': album_id, 'row': render_to_string("_album_row_state.html", {'album': album})})
 
 
 def album_flag(request, album_id, album_status):
@@ -304,11 +402,48 @@ def album_songs(request, album_id):
 
 def fetch_remainder_albums(request):
     '''Mobile page: populate list of albums to choose from'''
-    # -- does not have albumcheckout where return_at is null and action is not set
-    remainder_albums = Album.objects.filter(~(Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=True) & Q(sticky=False))
+    
+    remainder_albums = []
+    mobile_id = get_session_value(request, 'mobile_id')
+    
+    if mobile_id:
+        mobile = Mobile.objects.get(pk=mobile_id)
+        remainder_albums = Album.objects.raw('select distinct a.* \
+            from beater_album a \
+            left outer join beater_albumcheckout ac on ac.album_id = a.id \
+            where a.deleted = 0 \
+            and (\
+                ac.id is null \
+                or a.id not in (\
+                    select u1.album_id \
+                    from beater_albumcheckout u1 \
+                    where u1.state in (%s) \
+                    and u1.mobile_id = %s\
+                )\
+            )', (AlbumCheckout.REQUESTED, mobile.id,))
+        # -- albums 
+        # -- no albumcheckout 
+        # -- OR 
+        # -- albumcheckout rules (or'd)
+        # -- 1. not our mobile
+        # -- 2. is our mobile and is checked-in 
+        # remainder_albums = Album.objects.filter(
+        #     Q(albumcheckout__isnull=True) 
+        #     | (
+        #         Q(albumcheckout__state=AlbumCheckout.CHECKEDIN) 
+        #         & (
+        #             ~Q(albumcheckout__mobile=mobile) 
+        #             | (
+        #                 Q(albumcheckout__mobile=mobile) 
+        #                 & ~Q(albumcheckout__state__in=[AlbumCheckout.REQUESTED, AlbumCheckout.VALIDATED])
+        #             )
+        #         )
+        #     )
+        # ).distinct()
+                # | ~Q(albumcheckout__mobile=mobile))
+        # ~(Q(albumcheckout__mobile=mobile_id) & Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True)) & Q(action__isnull=True) & Q(sticky=False))
 
     return JsonResponse({'rows': "".join([render_to_string("_album_row_checkedin.html", {'album': album}) for album in remainder_albums])})
-
 
 def fetch_manage_albums(request):
     '''Manage page: populate list'''
@@ -361,7 +496,7 @@ def survey_post(request):
         response['message'] = str(sys.exc_info()[1])
         logger.error(response['message'])
         traceback.print_tb(sys.exc_info()[2])
-        _publish_event('alert', json.dumps(response))
+        SwitchboardClient.getInstance().publish_event('alert', json.dumps(response))
 
     return HttpResponse(json.dumps({'success': True}))
 
@@ -384,16 +519,18 @@ def get_search_results(request):
         albums = Album.objects.filter(name__icontains=search_string)
         albums = [render_to_string('_album.html', {
             'album': a,
-            'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name)
+            'name_highlight': highlight_replace.sub(f'<span class="highlight">{search_string}</span>', a.name)
         }) for a in albums]
+
         songs = Song.objects.filter(name__icontains=search_string)
         songs = [render_to_string('_song.html', {
             'song': s,
-            'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, s.name)}) for s in songs]
+            'name_highlight': highlight_replace.sub(f'<span class="highlight">{search_string}</span>', s.name)}) for s in songs]
+        
         artists = Artist.objects.filter(name__icontains=search_string)
         artists = [render_to_string('_artist.html', {
             'artist': a,
-            'name_highlight': highlight_replace.sub("<span class='highlight'>%s</span>" % search_string, a.name),
+            'name_highlight': highlight_replace.sub(f'<span class="highlight">{search_string}</span>', a.name),
             'albums': Album.objects.filter(artist_id=a.id)
         }) for a in artists]
 
@@ -432,11 +569,16 @@ def new_artist(request):
 @require_POST
 def new_album(request, artist_id):
     '''Search page: adding new album'''
+    
     album_name = request.POST.get('album_name')
 
-    # artist = Artist.objects.get(pk=artist_id)
+    artist = Artist.objects.get(pk=artist_id)
+    logger.debug(f'creating album with artist {artist_id}, name {album_name}, artist {artist}')
 
-    album = Album.objects.create(artist_id=artist_id, name=album_name, wanted=True)
+    
+    album = Album(artist=artist, name=album_name)
+    AlbumStatus(album=album, status=AlbumStatus.WANTED)
+    album.save()
 
     return JsonResponse({'success': True, 'row': render_to_string('_artist_album_row.html', {'album': album}), 'artist_id': artist_id})
 

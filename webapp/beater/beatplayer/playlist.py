@@ -3,9 +3,9 @@ import logging
 from datetime import datetime, timedelta
 from django.db.models import Q
 from django.template.loader import render_to_string
-from ..models import PlaylistSong, Playlist as PlaylistModel
+from beater.models import PlaylistSong, Playlist as PlaylistModel
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 # class PlaylistBacking():
 #     pass 

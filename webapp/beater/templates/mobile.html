@@ -35,74 +35,78 @@
 		</div>
 	</div>
 </div>
-<div class="row">
-	<div class="col-md-6">
-		<h2>Checked-Out ({{ checked_out_no_action_size }} MB)</h2>
-		{% for b in checked_out_album_no_action_bins %}
-			<table id="checkedout_albums" class='table table-striped'>
-				<tr>
-					<th>{{ b }} album</th>
-					<th>artist</th>
-					<th>size</th>
-					<th></th>
-				</tr>
-				{% for album in checked_out_album_no_action_bins|getattribute:b %}
-				{% include '_album_row_checkedout.html' %}
-				{% endfor %}
-			</table>
-		{% endfor %}
-	</div>
-	<div class="col-md-6">
-		<h2>The Plan</h2>
-		<h3>To Check-in {{ checked_out_album_action_sizes|getattribute:'checkin' }} MB</h3>
-		<table id="targeted_albums_checkin" class='table table-striped'>
-			<tr>
-				<th>album</th>
-				<th>artist</th>
-				<th>size</th>
-				<th></th>
-			</tr>
-			{% for album in checked_out_album_action_bins|getattribute:'checkin' %}
-			{% include '_album_row.html' %}
-			{% endfor %}
-		</table>
-		<h3>Requested For Check-out <span id="requestcheckout_size">{{ other_album_action_sizes|getattribute:'requestcheckout' }}</span> MB</h3>
-		<table id="targeted_albums_requestcheckout" class='table table-striped'>
-			<tr>
-				<th>album</th>
-				<th>artist</th>
-				<th>size</th>
-				<th></th>
-			</tr>
-			{% for album in other_album_action_bins|getattribute:'requestcheckout' %}
-			{% include '_album_row.html' %}
-			{% endfor %}
-		</table>
-		<h3>To Check-out {{ other_album_action_sizes|getattribute:'checkout' }} MB</h3>
-		<table id="targeted_albums_checkout" class='table table-striped'>
-			<tr>
-				<th>album</th>
-				<th>artist</th>
-				<th>size</th>
-				<th></th>
-			</tr>
-			{% for album in other_album_action_bins|getattribute:'checkout' %}
-			{% include '_album_row.html' %}
-			{% endfor %}
-		</table>
-		<h3>To Refresh {{ checked_out_album_action_sizes|getattribute:'refresh' }} MB</h3>
-		<table id="targeted_albums_refresh" class='table table-striped'>
-			<tr>
-				<th>album</th>
-				<th>artist</th>
-				<th>size</th>
-				<th></th>
-			</tr>
-			{% for album in checked_out_album_action_bins|getattribute:'refresh' %}
-			{% include '_album_row.html' %}
-			{% endfor %}
-		</table>
-	</div>
-</div>
+
+{% if not mobile_id %}
+  no mobile devices! mobile_id:{{ mobile_id }}
+{% else %}
+
+  <div class="row">
+  	<div class="col-md-6">
+  		<h2>Checked-Out ({{ checked_out_no_state_albums_size }} MB)</h2>
+  		<table id="checkedout_albums" class='table table-striped'>
+  			<tr>
+  				<th>{{ b }} album</th>
+  				<th>artist</th>
+  				<th>size</th>
+  				<th></th>
+  			</tr>
+  			{% for album in checked_out_no_state_albums %}
+    			{% include '_album_row_state.html' %}
+  			{% endfor %}
+  		</table>
+  	</div>
+  	<div class="col-md-6">
+  		<h2>The Plan</h2>
+  		<h3>To Check-in {{ checked_out_album_next_state_bin_sizes|getattribute:'checkedin' }} MB</h3>
+  		<table id="targeted_albums_checkin" class='table table-striped'>
+  			<tr>
+  				<th>album</th>
+  				<th>artist</th>
+  				<th>size</th>
+  				<th></th>
+  			</tr>
+  			{% for album in checked_out_album_next_state_bins|getattribute:'checkedin' %}
+  			{% include '_album_row.html' %}
+  			{% endfor %}
+  		</table>
+  		<h3>Requested For Check-out <span id="requestcheckout_size">{{ mobile_state_bin_sizes|getattribute:'requested' }}</span> MB</h3>
+  		<table id="targeted_albums_requestcheckout" class='table table-striped'>
+  			<tr>
+  				<th>album</th>
+  				<th>artist</th>
+  				<th>size</th>
+  				<th></th>
+  			</tr>
+  			{% for album in mobile_state_bins|getattribute:'requested' %}
+  			{% include '_album_row.html' %}
+  			{% endfor %}
+  		</table>
+  		<h3>To Check-out {{ mobile_state_bin_sizes|getattribute:'validated' }} MB</h3>
+  		<table id="targeted_albums_checkout" class='table table-striped'>
+  			<tr>
+  				<th>album</th>
+  				<th>artist</th>
+  				<th>size</th>
+  				<th></th>
+  			</tr>
+  			{% for album in mobile_state_bins|getattribute:'validated' %}
+  			{% include '_album_row.html' %}
+  			{% endfor %}
+  		</table>
+  		<h3>To Refresh {{ checked_out_album_next_state_bin_sizes|getattribute:'refresh' }} MB</h3>
+  		<table id="targeted_albums_refresh" class='table table-striped'>
+  			<tr>
+  				<th>album</th>
+  				<th>artist</th>
+  				<th>size</th>
+  				<th></th>
+  			</tr>
+  			{% for album in checked_out_album_next_state_bins|getattribute:'refresh' %}
+  			{% include '_album_row.html' %}
+  			{% endfor %}
+  		</table>
+  	</div>
+  </div>
+{% endif %}
 
 {% endblock %}

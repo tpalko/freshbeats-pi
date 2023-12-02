@@ -1,0 +1,4 @@
+DOCKER_REGISTRY := frankendeb:5000/
+
+devrun:
+	@docker-compose up

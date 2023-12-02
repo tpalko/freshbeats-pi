@@ -7,5 +7,7 @@
 	<td>{{ album.total_size_in_mb|floatformat:0 }}</td>
 	<td>{{ album.created_at|date:"Y/m/d" }}</td>
 	<td>{{ album.albumstatus_set.all|map:"status"|join:"," }}</td>
-	<td><a href="{% url "album_checkout" album.id %}" class="btn btn-default album_checkout">check-out</a></td>
+	<td>
+    <a href="{% url "album_checkout" album.id %}" class="btn btn-default album_checkout">check-out</a>
+  </td>
 </tr>

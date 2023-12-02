@@ -4,6 +4,15 @@ from pytz import timezone
 
 UTC = timezone("UTC")
 
+def get_session_value(request, key, default=None):
+    if key in request.session:
+        return request.session[key]
+    return default  
+
+def set_session_value(request, key, value, force=False):
+    if force or key not in request.session:
+        request.session[key] = value
+
 def get_localized_now():
     return timezone("UTC").localize(datetime.now())
     

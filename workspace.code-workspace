@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"workbench.tree.indent": 24,
+		"workbench.editor.highlightModifiedTabs": true,
+		"workbench.editor.labelFormat": "short",
+		"workbench.editor.openPositioning": "first",
+		"workbench.editor.wrapTabs": true
+	}
+}

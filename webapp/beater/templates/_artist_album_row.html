@@ -7,7 +7,7 @@
 		data-form-method="PUT"
 		data-form-action="{% url "update_album" album.id %}"
 		data-input-name="album_name"
-		data-blurpost-callback="onAlbumUpdate">{{ album.name }}
+		data-callback="onAlbumUpdate">{{ album.name }}
   </div>
   <div class="col-md-3">
     {{ album.date }} {{ album.tracks }} tracks, {{ album|has_status:"owned"|yesno:"owned,not owned" }}

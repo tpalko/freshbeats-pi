@@ -25,31 +25,23 @@
     <div class="container-fluid">
 
         <div class="header sticky">
-    			<div class="row title">
+    			<div class="row">
     				<div class="col-md-1">
-    					<h2>Hy!asdf</h2>
+    					<h2 class="title">Hy!asdf</h2>
+              <h4 class="menu">
+                {% for menu_item in menu %}
+                     <a class="{% if url_name == menu_item.url %}current{% endif %}" href="{% url menu_item.url %}">{{ menu_item.display }}</a>
+                {% endfor %}        					
+              </h4>
     				</div>
-    				<div class="col-md-3">
-              <div class="row menu">
-                <div class="col-md-12">
-                  <h4>
-                    {% for menu_item in menu %}
-          					     <a class="{% if url_name == menu_item.url %}current{% endif %}" href="{% url menu_item.url %}">{{ menu_item.display }}</a>
-                    {% endfor %}        					
-                  </h4>
-                </div>
-              </div>
-              <div class="row status">
-                <div class="col-md-12">
-                  <div id="player_output"></div>
-                </div>
-              </div>
+    				<div class="col-md-2">
+              <div class="status" id="player_output"></div>
     				</div>
-    				<div class="col-md-5">
+    				<div class="col-md-6">
               {% include '_player.html' %}
             </div>
             <div class="col-md-3">
-              <div class="playlist"></div>
+              <div id="playlist"></div>
             </div>
           </div>
         </div>
@@ -63,7 +55,7 @@
 
     </div>
 
-    <script type="text/javascript" src="{% static "socket.io.slim.js" %}"></script>
+    <script type="text/javascript" src="{% static "socket.io.min.js" %}"></script>
 
     <script type="text/javascript">
     
@@ -135,6 +127,7 @@
           var cookieValue = null;
           if (document.cookie && document.cookie !== '') {
               var cookies = document.cookie.split(';');
+              // console.log(cookies);
               for (var i = 0; i < cookies.length; i++) {
                   var cookie = jQuery.trim(cookies[i]);
                   // Does this cookie string begin with the name we want?
@@ -154,6 +147,8 @@
       }
       $.ajaxSetup({
           beforeSend: function(xhr, settings) {
+              // console.log(xhr);
+              // console.log(settings);
               if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
                 // console.log("before send, setting csrf token: " + csrftoken + " (settings.type: " + settings.type + ", this.crossDomain: " + this.crossDomain + ")");
                 xhr.setRequestHeader("X-CSRFToken", csrftoken);
@@ -191,7 +186,7 @@
 
         // -- grab the form and the callback function  to handle the edit response
         var form = $(this).closest('form');
-        var callback = $(this).data("blurpost-callback");
+        var callback = $(this).data("callback");
 
         // -- grab the saved html to swap back in
         var savedro = $(form).find(".savero");
@@ -386,11 +381,11 @@
         //   active: 0
         // });
 
-        $.ajax({
-          url: '{% url "player_status_and_state" %}',
-          type: 'GET',
-          success: function(data, textStatus, jqXHR){}
-        });
+        // $.ajax({
+        //   url: '{% url "player_status_and_state" %}',
+        //   type: 'GET',
+        //   success: function(data, textStatus, jqXHR){}
+        // });
 
       });
 

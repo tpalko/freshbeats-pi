@@ -5,22 +5,27 @@
   "version": "0.1.0",
   "author": "C. A. Cois <cacois@sei.cmu.edu>",
   "description": "a generic socket.io service that provides a platform-agnostic interface for real-time communication between a web app and clients",
-  "contributors": [ 
+  "contributors": [
     {
       "name": "C. A. Cois",
       "email": "cacois@sei.cmu.edu"
-    } 
+    }
   ],
   "scripts": {
-    "start": "nodejs switchboard.js"
+    "start": "node switchboard.js"
   },
-  "dependencies" : {
-    "cookie"   :  "*", 
-    "socket.io" :  "*",
-    "restify" : "*",
-    "lodash" : "^4.17.12" 
+  "dependencies": {
+    "cookie": "*",
+    "lodash": "^4.17.12",
+    "restify": "*",
+    "restify-cors": "*",
+    "socket.io": "*",
+    "dotenv": "*"
+  },
+  "devDependencies": {
+    "socket.io-client": "*"
   },
   "engines": {
-    "node": "*" 
+    "node": "*"
   }
 }

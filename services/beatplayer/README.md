@@ -1,5 +1,24 @@
 # beatplayer 
 
+## Environment 
+
+The challenge in crafting intuitive build- and run-times for development,
+testing, and deployment is primarily parity. It's straightforward to make 
+something that will run locally, and another thing that runs in a container,
+and another thing to deploy. The trick is to stem every progressive target 
+from a single root with as few artifacts as possible. 
+
+
+`docker-compose` 
+### Build-time 
+
+`build.sh` wraps build-time operations. Primarily, determine `ALPINE_ARCH` and
+pass to `docker build --build-arg`. If `DOCKER_REGISTRY`, then also includes 
+a `docker tag / docker push`.
+
+**ALPINE_ARCH**: alpine image tag, derives from runtime target architecture 
+**DOCKER_REGISTRY (optional)**: 
+
 ## Deploy 
 
 `.env` has entries for both the container environment as well as the docker-compose 

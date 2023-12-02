@@ -8,15 +8,17 @@ from xmlrpc import client
 from contextlib import contextmanager 
 from django.conf import settings
 from django.template.loader import render_to_string
-from ..models import Album, Artist, Player, Device, Song
-from ..common.switchboard import _publish_event, _get_switchboard_connection_id_for_device_id, _get_playlist_id_for_switchboard_connection_id
-from .playlist import Playlist, PlaylistHelper
-from .health import BeatplayerRegistrar
+from beater.models import Album, Artist, Player, Device, Song
+from beater.switchboard.switchboard import SwitchboardClient
+from beater.beatplayer.playlist import Playlist, PlaylistHelper
+from beater.common.session import get_playlist_id_for_switchboard_connection_id, get_switchboard_connection_id_for_device_id
+from beater.monitoring.health import BeatplayerHealth
+from beater.beatplayer.client import BeatplayerClient
 
 # -- beater.beatplayer.player
-print(f'LOGGING: {__name__}')
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+# health_logger = logging.getLogger('beater.beatplayer.health')
 
 DEFAULT_MUTE = False 
 DEFAULT_SHUFFLE = False
@@ -30,6 +32,8 @@ class PlayerWrapper():
     Player implements standard playback actions with a Playlist and additional logic and state.
     '''
     
+    logger = None 
+
     player_lock = None 
     device_id = None
     beatplayer_client = None 
@@ -48,52 +52,63 @@ class PlayerWrapper():
         if kwargs['device_id'] in PlayerWrapper.__instances and PlayerWrapper.__instances[kwargs['device_id']] != None:
             raise Exception("Call PlayerWrapper.getInstance() for singleton")
         else:
+            
+            self.logger = logging.getLogger(__name__)
+
             self.player_lock = threading.Lock()
             self.device_id = kwargs['device_id']
+            self.logger.info(f'Creating a new PlayerWrapper for device {self.device_id}')
             with self.player(read_only=True) as player:
                 if not player:
-                    logger.warning("There are no players for this device")
+                    self.logger.warning("There are no players for this device")
                 else:
-                    self.beatplayer_client = client.ServerProxy(player.device.agent_base_url, allow_none=True)
+                    self.logger.warning("Found a player, fetching its health record")
+                    self.beatplayer_client = BeatplayerClient(player.device.agent_base_url)
+                    # self.beatplayer_client = client.ServerProxy(player.device.agent_base_url, allow_none=True)
             PlayerWrapper.__instances[self.device_id] = self 
         
     @contextmanager     
-    def playlist_context(self, playlist_id):
+    def _playlist_context(self, playlist_id, logger):
         if playlist_id not in PlayerWrapper.playlist_locks:
             logger.debug("Creating lock for playlist %s" % (playlist_id))
             PlayerWrapper.playlist_locks[playlist_id] = threading.Lock()
-        logger.debug("Wanting playlist lock %s" % playlist_id)
+        # logger.debug("Wanting playlist lock %s" % playlist_id)
         # TODO: implement playlist read-only mode and avoid acquring the lock when not necessary 
         PlayerWrapper.playlist_locks[playlist_id].acquire()
-        logger.debug("Acquired playlist lock %s" % playlist_id)
+        # logger.debug("Acquired playlist lock %s" % playlist_id)
         playlist = Playlist.getInstance(playlist_id)
         try:
             yield playlist
-        except:
+        except Exception as e:
             logger.error(sys.exc_info()[0])
             logger.error(sys.exc_info()[1])
             traceback.print_tb(sys.exc_info()[2])
+            raise e 
         finally:
             playlist._renumber_playlistsong_queue()
             PlayerWrapper.playlist_locks[playlist_id].release()
             logger.debug("Released playlist lock %s" % playlist_id)
             
     @contextmanager
-    def player(self, read_only=False, playlist_id=None):
+    def player(self, read_only=False, playlist_id=None, logger=None):
         '''
         The read-only context DOES NOT PROVIDE self.playlist 
         '''
+
+        if not logger:
+            logger = self.logger 
+
         if read_only:
-            player = self._get_device_player(read_only=True)
+            player = self._get_device_player(read_only=True, logger=logger)
             #logger.debug("Player state (R/O - yield): %s" % player.status_dump())
             yield player
         else:
             # -- File "/media/storage/development/github.com/freshbeats-pi/webapp/beater/beatplayer/player.py", line 170, in parse_state
             caller = traceback.format_stack()[-3].split(' ')[7].replace('\n', '')
-            logger.debug("%s wants to acquire player record lock.." % caller)
+            # logger.debug("%s wants to acquire player record lock.." % caller)
             self.player_lock.acquire()
-            logger.debug("%s has acquired player record lock" % caller)
-            player = self._get_device_player()
+            # logger.debug("%s has acquired player record lock" % caller)
+            player = self._get_device_player(logger=logger)
             logger.debug("Player state (R/W - yield): %s" % player.status_dump())
             try:
                 if playlist_id is None:
@@ -104,27 +119,27 @@ class PlayerWrapper():
                         logger.warning("Player %s context given no playlist ID, and player has no current position from which to infer" % player.id)
                 else:
                     logger.debug("Player %s context given playlist ID %s" % (player.id, playlist_id))
-                with self.playlist_context(playlist_id=playlist_id) as playlist:                    
+                with self._playlist_context(playlist_id=playlist_id, logger=logger) as playlist:                    
                     self.playlist = playlist
                     logger.debug("Yielding player %s / playlist %s" % (player.id, playlist_id))
                     yield player
                 
                 logger.debug("Player yield returned from %s, cleaning up and saving" % caller)
                 
-                beatplayer = BeatplayerRegistrar.getInstance(player.device.agent_base_url)
-                with beatplayer.devicehealth() as health:
-                    player.beatplayer_status = health.status
-                    player.beatplayer_registered_at = health.registered_at
-                player.save()
-                
+                beatplayer = BeatplayerHealth.getInstance(player.device.agent_base_url)
+                beatplayer.update_beatplayer_status(player)
+            except:
+                logger.error(sys.exc_info()[0])
+                logger.error(sys.exc_info()[1])
+                traceback.print_tb(sys.exc_info()[2])
             finally:
                 #logger.debug("Player state (R/W - not saving)")
                 self.player_lock.release()
                 #logger.debug("Caller %s released lock" % caller)
-                
-            self.show_player_status()
+            
+            self.show_player_status(logger=logger)
     
-    def _get_device_player(self, read_only=False):
+    def _get_device_player(self, logger, read_only=False):
         '''
         The player wrapper is requested by device ID.
         There is presumably a Player record behind the Device record, which is where the device left off last time, its current state.
@@ -136,9 +151,11 @@ class PlayerWrapper():
         
         device_player = None 
         
+        logger.debug(f'fetching device {self.device_id} for its player')
         lookupdevice = Device.objects.get(pk=self.device_id)
-        beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=lookupdevice.agent_base_url)
-        with beatplayer.device() as device:                
+        logger.debug(f'fetching BeatplayerHealth instance for {lookupdevice.agent_base_url}')
+        beatplayer = BeatplayerHealth.getInstance(agent_base_url=lookupdevice.agent_base_url)
+        with beatplayer.device(logger=logger) as device:                
             if device.player:
                 logger.debug("Device %s found with player %s" % (device.id, device.player.id))
             else:
@@ -168,19 +185,22 @@ class PlayerWrapper():
         
     def call(self, command, **kwargs):
         
-        logger.debug("Handling player call - %s, kwargs: %s" % (command, json.dumps(kwargs)))
+        call_logger = kwargs['logger'] if 'logger' in kwargs else self.logger
+        del kwargs['logger']
+
+        call_logger.debug("Handling player call - %s, kwargs: %s" % (command, json.dumps(kwargs)))
         
         f = self.__getattribute__(command)
         
-        with self.player(playlist_id=kwargs['playlist_id']) as player:
+        with self.player(playlist_id=kwargs['playlist_id'], logger=call_logger) as player:
             player.preceding_command = command 
             player.preceding_command_args = kwargs
-            response = f(player=player, **{ k: kwargs[k] for k in kwargs if kwargs[k] is not None})
+            response = f(player=player, logger=call_logger, **{ k: kwargs[k] for k in kwargs if kwargs[k] is not None})
             
             if response:
-                logger.debug("(call) %s response: %s" % (command, response))
+                call_logger.debug("(call) %s response: %s" % (command, response))
                 if not response['success'] and response['message']:
-                    _publish_event('message', json.dumps(response['message']))
+                    SwitchboardClient.getInstance().publish_event('message', json.dumps(response['message']))
         
         #logger.debug("Saving state..")
         #self._save(command, kwargs)
@@ -189,40 +209,62 @@ class PlayerWrapper():
         # beatplayer = BeatplayerRegistrar.getInstance()
         # beatplayer.show_status()
     
-    def parse_state(self, player, health_data):
+    def _bool_exists(self, obj, *args):
+        
+        import copy         
+        build = copy.copy(obj)
+        
+        for arg in args:
+            if arg in build:
+                build = build[arg]
+            else:
+                return False  
+        
+        return build
+            
+    def parse_state(self, player, logger, health_data):
+        '''Incoming state from the player'''        
 
         logger.debug("Parsing health data -- %s --" % player.device.agent_base_url)
-        changelog = "Player changes: "
         
-        to_state = Player.PLAYER_STATE_PLAYING if 'ps' in health_data and 'is_alive' in health_data['ps'] and health_data['ps']['is_alive'] else Player.PLAYER_STATE_STOPPED
-        to_state = Player.PLAYER_STATE_PAUSED if 'paused' in health_data and health_data['paused'] else to_state
+        to_state = Player.PLAYER_STATE_STOPPED
         
-        to_mute = health_data['muted'] == 'True' if 'muted' in health_data and to_state != Player.PLAYER_STATE_STOPPED else False 
+        if self._bool_exists(health_data, 'paused'):
+            to_state = Player.PLAYER_STATE_PAUSED
+        elif self._bool_exists(health_data, 'ps', 'is_alive'):
+            to_state = Player.PLAYER_STATE_PLAYING
+        
+        to_mute = self._bool_exists(health_data, 'muted') == 'True' and to_state != Player.PLAYER_STATE_STOPPED
         
         if to_state == Player.PLAYER_STATE_STOPPED:
-            _publish_event('clear_player_output')
-            to_mute = False 
+            SwitchboardClient.getInstance().publish_event('clear_player_output')
             
-        to_volume = health_data['volume'] if 'volume' in health_data else player.volume
+        to_volume = self._bool_exists(health_data, 'volume') or player.volume
         
+        changelog = "Player changes: "
+        player_has_changes = False 
         if to_state != player.state:
             changelog += "state %s -> %s " % (player.state, to_state)
             player.state = to_state
+            player_has_changes = True
         if to_volume != player.volume:
             changelog += "volume %s -> %s " % (player.volume, to_volume)
             player.volume = to_volume
+            player_has_changes = True
         if to_mute != player.mute:
             changelog += "mute %s -> %s " % (player.mute, to_mute)
             player.mute = to_mute
+            player_has_changes = True
         
-        logger.warning(changelog)
+        if player_has_changes:
+            logger.warning(changelog)
         
         player.time_pos = health_data['time'][0] or 0
         player.time_remaining = health_data['time'][1] or 0
         total_time = player.time_pos + player.time_remaining            
         player.percent_pos = 100*player.time_pos / total_time if total_time > 0 else 0
     
-    def complete(self, player, success=True, message='', data={}):   
+    def complete(self, player, logger, success=True, message='', data={}):   
         response = {'success': False, 'message': ''}
         if not success:
             #player.state = Player.PLAYER_STATE_STOPPED
@@ -230,21 +272,21 @@ class PlayerWrapper():
         else:
             play_response = None 
             if player.state != Player.PLAYER_STATE_STOPPED:
-                play_response = self._advance_play(player)                
+                play_response = self._advance_play(player, logger)
             if not play_response or play_response['success']:
                 response['success'] = True 
             elif play_response:
                 response['message'] = play_response['message']
         return response 
     
-    def show_player_status(self):
+    def show_player_status(self, logger):
         '''
-        Assembles player and playlist state and emits a player_status event.
+        Outgoing player status to the UI. Assembles player and playlist state and emits a player_status event.
         '''
         
-        with self.player(read_only=True) as player:
+        with self.player(read_only=True, logger=logger) as player:
             # -- READ ONLY PLAYER
-            connection_ids_by_device = _get_switchboard_connection_id_for_device_id()
+            connection_ids_by_device = get_switchboard_connection_id_for_device_id()
             if self.device_id not in connection_ids_by_device:
                 logger.debug("No clients for device %s, not updating status" % player.device.name)
                 return 
@@ -266,23 +308,29 @@ class PlayerWrapper():
             current_song_html = render_to_string('_current_song.html', current_song_obj)
             
             for connection_id in connection_ids_by_device[self.device_id]:
-                playlist_id = _get_playlist_id_for_switchboard_connection_id(connection_id)
+                playlist_id = get_playlist_id_for_switchboard_connection_id(connection_id)
                 logger.debug("Found playlist %s for switchboard connection ID %s" % (playlist_id, connection_id))
                 playlist_data = {
                     'playlist': PlaylistHelper.playlist(playlist_id=playlist_id) if playlist_id else None,
                     'playlistsongs': PlaylistHelper.playlistsongs(playlist_id=playlist_id) if playlist_id else [], 
                     'current_playlistsong_id': current_playlistsong.id if current_playlistsong else None
                 }
+                
                 playlist_html = render_to_string("_playlist.html", playlist_data)
-                _publish_event(event='player_status', payload=json.dumps({'player': player_dump, 'current_song': current_song_html, 'playlist': playlist_html}), connection_id=connection_id)
+                
+                SwitchboardClient.getInstance().publish_event(event='player_status', payload=json.dumps({
+                    'player': player_dump, 
+                    'current_song': current_song_html, 
+                    'playlist': playlist_html
+                }), connection_id=connection_id)
         
     ## -- BEGIN CLIENT CALLS -- ## 
     
-    def _beatplayer_play(self, player):        
+    def _beatplayer_play(self, player, logger):        
         # -- READ ONLY PLAYER
         song = player.playlistsong.song        
         song_filepath = "%s/%s/%s" % (song.album.artist.name, song.album.name, song.name)
-        logger.info("Playing. Player state: %s. Song: %s callback: %s" % (player.state, song_filepath, settings.FRESHBEATS_COMPLETE_CALLBACK_URL))
+        logger.info("Playing. Player state: %s. Song: %s callback: %s" % (player.state, song_filepath, settings.FRESHBEATS_COMPLETE_CALLBACK_URL))        
         response = self.beatplayer_client.play(song.url, song_filepath, settings.FRESHBEATS_COMPLETE_CALLBACK_URL, player.device.agent_base_url)
         logger.debug("play response: %s" % json.dumps(response))
         if response['success']:
@@ -290,7 +338,7 @@ class PlayerWrapper():
             player.state = Player.PLAYER_STATE_PLAYING
         return response 
         
-    def _beatplayer_stop(self):
+    def _beatplayer_stop(self, logger):
         response = self.beatplayer_client.stop()
         logger.debug("(_beatplayer_stop) stop response: %s" % json.dumps(response))
         return response
@@ -311,13 +359,13 @@ class PlayerWrapper():
     
     ## -- BEGIN UI BUTTONS -- ## 
     
-    def toggle_mute(self, player, **kwargs):
+    def toggle_mute(self, player, logger, **kwargs):
         response = self._beatplayer_mute()
         if response['success']:
             player.mute = not player.mute
         return response 
     
-    def pause(self, player, **kwargs):
+    def pause(self, player, logger, **kwargs):
         response = None 
         if player.state == Player.PLAYER_STATE_PAUSED:
             response = self._beatplayer_pause()
@@ -329,25 +377,25 @@ class PlayerWrapper():
                 player.state = Player.PLAYER_STATE_PAUSED
         return response 
     
-    def previous(self, player, **kwargs):
+    def previous(self, player, logger, **kwargs):
         # -- READ ONLY
         response = None 
         player.playlistsong = self.playlist.back_up_cursor(player.playlistsong)
         if player.state != Player.PLAYER_STATE_STOPPED:
-            response = self._beatplayer_play(player)
+            response = self._beatplayer_play(player, logger)
         return response 
     
-    def restart(self, player, **kwargs):
+    def restart(self, player, logger, **kwargs):
         # -- READ ONLY PLAYER
         response = None 
         if player.state != Player.PLAYER_STATE_STOPPED:
-            response = self._beatplayer_play(player)
+            response = self._beatplayer_play(player, logger)
         return response 
     
-    def stop(self, player, **kwargs):
+    def stop(self, player, logger, **kwargs):
         response = None 
         if player.state != Player.PLAYER_STATE_STOPPED:
-            response = self._beatplayer_stop()
+            response = self._beatplayer_stop(logger)
             logger.debug("_beatplayer_stop response: %s" % response)
             if not response or response['success'] or 'Broken pipe' in response['message'] or 'no beatplayer process' in response['message']:
                 logger.debug("(stop) stop response: %s" % response)
@@ -361,16 +409,16 @@ class PlayerWrapper():
     # -- play_song can do it, because it's only one song, and we can trigger state change on complete or next 
     # -- play_album can't do that, so we splice it
     
-    def _advance(self, player, playlistsongid=None):
+    def _advance(self, player, logger, playlistsongid=None):
         player.playlistsong = self.playlist.advance_cursor(current_playlistsong=player.playlistsong, to_playlistsongid=playlistsongid, shuffle=player.shuffle)
         if not player.playlistsong:
             logger.warning("Playlist advance resulted in no selection being made")
         
-    def _advance_play(self, player, playlistsongid=None):
-        self._advance(player, playlistsongid=playlistsongid)
-        return self._beatplayer_play(player)
+    def _advance_play(self, player, logger, playlistsongid=None):
+        self._advance(player, logger, playlistsongid=playlistsongid)
+        return self._beatplayer_play(player, logger)
             
-    def play(self, player, **kwargs):
+    def play(self, player, logger, **kwargs):
         song = None 
         album = None 
         artist = None 
@@ -380,68 +428,69 @@ class PlayerWrapper():
             song = Song.objects.get(pk=songid)
             self.playlist.splice_song(song, player.playlistsong)
             player.shuffle = False 
-            response = self._advance_play(player)             
+            response = self._advance_play(player, logger)             
         elif 'albumid' in kwargs and kwargs['albumid'] is not None:
             albumid = kwargs['albumid']
             album = Album.objects.get(pk=albumid)
             self.playlist.splice_album(album, player.playlistsong)
             player.shuffle = False 
-            response = self._advance_play(player)
+            response = self._advance_play(player, logger)
         elif 'artistid' in kwargs and kwargs['artistid'] is not None:
             artistid = kwargs['artistid']
             artist = Artist.objects.get(pk=artistid)
             self.playlist.splice_artist(artist, player.playlistsong)
             player.shuffle = False 
-            response = self._advance_play(player)
+            response = self._advance_play(player, logger)
         elif 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
-            self._advance_play(player, playlistsongid=kwargs['playlistsongid'])
-            response = self._beatplayer_play(player)
+            self._advance_play(player, logger, playlistsongid=kwargs['playlistsongid'])
+            response = self._beatplayer_play(player, logger)
         else:
             if player.state == Player.PLAYER_STATE_STOPPED:
                 logger.debug("Player is stopped, but playing now")
-                response = self._beatplayer_play(player)
+                response = self._beatplayer_play(player, logger)
             elif player.state == Player.PLAYER_STATE_PAUSED:
                 logger.debug("Player is paused, but pause-toggling now")
                 response = self._beatplayer_pause()
                 if response and response['success']:
                     player.state = Player.PLAYER_STATE_PLAYING
+            
         return response
     
-    def next(self, player, **kwargs):
+    def next(self, player, logger, **kwargs):
         response = None 
-        self._advance(player)
+        self._advance(player, logger)
         if player.state != Player.PLAYER_STATE_STOPPED:
-            response = self._beatplayer_play(player)        
+            response = self._beatplayer_play(player, logger)        
         return response
     
-    def next_artist(self, player, **kwargs):        
+    def next_artist(self, player, logger, **kwargs):        
         response = None 
         song = player.playlistsong.song
         current_artist = song.album.artist.id 
         while song.album.artist.id == current_artist:
-            cursor_set = self._advance(player)
+            cursor_set = self._advance(player, logger)
             song = player.playlistsong.song
         if player.state != Player.PLAYER_STATE_STOPPED:            
-            response = self._beatplayer_play(player)
+            response = self._beatplayer_play(player, logger)
         return response 
     
-    def toggle_shuffle(self, player, **kwargs):
+    def toggle_shuffle(self, player, logger, **kwargs):
         player.shuffle = not player.shuffle
         
-    def toggle_repeat_song(self, player, **kwargs):
+    def toggle_repeat_song(self, player, logger, **kwargs):
         player.repeat_song = not player.repeat_song 
         
-    def volume_down(self, player, **kwargs):
+    def volume_down(self, player, logger, **kwargs):
         response = self._beatplayer_volume_down()
         #self.set_volume(volume=response['data']['volume'])
         return response
         
-    def volume_up(self, player, **kwargs):
+    def volume_up(self, player, logger, **kwargs):
         response = self._beatplayer_volume_up()
         #self.set_volume(volume=response['data']['volume'])
         return response
     
-    def remove(self, player, **kwargs):
+    def remove(self, player, logger, **kwargs):
         response = None 
         if 'playlistsongid' in kwargs and kwargs['playlistsongid'] is not None:
             response = self.playlist.remove_song(kwargs['playlistsongid'])
@@ -453,7 +502,7 @@ class PlayerWrapper():
             logger.debug("playlistsongid not found in kwargs: %s" % (kwargs))
         return response 
     
-    def splice(self, player, **kwargs):
+    def splice(self, player, logger, **kwargs):
         song = None 
         album = None 
         artist = None 
@@ -472,7 +521,7 @@ class PlayerWrapper():
             response = self.playlist.splice_artist(artist, player.playlistsong)
         return response
     
-    def enqueue(self, player, **kwargs):
+    def enqueue(self, player, logger, **kwargs):
         playlist_id = kwargs['playlist_id'] if 'playlist_id' in kwargs else None 
         if 'songid' in kwargs and kwargs['songid'] is not None:  
             songid = kwargs['songid']

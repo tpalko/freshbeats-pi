@@ -10,38 +10,32 @@ import traceback
 from configparser import ConfigParser
 import click
 import hashlib
-
-import django
-from django.conf import settings
+from .common import get_storage_path
 from django.db.models import Q
+from mutagen import easyid3, id3
 
 # BUF_SIZE is totally arbitrary, change for your app!
 BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
 
-sys.path.append(join(os.path.dirname(__file__), '../../webapp'))
+import django
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
-
-print("setting up")
 django.setup()
-from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
-from mutagen import easyid3, id3
 
-sys.path.append(os.path.dirname(__file__))
-from common import get_storage_path
+from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
 
 # logging.basicConfig(
 #     format='%(log_color)s[ %(levelname)7s ] %(asctime)s %(name)s %(filename)12s:%(lineno)-4d %(message)s'
 # )
-if __file__:
-    print(f'creating logger as {__name__}')
-    logger = logging.getLogger(__name__)
-else:
-    print(f'creating logger as services.ingest')
-    logger = logging.getLogger('services.ingest')
+# if __file__:
+logger = logging.getLogger()
+# else:
+#     print(f'creating logger as services.ingest')
+#     logger = logging.getLogger('services.ingest')
 
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 
-logger.fatal(os.getenv('DJANGO_LOG_LEVEL'))
+# logger.fatal(os.getenv('DJANGO_LOG_LEVEL'))
 
 # DJANGO_LOGGER = logging.getLogger('django')
 # DJANGO_LOGGER.setLevel(logging.INFO)
@@ -549,13 +543,13 @@ class Ingest(object):
         
         except django.db.utils.OperationalError as oe:
             message = str(sys.exc_info()[1])
-            logging.error(str(sys.exc_info()[0]))
-            logging.error(message)
+            logger.error(str(sys.exc_info()[0]))
+            logger.error(message)
             traceback.print_tb(sys.exc_info()[2])
         except Exception as update_db_exception:
             message = str(sys.exc_info()[1])
-            logging.error(str(sys.exc_info()[0]))
-            logging.error(message)
+            logger.error(str(sys.exc_info()[0]))
+            logger.error(message)
             traceback.print_tb(sys.exc_info()[2])
 
     def set_flags(self, albummeta):

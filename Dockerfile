@@ -8,7 +8,7 @@ RUN apt-get update \
 #    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
-COPY ./webapp/requirements3.txt ./requirements.txt
+COPY ./webapp/requirements.txt ./requirements.txt
 #COPY ./webapp/requirements.txt ./webapp_requirements.txt
 #COPY ./services/freshbeats/requirements.txt ./freshbeats_requirements.txt
 RUN pip install -r requirements.txt

@@ -1,0 +1,32 @@
+{
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'DEBUG'
+        },
+        'exception_handler': {
+            'class': 'logging.FileHandler',
+            'filename': 'freshbeats_exceptions.log',
+            'level': 'ERROR'
+        },
+    },
+    'loggers': {     
+        'albummanager': {
+            'handlers': ['console', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'freshbeats': {
+            'handlers': ['console', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'ingest': {
+            'handlers': ['console', 'exception_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    }
+}

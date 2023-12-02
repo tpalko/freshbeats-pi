@@ -9,14 +9,17 @@ import json
 import threading
 import time
 import io
-from ..common.switchboard import _publish_event
+from beater.switchboard.switchboard import SwitchboardClient
+from beater.common.util import get_session_value, set_session_value
 
 sys.path.append(os.path.join(settings.BASE_DIR, "..", "services"))
 
 from freshbeats import freshbeats, ingest
 
-def _get_freshbeats(function_name):
-    m = freshbeats.FreshBeats()
+logger = logging.getLogger()
+
+def _get_freshbeats(function_name, mobile_id):
+    m = freshbeats.FreshBeats(mobile_id=mobile_id)
     return getattr(m, function_name)
 
 def _get_ingest(function_name):
@@ -24,52 +27,71 @@ def _get_ingest(function_name):
     return getattr(m, function_name)
     
 def apply_plan(request):
-
-    _call_freshbeats(_get_freshbeats('apply_plan'), add_randoms=False)
-    return JsonResponse({'success': True})
+    success = False 
+    mobile_id = get_session_value(request, 'mobile_id')
+    if mobile_id:    
+        success = _call_freshbeats(_get_freshbeats('apply_plan', mobile_id), add_randoms=False)
+    return JsonResponse({'success': success})
 
 def validate_plan(request):
-
-    _call_freshbeats(_get_freshbeats('validate_plan'))
-    return JsonResponse({'success': True})
+    success = False 
+    mobile_id = get_session_value(request, 'mobile_id')
+    if mobile_id:
+        success = _call_freshbeats(_get_freshbeats('validate_plan', mobile_id))
+    return JsonResponse({'success': success})
 
 def plan_report(request):
-
-    _call_freshbeats(_get_freshbeats('plan_report'))
-    return JsonResponse({'success': True})
+    success = False 
+    mobile_id = get_session_value(request, 'mobile_id')
+    if mobile_id:
+        try:
+            success = _call_freshbeats(_get_freshbeats('plan_report', mobile_id))
+        except Exception as e:
+            logger.error(sys.exc_info()[0])
+            logger.error(sys.exc_info()[1])
+            traceback.print_tb(sys.exc_info()[2])
+            SwitchboardClient.getInstance().publish_event('device_output', json.dumps({'complete': True, 'out': str(e)}))
+            
+    return JsonResponse({'success': success})
 
 def update_db(request):
-
-    _call_freshbeats(_get_ingest('update_db'))
-    return JsonResponse({'success': True})
+    success = _call_freshbeats(_get_ingest('update_db'))
+    return JsonResponse({'success': success})
 
 def _call_freshbeats(function, *args, **kwargs):
 
+    success = False 
+    
     try:
         log_capture_string = io.StringIO()
 
         ch = logging.StreamHandler(log_capture_string)
-
-        logger = logging.getLogger('FreshBeats')
+        
+        fb_logger = logging.getLogger('freshbeats.freshbeats')
         # -- this is the log level setting that actually determines the log level
-        #logger.setLevel(logging.INFO)
-        logger.addHandler(ch)
+        #fb_logger.setLevel(logging.INFO)
+        fb_logger.addHandler(ch)
 
         t = threading.Thread(target=function, args=kwargs.values())
         t.start()
 
-        while t.isAlive():
-            _publish_event('device_output', json.dumps({'function_name': function.__name__, 'complete': False, 'out': log_capture_string.getvalue()}))
+        while t.is_alive():
+            logger.debug(f'publishing device_output for {function.__name__}')
+            SwitchboardClient.getInstance().publish_event('device_output', json.dumps({'function_name': function.__name__, 'complete': False, 'out': log_capture_string.getvalue()}))
             time.sleep(1)
-
-        _publish_event('device_output', json.dumps({'function_name': function.__name__, 'complete': True, 'out': log_capture_string.getvalue()}))
-
-        logger.removeHandler(ch)
-
+        
+        logger.debug(f'publishing device_output for {function.__name__}')
+        SwitchboardClient.getInstance().publish_event('device_output', json.dumps({'function_name': function.__name__, 'complete': True, 'out': log_capture_string.getvalue()}))
+        
+        t.join()
+        fb_logger.removeHandler(ch)
+        success = True 
+        
     except:
+        logger.error(sys.exc_info()[0])
         logger.error(sys.exc_info()[1])
         traceback.print_tb(sys.exc_info()[2])
     finally:
         log_capture_string.close()
 
-    return True
+    return success 

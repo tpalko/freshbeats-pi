@@ -5,8 +5,8 @@ import sys
 from os.path import join
 import subprocess
 import shlex
-import random
 import logging
+import random
 import traceback
 import datetime
 from configparser import ConfigParser
@@ -14,13 +14,13 @@ import re
 import math
 # from .device import DeviceManager
 try:
-    from checkout import AlbumManager
+    from albummanager import AlbumManager
 except ImportError as e:
-    from .checkout import AlbumManager
+    from .albummanager import AlbumManager
 import click
 
 # import config.settings_env
-from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus
+
 import django
 from django.db.models import Q
 from django.utils import timezone
@@ -36,28 +36,32 @@ from . import common
 sys.path.append(join(os.path.dirname(__file__), '../../webapp'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_env'
 
-
+from beater.models import Artist, Album, Song, AlbumCheckout, AlbumStatus, Mobile
 
 django.setup()
 
-logger = logging.getLogger('FreshBeats')
-logger.setLevel(logging.INFO)
+logger = logging.getLogger('freshbeats.freshbeats')
 
-DJANGO_LOGGER = logging.getLogger('django')
-DJANGO_LOGGER.setLevel(logging.INFO)
-REQUESTS_LOGGER = logging.getLogger('requests')
-REQUESTS_LOGGER.setLevel(logging.INFO)
-URLLIB3_LOGGER = logging.getLogger('urllib3')
-URLLIB3_LOGGER.setLevel(logging.WARN)
+# logger.setLevel(logging.INFO)
+
+# DJANGO_LOGGER = logging.getLogger('django')
+# DJANGO_LOGGER.setLevel(logging.INFO)
+# REQUESTS_LOGGER = logging.getLogger('requests')
+# REQUESTS_LOGGER.setLevel(logging.INFO)
+# URLLIB3_LOGGER = logging.getLogger('urllib3')
+# URLLIB3_LOGGER.setLevel(logging.WARN)
 
 # name_logger = logging.getLogger(__name__)
 
 class Process(object):
     
     web_user = None 
-    ssh_key_path = None 
+    
+    name = None 
+    ip_address = None 
     ssh_username = None 
-    device_hostname = None 
+    ssh_private_key_path = None 
+    target_path = None 
     
     def __init__(self, *args, **kwargs):
         for key in kwargs.keys():
@@ -65,97 +69,160 @@ class Process(object):
             self.__setattr__(key, kwargs[key])
 
     def _whoami(self):
-        (ps, out, err) = self.command('whoami')
-        return out
+        (plist, outs, errs) = self.auto_command('whoami')
+        return outs[0]
         
     def _get_ssh_identity_file_parameter(self):
 
         user = self._whoami()
-
-        #logger.debug("acting user: %s" % user)
+        logger.debug("acting user: %s" % user)
 
         ssh_parameters = ''
         
         #logger.debug("web_user: %s" % self.web_user)
-        if user == self.web_user and self.ssh_key_path:
-            ssh_parameters = "-i %s -o StrictHostKeyChecking=no" % self.ssh_key_path
+        if user == self.web_user and self.ssh_private_key_path:
+            ssh_parameters = f'-i {self.ssh_private_key_path} -o StrictHostKeyChecking=no'
         
-        address = "%s@%s" %(self.ssh_username, self.device_hostname)
+        address = f'{self.ssh_username}@{self.ip_address}'
         
         #logger.debug("parameters: %s" % ssh_parameters)
         #logger.debug("address: %s" % address)
         
         return (ssh_parameters, address)
+    
+    def get_free_bytes(self):
         
-    def _get_ssh_statement(self, command):
+        #ps = subprocess.Popen('df -k'.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #ps = subprocess.Popen(('grep ' + self.device_mount).split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        (parameters, address) = self._get_ssh_identity_file_parameter()
-        statement = r'ssh %s %s "%s"' %(parameters, address, command)
+        (plist, outs, errs) = self.auto_command([f'df {self.target_path}', 'grep -v Filesystem'])
+        
+        # if not outs[-1] and not errs[-1]:
+        #     raise Exception(f'no out {outs} or err {errs} in get_free_bytes!')
+        
+        logger.debug(outs)
+        # - Filesystem               Size     Used     Free   Blksize
+        # - /mnt/shell/emulated     12G     8.5G     3.5G   4096
+        # for i, out in enumerate(outs):
+        #     logger.debug("%s: %s" % (i, out))
+        parts = [p for p in str(outs[0]).split(' ') if p != '']
+        logger.debug(parts)
+        
+        free = parts[3]
+        
+        num_match = '([0-9]+)'
+        match = re.search(num_match, str(free))
+        
+        if not match:
+            raise ValueError(f'No match of {num_match} was found in "{free}" (full string: {parts})')
+        
+        size = match.group(1)
+        unit = 'K'
+        
+        unit_multiplier = {'G': math.pow(1024, 3), 'M': math.pow(1024, 2), 'K': math.pow(1024, 1), 'B': 1}
 
-        # - removing encode('utf-8') here because we may be doubling up encoding on string literals passed in to this function
-        return shlex.split(statement) # )
+        size_in_bytes = int(math.floor(float(size)*unit_multiplier[unit]))
+
+        logger.debug("free space: %s MB (%s bytes)" % (int(math.floor(float(size_in_bytes)/unit_multiplier['M'])), size_in_bytes))
+
+        return size_in_bytes
         
-    def command(self, command):
-        ps = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out,err,) = ps.communicate(None)
+    def remove_album(self, artist_name, album_name):
+        album_path = join(self.target_path, artist_name, album_name)
+        command = r'rm -rf "%s"' % album_path
+        return self.auto_command(command)
         
-        #logger.debug(command)
-        #logger.debug(out)
-        if err:
-            logger.error(err)
+    def add_album(self, storage_path, artist_name):
+        
+        user = self._whoami()
+        logger.debug("acting user: %s" % user)
+        
+        artist_folder = join(self.target_path, artist_name)
+        logger.info(" - adding folder: \"%s\"" %(artist_folder))
+        
+        (plist, outs, errs) = self.auto_command(r'mkdir -p "%s"' % artist_folder)        
+
+        modified_artist_folder = artist_folder #.replace(' ', r'\ ').replace("'", r'\'').replace("&", r'\&')
+        logger.debug(" - modified artist folder: %s" % modified_artist_folder)
+
+        return self._copy_album(storage_path, modified_artist_folder)
+    
+    def get_music_folders_on_device(self):
+        logger.info("Report on device folder '%s'", self.target_path)
+        (plist, outs, errs) = self.auto_command('find \"%s\" -type d' %(self.target_path))
+        logger.debug(outs[-1].split(b'\n'))
+        return [ f.replace(b'%b/' % bytes(self.target_path, encoding='utf8'), b'') for f in outs[-1].split(b'\n') if f and f != self.target_path ]
+    
+    def is_album_on_device(self, artist_name, album_name):
+        artist_folder = join(self.target_path, artist_name, album_name)
+        (plist, outs, errs) = self.auto_command([r'find \"%s\"' %(artist_folder), r'wc -l'])
+        return int(outs[-1]) > 1
+
+    def _get_executable_statement(self, command, force_local=False):
+        
+        if self.ip_address and not force_local:
+            (parameters, address) = self._get_ssh_identity_file_parameter()
+            return shlex.split(r'ssh %s %s "%s"' %(parameters, address, command))
+        else:
+            return shlex.split(command)
+    
+    def _get_copy_statement(self, file, path):
+        
+        if self.ip_address:
+            (parameters, address) = self._get_ssh_identity_file_parameter()
+            return shlex.split(r'scp -r %s "%s" %s:"%s/"' % (parameters, file, address, path))
+        else:
+            return shlex.split(r'cp -an "%s" "%s/"' % (file, path))
             
-        return (ps, out, err)
+    def auto_command(self, commands):
         
-    def remote_command(self, command, level=0):
+        if type(commands) == str:
+            commands = [commands]
+        
         plist = []
         outs = []
         errs = []
-        # -- recursively deconstruct the command list, pulling the last one off each time 
-        if type(command).__name__ == 'list':
-            if len(command) > 1:
-                first_commands = command[0:-1]
-                logger.debug("passing %s onto recursivity" % first_commands)
-                (plist, outs, errs) = self.remote_command(first_commands, level=level+1)                
-                command = command[-1]
-            else:
-                command = command[0]
-        # -- the first pass here will be the first command in the list 
-        logger.debug("plist length: %s, level %s, command %s" % (len(plist), level, command))
-        if len(plist) > 0:
-            statement = shlex.split(command)
-            ps = subprocess.Popen(statement, stdin=plist[-1].stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            (out, err) = plist[-1].communicate(None)
+        
+        for i, command in enumerate(commands, 1):
+            
+            statement = self._get_executable_statement(command, force_local=(i < len(commands)))
+            
+            logger.info(f'filing {command}')
+            plist.append({
+                'command': command,
+                'ps': subprocess.Popen(statement, stdin=plist[-1]['ps'].stdout if len(plist) > 0 else None, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            })
+        
+        plist.reverse()
+        
+        for p in plist:
+            logger.info(f'communicate: "{p["command"]}"')
+            (out, err) = p['ps'].communicate(None)
             logger.debug("out: %s" % out)
             logger.debug("err: %s" % err)
             outs.append(out)
             errs.append(err)
-        else:
-            statement = self._get_ssh_statement(command)
-            ps = subprocess.Popen(statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        plist.append(ps)
-        if level == 0:
-            logger.debug("communicate at top level")
-            (out, err) = plist[-1].communicate(None)
-            logger.debug("out: %s" % out)
-            logger.debug("err: %s" % err)
-            outs.append(out)
-            errs.append(err)
-        return (plist, outs, errs)
+       
+        return plist, outs, errs
     
-    def copy(self, file, path):
-        (parameters, address) = self._get_ssh_identity_file_parameter()
-        cp_statement = r'scp -r %s "%s" %s:"%s/"' % (parameters, file, address, path)
+    def _copy_album(self, file, path):
+        
+        cp_statement = self._get_copy_statement(file, path)
         logger.debug(" - %s" % cp_statement)
 
-        ps = subprocess.Popen(shlex.split(cp_statement), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out,err,) = ps.communicate(None)
+        ps = {
+            'ps': subprocess.Popen(cp_statement, stdout=subprocess.PIPE, stderr=subprocess.PIPE),
+            'command': cp_statement
+        }
+        
+        (out,err,) = ps['ps'].communicate(None)
 
         err = err.decode().replace("void endpwent()(3) is not implemented on Android\n", "")
         
         if len(err) > 0:
             raise Exception(err)
 
-        logger.debug(" - add code: %s" % ps.returncode) 
+        logger.debug(" - add code: %s" % ps['ps'].returncode) 
         
         return ([ps], out, err)
 
@@ -165,65 +232,91 @@ class FreshBeats(object):
 
     device_mount = None
     dev = None
-
-    def __init__(self):
-
-        self.bytes_free = 0
-        self.fail = 0
-
-        config = ConfigParser()
-        config.read(
-            join(os.path.dirname(__file__), './config/settings.cfg')
-        )
-
-        for section in config.sections():
-            if section == 'process':
-                self.process = Process(**{ i[0]: i[1] for i in config.items(section) })
-            else:
-                for i in config.items(section):
-                    self.__setattr__(i[0], i[1])
+    mobile = None 
+    
+    music_path = None 
+    free_space_margin_mb = None 
+    
+    def __init__(self, *args, **kwargs):
+        
+        try:
                 
-        # self.device = DeviceManager(hostname=self.device_hostname,
-        # username=self.ssh_username, target_folder=self.beats_target_folder)
-        self.album_manager = None
+            if 'mobile_id' not in kwargs:
+                raise Exception("mobile_id missing")
+            
+            self.mobile = Mobile.objects.get(pk=kwargs['mobile_id'])
+            
+            self.process = Process(**{ f.name: self.mobile.__dict__[f.name] for f in self.mobile._meta.fields })
+            
+            self.bytes_free = 0
+            self.fail = 0
 
-        if os.getenv('FRESHBEATS_MUSIC_PATH'):
-            self.music_path = os.getenv('FRESHBEATS_MUSIC_PATH')
+            config = ConfigParser()
+            config.read(
+                join(os.path.dirname(__file__), './config/settings.cfg')
+            )
 
-        if not os.path.exists(self.music_path):
-            logger.error("Music path %s does not exist. Exiting.", self.music_path)
-            exit(1)
+            # self.process = Process(**{ i[0]: i[1] for i in config.items(section) })
+            for section in config.sections():
+                if section == 'albummanager':
+                    self.album_manager = AlbumManager(**{**{ i[0]: i[1] for i in config.items(section) }, 'device_free_bytes': self.get_free_bytes(), 'mobile': self.mobile})
+                else:
+                    for i in config.items(section):
+                        self.__setattr__(i[0], i[1])
+                    
+            # self.device = DeviceManager(hostname=self.device_hostname,
+            # username=self.ssh_username, target_folder=self.beats_target_folder)
+            # self.album_manager = None
 
+            if os.getenv('FRESHBEATS_MUSIC_PATH'):
+                self.music_path = os.getenv('FRESHBEATS_MUSIC_PATH')
+
+            if not os.path.exists(self.music_path):
+                logger.error("Music path %s does not exist. Exiting.", self.music_path)
+                exit(1) 
+        except Exception as e:
+            logger.error(sys.exc_info()[0])
+            logger.error(sys.exc_info()[1])
+            traceback.print_tb(sys.exc_info()[2])
+            raise e
+    
+    def get_free_bytes(self):
+        return self.process.get_free_bytes()
+        
     def plan_report(self):
 
-        logger.info("Report on device folder '%s'", self.beats_target_folder)
-
-        folders_on_device = self.get_music_folders_on_device(self.beats_target_folder)
+        folders_on_device = self.process.get_music_folders_on_device()
 
         found_on_device = []
-        #found_on_device_no_subfolder = []
+        found_on_device_no_subfolder = []
 
         for folder_path in folders_on_device:
+            
+            folder_path = folder_path.decode('utf-8')
+            
+            logger.debug("Folder found: %s" % folder_path)
 
-            #logger.debug("Folder found: %s" % folder_path)
-
-            tup = folder_path.split(b'/')
+            tup = folder_path.split('/')
 
             if len(tup) < 2:
-                #found_on_device_no_subfolder.append(folder_path)
+                logger.debug(f'No subfolder for {folder_path}')
+                found_on_device_no_subfolder.append(folder_path)
                 continue
 
             artist = tup[-2]
             album = tup[-1]
-
+            
+            logger.debug(f'Looking up artist {artist}')
             artist_matches = Artist.objects.filter(name=artist)
 
-            if len(artist_matches) > 1:
+            if len(artist_matches) > 0:
                 logger.debug("Found %s artists for '%s'" % (len(artist_matches), artist))
 
             for artist_match in artist_matches:
+                logger.debug(f'Attempting to match album {album} to artist {artist_match.name}')
                 album_match = Album.objects.filter(artist__name=artist_match.name, name=album).first()
                 if album_match:
+                    logger.debug(f'Found album {album_match.name}')
                     found_on_device.append(album_match)
                     break
 
@@ -241,31 +334,38 @@ class FreshBeats(object):
             max_artist = max([ len(a.artist.name) for a in found_on_device ]) + 1
 
             logger.info("Albums on Device")
-            logger.debug(max_album)
-            logger.debug(max_artist)
+            # logger.debug(max_album)
+            # logger.debug(max_artist)
             
             for a in found_on_device:
-                checked_out = a.current_albumcheckout() is not None
+                current_checkout = a.current_albumcheckout(self.mobile.id)
+                state = "no checkout"
+                next_state = "no checkout"
+                if current_checkout:
+                    state = current_checkout.state
+                    next_state = current_checkout.next_state or "no next state on checkout"
+                
                 # logger.debug(a.name)
                 
                 # logger.debug(a.artist.name)
                 
                 # logger.debug(a.action)
                 # logger.debug("{0:<{1}}".format(a.name, max_album))
-                logger.info("{0:<{1}} {2:<{3}} {4} {5}".format(a.name, max_album, a.artist.name, max_artist, a.action if a.action else "<no action>", "checked-out" if checked_out else "not checked out"))
+                
+                logger.info("{0:<{1}} {2:<{3}} {4} {5}".format(a.name, max_album, a.artist.name, max_artist, state, next_state))
 
-        action_albums = Album.objects.filter(~Q(action=Album.DONOTHING), action__isnull=False)
-        if len(action_albums) > 0:
-            max_album = max([ len(a.name) for a in action_albums ]) + 1
-            max_artist = max([ len(a.artist.name) for a in action_albums ]) + 1
-        checkout_size = sum([ a.total_size for a in action_albums.filter(Q(action=Album.CHECKOUT) | Q(action=Album.REQUESTCHECKOUT)) ])
-        refresh_size = sum([ a.total_size - a.old_total_size for a in action_albums.filter(Q(action=Album.REFRESH)) ])
-        checkin_size = sum([ a.total_size for a in action_albums.filter(action=Album.CHECKIN) ])
+        mobile_albumcheckouts = self.mobile.albumcheckout_set.filter(~Q(state=AlbumCheckout.CHECKEDIN))
+        if len(mobile_albumcheckouts) > 0:
+            max_album = max([ len(ac.album.name) for ac in mobile_albumcheckouts ]) + 1
+            max_artist = max([ len(ac.album.artist.name) for ac in mobile_albumcheckouts ]) + 1
+        checkout_size = sum([ ac.album.total_size for ac in mobile_albumcheckouts.filter(Q(state=AlbumCheckout.REQUESTED) | Q(state=AlbumCheckout.VALIDATED)) ])
+        refresh_size = sum([ ac.album.total_size - ac.album.old_total_size for ac in mobile_albumcheckouts.filter(Q(state=AlbumCheckout.REFRESH)) ])
+        checkin_size = sum([ ac.album.total_size for ac in mobile_albumcheckouts.filter(state=AlbumCheckout.CHECKEDOUT, next_state=AlbumCheckout.CHECKEDIN) ])
 
         logger.info("Albums in Plan")
-        for a in action_albums:
-            logger.info(type(a.name))
-            logger.info("{0:<{1}} / {2:<{3}}: {4:>32}".format(a.name, max_album, a.artist.name, max_artist, a.action if a.action else '-no action-'))
+        for ac in mobile_albumcheckouts:
+            logger.info(type(ac.album.name))
+            logger.info("{0:<{1}} / {2:<{3}}: {4:<12}/{5:>32}".format(ac.album.name, max_album, ac.album.artist.name, max_artist, ac.state, ac.next_state or '-'))
 
         logger.info("Checking out {0} MB".format(checkout_size/(1024*1024)))
         logger.info("Refreshing {0} MB".format(refresh_size/(1024*1024)))
@@ -279,20 +379,19 @@ class FreshBeats(object):
     def remove_album_from_device(self, a):
 
         logger.info("removing: %s %s" %(a.artist.name, a.name))
+        (plist, outs, errs) = self.process.remove_album(a.artist.name, a.name)
         
-        album_path = join(self.beats_target_folder, a.artist.name, a.name)
-        command = r'rm -rf \"%s\"' % album_path
-        (plist, outs, errs) = self.process.remote_command(command)
-        
-        logger.info("Remove code: %s" % plist[-1].returncode)
+        logger.info("Remove code: %s" % plist[-1]['ps'].returncode)
 
-        if plist[-1].returncode == 0:
-            current_checkout = a.current_albumcheckout()
+        if plist[-1]['ps'].returncode == 0:
+            current_checkout = a.current_albumcheckout(self.mobile.id)
             if current_checkout:
                 while current_checkout is not None:
                     current_checkout.return_at = timezone.now()
+                    current_checkout.state = AlbumCheckout.CHECKEDIN
+                    current_checkout.next_state = None 
                     current_checkout.save()
-                    current_checkout = a.current_albumcheckout()
+                    current_checkout = a.current_albumcheckout(self.mobile.id)
                     if current_checkout:
                         logger.warn("%s/%s checked out multiple times!" % (a.artist.name, a.name))
             else:
@@ -301,85 +400,33 @@ class FreshBeats(object):
             a.save()
 
     def copy_album_to_device(self, a):
-
-        artist_folder = join(self.beats_target_folder, a.artist.name) #join(self.device_mount, self.beats_target_folder, a.artist)
-
-        logger.info(" - adding folder: \"%s\"" %(artist_folder))
         
-        (plist, outs, errs) = self.process.remote_command(r'mkdir -p \"%s\"' % artist_folder)        
-
         storage_path = join(self.music_path, common.get_storage_path(a))
         logger.debug(" - storage path: %s" % storage_path)
-
-        modified_artist_folder = artist_folder.replace(' ', r'\ ').replace("'", r'\'').replace("&", r'\&')
-        logger.debug(" - modified artist folder: %s" % modified_artist_folder)
-
-        (plist, outs, errs) = self.process.copy(storage_path, modified_artist_folder)
         
-        if plist[-1].returncode == 0:
-            ac = AlbumCheckout(album=a, checkout_at=timezone.now())
-            ac.save()
-            a.action = None
-            a.save()
-
-    def get_music_folders_on_device(self, target_folder):
+        (plist, outs, errs) = self.process.add_album(storage_path, a.artist.name)
         
-        (plist, outs, errs) = self.process.remote_command(r'find \"%s\" -type d' %(target_folder))
-        logger.debug(target_folder)
-        logger.debug(outs[-1].split(b'\n'))
-        folders = [ f.replace(b'%b/' % bytes(target_folder, encoding='utf8'), b'') for f in outs[-1].split(b'\n') if f and f != target_folder ]
-
-        return folders
-
-    def is_album_on_device(self, album):
-
-        artist_folder = join(self.beats_target_folder, album.artist.name, album.name)
-
-        (plist, outs, errs) = self.process.remote_command([r'find \"%s\"' %(artist_folder), r'wc -l'])
-
-        return int(outs[-1]) > 1
-
-    def get_free_bytes(self):
-
-        #ps = subprocess.Popen('df -k'.split(' '), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #ps = subprocess.Popen(('grep ' + self.device_mount).split(' '), stdin=ps.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        (plist, outs, errs) = self.process.remote_command(['df', 'grep emulated'])
-
-        if not outs[-1] and not errs[-1]:
-            raise Exception("no out or err in get_free_bytes!")
-
-        # - Filesystem               Size     Used     Free   Blksize
-        # - /mnt/shell/emulated     12G     8.5G     3.5G   4096
-        for i, out in enumerate(outs):
-            logger.debug("%s: %s" % (i, out))
-        parts = [p for p in str(outs[-1]).split(' ') if p != '']
-        free = parts[3]
-
-        match = re.search(r'([0-9\.]+)([A-Z])', str(free))
-
-        size = match.group(1)
-        unit = match.group(2)
-
-        unit_multiplier = {'G': math.pow(1024, 3), 'M': math.pow(1024, 2), 'K': math.pow(1024, 1)}
-
-        size_in_bytes = int(math.floor(float(size)*unit_multiplier[unit]))
-
-        logger.debug("free space: %s MB (%s bytes)" % (int(math.floor(float(size_in_bytes)/unit_multiplier['M'])), size_in_bytes))
-
-        return size_in_bytes
-
+        if plist[-1]['ps'].returncode == 0:
+            checkout = a.current_albumcheckout(self.mobile)
+            checkout.state = AlbumCheckout.CHECKEDOUT 
+            checkout.checkout_at = timezone.now()
+            checkout.save()
+    
     # - END DEVICE
-
+        
     def _pick_random_fill_albums(self):
 
         # - we want to keep at least one mix-it-up-rated album
         # - if we aren't renewing one, pick one to check out
-        any_kept_mixins = Album.objects.filter(action__in=[Album.DONOTHING, Album.REFRESH], rating=Album.MIXITUP, albumcheckout__isnull=False, albumcheckout__return_at__isnull=True).exists()
-
+        # any_kept_mixins = Album.objects.filter(Q(rating=Album.MIXITUP) & Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=True) & Q(albumcheckout__mobile=self.mobile)).exists()
+        any_kept_mixings = self.mobile.albumcheckout_set.filter(return_at__isnull=True, album__rating=Album.MIXITUP).exists()
         if not any_kept_mixins:
 
-            new_mixins = Album.objects.filter((Q(albumcheckout__isnull=True) | (Q(albumcheckout__isnull=False) & Q(albumcheckout__return_at__isnull=False))), rating=Album.MIXITUP)
+            # -- albums where 
+            # -- rating is mixitiup
+            # -- AND 
+            # -- there are no albumcheckout records a) for my mobile AND b) NOT checked-in
+            new_mixins = Album.objects.filter(~(Q(albumcheckout__mobile=self.mobile) & ~Q(albumcheckout__state=AlbumCheckout.CHECKEDIN)), rating=Album.MIXITUP)
             new_mixin_list = list(new_mixins)
 
             if len(new_mixin_list) > 0:
@@ -389,7 +436,11 @@ class FreshBeats(object):
                     logger.warn("Rejected checkout of %s/%s" % (new_mixin.artist.name, new_mixin.name))
 
         loveit_albums = Album.objects.filter(rating=Album.LOVEIT, action=None)
-        never_checked_out_albums = Album.objects.filter(albumcheckout__isnull=True, action=None)
+        # -- albums where 
+        # -- no albumcheckout records at all 
+        # -- OR 
+        # -- any albumcheckout records are not my mobile 
+        never_checked_out_albums = Album.objects.filter(Q(albumcheckout__isnull=True) | ~Q(albumcheckout__mobile=self.mobile))
         unrated_albums = Album.objects.filter(rating=Album.UNRATED, action=None, albumstatus__isnull=True)
 
         album_lists = [loveit_albums, never_checked_out_albums, unrated_albums]
@@ -413,9 +464,6 @@ class FreshBeats(object):
 
     def validate_plan(self):
         # -- validate the plan
-        device_free_bytes = self.get_free_bytes()
-        margin = int(self.free_space_mb)*1024*1024
-        self.album_manager = AlbumManager(free_bytes_margin=margin, device_free_bytes=device_free_bytes)
         self.album_manager.validate_plan()
 
     def apply_plan(self, new_randoms=True):
@@ -427,49 +475,54 @@ class FreshBeats(object):
             if new_randoms:
                 self._pick_random_fill_albums()
 
-            remove_albums = Album.objects.filter(action=Album.CHECKIN)
+            remove_albums = [ ac.album for ac in self.mobile.albumcheckout_set.filter(next_state=AlbumCheckout.CHECKEDIN) ]
+            # remove_albums = Album.objects.filter(action=Album.CHECKIN)
 
             for r in remove_albums:
                 self.remove_album_from_device(r)
-
-            refresh_albums = Album.objects.filter(action=Album.REFRESH)
+            
+            refresh_albums = [ ac.album for ac in self.mobile.albumcheckout_set.filter(next_state=AlbumCheckout.REFRESH) ]
+            # refresh_albums = Album.objects.filter(action=Album.REFRESH)
 
             for u in refresh_albums:
                 self.remove_album_from_device(u)
                 self.copy_album_to_device(u)
-
-            sticky_albums = Album.objects.filter(sticky=True)
+            
+            sticky_albums = [ ac.album for ac in self.mobile.albumcheckout_set.filter(album__sticky=True) ]
+            # sticky_albums = Album.objects.filter(sticky=True)
 
             for s in sticky_albums:
                 #self.remove_album_from_device(s)
-                if not self.is_album_on_device(s):
+                if not self.process.is_album_on_device(s.artist.name, s.name):
                     logger.info("Sticky album %s missing" % s)
                     self.copy_album_to_device(s)
                 else:
                     logger.info("Sticky album %s already present, moving on.." % s)
-
-            add_albums = Album.objects.filter(action=Album.CHECKOUT)
+            
+            add_albums = [ ac.album for ac in self.mobile.albumcheckout_set.filter(state=AlbumCheckout.VALIDATED) ]
+            # add_albums = Album.objects.filter(action=Album.CHECKOUT)
 
             for a in add_albums:
                 self.copy_album_to_device(a)
-
-            nothing_albums = Album.objects.filter(action=Album.DONOTHING)
-
-            for a in nothing_albums:
-                a.action = None
-                a.save()
+            # 
+            # nothing_albums = Album.objects.filter(action=Album.DONOTHING)
+            # 
+            # for a in nothing_albums:
+            #     a.action = None
+            #     a.save()
         except:
             logger.error(sys.exc_info()[0])
             logger.error(sys.exc_info()[1])
             traceback.print_tb(sys.exc_info()[2])
 
 @click.command()
+@click.argument('mobile_id')
 @click.option('--report', '-r', is_flag=True, help='Report on device status and copy plan.')
 @click.option('--validate_plan', '-v', is_flag=True, help='Validates album copy plan.')
 @click.option('--apply_plan', '-a', is_flag=True, help='Apply copy plan to device.')
 @click.option('--new_randoms', '-n', is_flag=True, help='Try to fit new random albums during "apply".')
 @click.option('--free', '-f', is_flag=True, help='Show device free information.')
-def main(report, validate_plan, apply_plan, new_randoms, free):
+def main(mobile_id, report, validate_plan, apply_plan, new_randoms, free):
 
     try:
 
@@ -486,7 +539,7 @@ def main(report, validate_plan, apply_plan, new_randoms, free):
             f.plan_report()
 
         if free:
-            f.get_free_bytes()
+            logger.info(f.get_free_bytes())
 
     except:
         logger.error(sys.exc_info()[0])

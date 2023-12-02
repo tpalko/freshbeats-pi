@@ -1,7 +1,7 @@
-version: "3.3"
+version: "3"
 services:
   freshbeats_app:
-    image: freshbeats:latest
+    image: ${DOCKER_REGISTRY}freshbeats:latest
     build: 
       context: .
       #args:
@@ -18,7 +18,7 @@ services:
     networks:
       - frankenbridge
   freshbeats_switchboard:
-    image: switchboard:latest
+    image: ${DOCKER_REGISTRY}switchboard:latest
     build: 
       context: services/switchboard
     container_name: freshbeats_switchboard
@@ -28,7 +28,7 @@ services:
     networks:
       - frankenbridge
   freshbeats_beatplayer:
-    image: beatplayer:latest
+    image: ${DOCKER_REGISTRY}beatplayer:latest
     build: 
       context: services/beatplayer
       args:
@@ -42,4 +42,4 @@ services:
       - frankenbridge 
 networks:
   frankenbridge:
-    external: yes
+    external: true

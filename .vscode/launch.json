@@ -1,0 +1,40 @@
+{
+    "configurations": [
+        {
+            "name": "BeatPlayer",
+            "type": "python",
+            "request": "launch",
+            "module": "jroutes.serve",
+            "args": [
+                "-r",
+                "beatplayer.routes",
+                "-p",
+                "9000"
+            ],
+            "cwd": "${workspaceFolder}/services/beatplayer",
+            "envFile": "${workspaceFolder}/services/beatplayer/.env",
+            "python": "/home/debian/tpalko/.virtualenv/freshbeats-beatplayer/bin/python",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Django",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/webapp/manage.py",
+            "args": [
+                "runserver",
+                "0.0.0.0:8010"
+            ],
+            "envFile": "${workspaceFolder}/webapp/dev.env",
+            "django": true,
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Attach using Process Id",
+            "type": "python",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "justMyCode": true
+        }
+    ]
+}

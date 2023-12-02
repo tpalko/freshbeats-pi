@@ -1,0 +1,14 @@
+{
+    "search.exclude": {
+        "**/bower_components": false
+    },
+    "files.exclude": {
+        "**/__pycache__": true
+    },
+    "workbench.tree.indent": 24,
+    "workbench.editor.highlightModifiedTabs": true,
+    "workbench.editor.labelFormat": "short",
+    "workbench.editor.openPositioning": "first",
+    "workbench.editor.wrapTabs": true,
+    "python.defaultInterpreterPath": "~/.virtualenv/freshbeats-app/bin"
+}

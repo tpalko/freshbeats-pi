@@ -1,94 +1,18 @@
 import json
 import logging
-import os
 import sys
 import traceback
-from datetime import datetime, timedelta
 
-from django.conf import settings
-from django.db.models import Q
-from django.http import HttpResponse, JsonResponse, QueryDict
-from django.shortcuts import render, render_to_response, redirect
-from django.template import RequestContext
-from django.template.loader import render_to_string
-from django.views.decorators.http import require_http_methods #require_GET, require_POST, 
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from ..models import Album, Artist, AlbumCheckout, Song, AlbumStatus, PlaylistSong, Device
-from ..common.util import capture
-from ..common.switchboard import _publish_event
-from .player import PlayerWrapper 
-from .health import BeatplayerRegistrar
+from beater.models import Device
+from beater.switchboard.switchboard import SwitchboardClient
+from beater.beatplayer.player import PlayerWrapper 
 
-logger = logging.getLogger(__name__)
-
-@csrf_exempt
-@require_http_methods(['POST'])
-def register_client(request):    
-    user_agent = request.POST.get('userAgent')
-    connection_id = request.POST.get('connectionId')
-    request.session['switchboard_connection_id'] = connection_id
-    request.session['user_agent'] = user_agent 
-    session_key = request.session.session_key
-    return JsonResponse({'success': True})
-
-@csrf_exempt
-@require_http_methods(['POST'])
-def device_health_loop(request):
-    response = {'success': False, 'message': ''}
-    try:
-        body = json.loads(request.body.decode())
-        agent_base_url = body['agent_base_url'] # request.POST.get('agent_base_url')
-        if agent_base_url:
-            beatplayer = BeatplayerRegistrar.getInstance(agent_base_url)
-            beatplayer.check_if_health_loop()
-            response['success'] = True
-        else:
-            response['message'] = "agent_base_url is %s" % agent_base_url
-    except:
-        response['message'] = str(sys.exc_info()[1])
-    return JsonResponse(response)
-
-@csrf_exempt
-def device_health_report(request):
-    
-    response = {'message': "", 'success': False, 'result': {}}
-    try:
-        health = json.loads(request.body.decode())
-        
-        if not health['success'] and health['message'] and len(health['message']) > 0:
-            _publish_event('message', json.dumps(health['message']))
-        
-        logger.debug("health response: %s" % json.dumps(health, indent=4))
-        health_data = health['data']
-        
-        #logger.debug('Health response: %s' % (json.dumps(health_data, indent=4)))
-        agent_base_url = health_data['agent_base_url']
-        
-        logger.debug("Parsing health response in BeatplayerRegistrar..")
-        beatplayer = BeatplayerRegistrar.getInstance(agent_base_url=agent_base_url)
-        beatplayer.log_device_health_report(health_data)
-        
-        with beatplayer.device(read_only=True) as device:
-            logger.debug("Parsing health response in PlayerWrapper..")
-            playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
-            player = PlayerWrapper.getInstance(device_id=device.id)
-            player.call('parse_state', playlist_id=playlist_id, health_data=health_data)
-        
-        response['success'] = True 
-    except Exception as e:
-        response['message'] = str(sys.exc_info()[1])
-        logger.error(sys.exc_info()[0])
-        logger.error(response['message'])
-        traceback.print_tb(sys.exc_info()[2])
-        # logger.error(dir(sys.exc_info()[2]))
-        # logger.error(sys.exc_info()[2].tb_frame.f_code)
-        # logger.error(sys.exc_info()[2].tb_frame.f_lineno)
-        # logger.error(sys.exc_info()[2].tb_frame.f_locals)
-        _publish_event('alert', json.dumps({'message': response['message']}))
-    
-    logger.debug("Finished processing health response")
-    return JsonResponse(response)
+logger = logging.getLogger()
+action_logger = logging.getLogger('beater.beatplayer.action')
+health_logger = logging.getLogger('beater.beatplayer.health')
 
 def playlist_select(request):
     if request.method == "POST":
@@ -100,17 +24,6 @@ def playlist_select(request):
             logger.debug("Setting playlist ID: playlist_id not found on the request")
     return JsonResponse({'success': True})
 
-def log_client_presence(request):
-    success = False 
-    if 'device_id' not in request.session:
-        logger.warn('No device ID on request.session, cannot log client presence')
-    else:
-        device = Device.objects.get(pk=request.session['device_id'])
-        beatplayer = BeatplayerRegistrar.getInstance(device.agent_base_url)
-        beatplayer.log_client_presence()
-        success = True
-    return JsonResponse({'success': success})
-
 def device_select(request):
     device_id = None 
     if request.method == "POST":
@@ -121,6 +34,17 @@ def device_select(request):
         else:
             logger.debug("Setting device ID: device_id not found on the request")
     return JsonResponse({'success': True, "data": {"device_id": device_id}})
+    
+def mobile_select(request):
+    mobile_id = None 
+    if request.method == "POST":
+        mobile_id = request.POST.get('mobile_id')
+        if mobile_id:
+            logger.debug("Setting mobile ID: %s" % mobile_id)
+            request.session['mobile_id'] = mobile_id             
+        else:
+            logger.debug("Setting mobile ID: mobile_id not found on the request")
+    return JsonResponse({'success': True, "data": {"mobile_id": mobile_id}})
 
 def player(request, command):
     response = {'result': {}, 'success': False, 'message': ""}
@@ -138,7 +62,19 @@ def player(request, command):
         playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
         
         player = PlayerWrapper.getInstance(device_id=device.id)
-        player.call(command, playlist_id=playlist_id, albumid=albumid, songid=songid, artistid=artistid, playlistsongid=playlistsongid)
+        
+        player_args = {
+            'playlist_id': playlist_id, 
+            'albumid': albumid, 
+            'songid': songid, 
+            'artistid': artistid, 
+            'playlistsongid': playlistsongid,
+            'logger': action_logger
+        }
+
+        logger.debug(f'Calling {command} with {player_args}')
+
+        player.call(command, **player_args)
             
         response['success'] = True
 
@@ -146,7 +82,7 @@ def player(request, command):
         response['message'] = "%s: %s" % (str(sys.exc_info()[0].__name__), str(sys.exc_info()[1]))
         logger.error(response['message'])
         traceback.print_tb(sys.exc_info()[2])
-        _publish_event('alert', json.dumps(response))
+        SwitchboardClient.getInstance().publish_event('alert', json.dumps(response))
 
     return JsonResponse({'success': True})
 
@@ -170,7 +106,7 @@ def player_complete(request):
         health_data = complete_response['data']
         
         if 'start' in health_data and health_data['start']:
-            _publish_event('append_player_output', json.dumps({ 'message': '', 'data': {'clear': True}}))
+            SwitchboardClient.getInstance().publish_event('append_player_output', json.dumps({ 'message': '', 'data': {'clear': True}}))
             
         if health_data['complete']:
             agent_base_url = health_data['agent_base_url']
@@ -178,13 +114,20 @@ def player_complete(request):
             device = Device.objects.filter(agent_base_url=agent_base_url).first()
             playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
             player = PlayerWrapper.getInstance(device_id=device.id)
-            player.call("complete", playlist_id=playlist_id, success=complete_response['success'], message=complete_response['message'], data=health_data)
+            player_args = {
+                'playlist_id': playlist_id, 
+                'success': complete_response['success'], 
+                'message': complete_response['message'], 
+                'data': health_data,
+                'logger': action_logger
+            }
+            player.call("complete", **player_args)
         
         if complete_response['message']:
             logger.debug("player output: %s" % complete_response['message'])
             # -- \n are lost in the publish, so if we want newlines in the browser, the <br /> needs to replace here 
             publish_output = { 'message': complete_response['message'].replace("\n\n", "\n").replace("\n", "<br />"), 'data': {'clear': True} }
-            _publish_event('append_player_output', json.dumps(publish_output))
+            SwitchboardClient.getInstance().publish_event('append_player_output', json.dumps(publish_output))
             
         response['success'] = True
 
@@ -192,30 +135,9 @@ def player_complete(request):
         response['message'] = str(sys.exc_info()[1])
         logger.error(response['message'])
         traceback.print_tb(sys.exc_info()[2])
-        _publish_event('alert', json.dumps(response))
+        SwitchboardClient.getInstance().publish_event('alert', json.dumps(response))
 
     return JsonResponse(response)
-
-def player_status_and_state(request):
-
-    response = {'result': {}, 'success': False, 'message': ""}
-
-    try:
-        if 'device_id' not in request.session:
-            raise Exception('device_id not found in session when attempting to trigger player show_player_status')
-            
-        device = Device.objects.get(pk=request.session['device_id'])            
-        #playlist_id = request.session['playlist_id'] if 'playlist_id' in request.session else None 
-        player = PlayerWrapper.getInstance(device_id=device.id)
-        player.show_player_status()
-        response['success'] = True
-    except:
-        response['message'] = str(sys.exc_info()[1])
-        logger.error(response['message'])
-        traceback.print_tb(sys.exc_info()[2])
-        _publish_event('message', json.dumps(response['message']))
-
-    return JsonResponse({'success': True})
     
 # def _album_command(request):
 # 

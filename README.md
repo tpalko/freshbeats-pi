@@ -4,7 +4,8 @@
 **Goals**
 * get confused
 * get unconfused
-* make something useful 
+* repeat
+* eventually, make something useful 
 
 **Components**
 * music playback API (services/beatplayer)
@@ -22,19 +23,27 @@ because it owes me its life.
 
 To run all services locally as the code sits, three shells are required: the web app (Django), beatplayer (RPC server), and switchboard (messaging).
 
-```/webapp/dev.env 
-./devserve.sh runserver 0.0.0.0:80000
+```/
+make devrun_ui
 ```
 
-```/services/beatplayer/.env
-./local.sh
+```services/beatplayer/
+make devrun_api
 ```
 
-```/services/switchboard
-npm start 
+```services/switchboard/
+node switchboard.js
 ```
 
-Running all services in docker containers is supported by docker-compose, and looks like this:
+If you are interested in logging, this is broken out into several files, in addition to the standard out/err streams:
+
+UI output stream
++ beatplayer register loop
+beatplayer output stream
++ registered client health ping loop
++ 
+
+[unfinished!] Running all services in docker containers is supported by docker-compose, and looks like this:
 
 ```/webapp/containerized.dev
 docker-compose up
@@ -179,7 +188,7 @@ On your RPi (assuming it is on the network, the shares are mounted, and the code
 
 (coming soon)
 
-## Architcture
+## High-Level Diagram
 
 From a high-level, the web app and utility file are laid out in reverse CLI-to-API style.
 That is,rather than a command-line utility interacting with an API, this is a command-line
@@ -739,3 +748,7 @@ youtube-dl
 http://ytdl-org.github.io/youtube-dl/download.html
 sudo curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
 sudo chmod a+rx /usr/local/bin/youtube-dl
+
+# Appendix B: Various commands 
+
+DJANGO_SETTINGS_MODULE=config.settings_env python -c "import django; django.setup(); import config.urls;"
